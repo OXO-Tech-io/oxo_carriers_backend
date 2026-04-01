@@ -7,17 +7,21 @@
     "dev": "nodemon --exec ts-node src/app.ts",
     "build": "tsc",
     "start": "node dist/app.js",
+    "deploy:check": "node scripts/check-deployment.js",
     "migrate": "npm run db:init",
     "db:init": "ts-node src/scripts/init-db.ts",
     "create-test-user": "ts-node src/scripts/createTestUser.ts",
     "fix-leave-balances": "ts-node src/scripts/fixLeaveBalances.ts",
-    "add-salary-columns": "ts-node src/scripts/addSalaryColumns.ts"
+    "add-salary-columns": "ts-node src/scripts/addSalaryColumns.ts",
+    "test:email": "ts-node src/scripts/testEmail.ts",
+    "check:email-config": "ts-node src/scripts/checkEmailConfig.ts"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@emailjs/nodejs": "^5.0.2",
     "@heroicons/react": "^2.2.0",
     "@types/pdfkit": "^0.17.4",
     "bcryptjs": "^3.0.3",
@@ -29,7 +33,6 @@
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",
     "mysql2": "^3.16.1",
-    "nodemailer": "^7.0.12",
     "pdfkit": "^0.17.2",
     "zustand": "^5.0.10"
   },
@@ -40,7 +43,6 @@
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
     "@types/node": "^25.0.9",
-    "@types/nodemailer": "^7.0.5",
     "nodemon": "^3.1.11",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"

@@ -19,24 +19,25 @@ export const initializeDatabase = async (): Promise<void> => {
     const dbPort = parseInt(process.env.DB_PORT || '3306');
 
     // Step 1: Connect to MySQL server (without specifying database)
+    // This is optional - on some servers, we only have access to a specific database
     console.log(`📡 Connecting to MySQL server at ${dbHost}:${dbPort}...`);
-    connection = await mysql.createConnection({
-      host: dbHost,
-      user: dbUser,
-      password: dbPassword,
-      port: dbPort,
-      multipleStatements: true,
-    });
-    console.log('✅ Connected to MySQL server');
-
-    // Step 2: Create database if it doesn't exist
-    console.log(`📦 Creating database '${dbName}' if it doesn't exist...`);
     try {
+      connection = await mysql.createConnection({
+        host: dbHost,
+        user: dbUser,
+        password: dbPassword,
+        port: dbPort,
+        multipleStatements: true,
+      });
+      console.log('✅ Connected to MySQL server');
+
+      // Step 2: Create database if it doesn't exist
+      console.log(`📦 Creating database '${dbName}' if it doesn't exist...`);
       await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
       console.log(`✅ Database '${dbName}' is ready`);
     } catch (error: any) {
-      console.error(`❌ Failed to create database: ${error.message}`);
-      throw error;
+      console.warn(`⚠️  Notice: Optional database creation skipped/failed: ${error.message}`);
+      console.log('   Continuing to step 3 to connect to pre-existing database...');
     }
 
     // Step 3: Connect to the specific database
@@ -107,7 +108,11 @@ const verifyTables = async (connection: mysql.Connection): Promise<void> => {
       'employee_salary_structure',
       'monthly_salaries',
       'salary_slip_details',
-      'audit_logs'
+      'audit_logs',
+      'facilities',
+      'facility_bookings',
+      'medical_insurance_claims',
+      'consultant_work_submissions'
     ];
 
     const existingTables = tables.map((t: any) => t.TABLE_NAME);
@@ -247,6 +252,30 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
     throw error;
   }
 
+  // Create leave_calendar (holidays/public holidays)
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS leave_calendar (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        date DATE NOT NULL UNIQUE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        is_recurring BOOLEAN DEFAULT false,
+        year INT NULL,
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+        INDEX idx_date (date),
+        INDEX idx_year (year)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ leave_calendar table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating leave_calendar table:', error.message);
+    throw error;
+  }
+
   // Create employee_salary_structure (depends on users and salary_components)
   try {
     await connection.query(`
@@ -341,6 +370,285 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
     throw error;
   }
 
+  // Create facilities table
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS facilities (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        name VARCHAR(100) NOT NULL,
+        type ENUM('workstation', 'board_room', 'meeting_room', 'accommodation') NOT NULL,
+        description TEXT,
+        facilities TEXT,
+        capacity INT DEFAULT 1,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ facilities table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating facilities table:', error.message);
+    throw error;
+  }
+
+  // Create facility_bookings table
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS facility_bookings (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        facility_id INT NOT NULL,
+        user_id INT NOT NULL,
+        start_time DATETIME NOT NULL,
+        end_time DATETIME NOT NULL,
+        purpose TEXT,
+        status ENUM('pending', 'confirmed', 'cancelled', 'completed') DEFAULT 'confirmed',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ facility_bookings table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating facility_bookings table:', error.message);
+    throw error;
+  }
+
+  // Create medical_insurance_claims table
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS medical_insurance_claims (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        type ENUM('IN', 'OPD') NOT NULL,
+        quarter VARCHAR(10) NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        supportive_document_url VARCHAR(500) NOT NULL,
+        relevant_document_url VARCHAR(500) NULL,
+        admin_comment TEXT NULL,
+        reviewed_by INT NULL,
+        reviewed_at TIMESTAMP NULL,
+        resubmission_of INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (resubmission_of) REFERENCES medical_insurance_claims(id) ON DELETE SET NULL,
+        INDEX idx_user_status (user_id, status),
+        INDEX idx_quarter (quarter),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ medical_insurance_claims table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating medical_insurance_claims table:', error.message);
+    throw error;
+  }
+
+  // Migration: Add consultant/service_provider roles and hourly_rate to users
+  try {
+    await connection.query(`
+      ALTER TABLE users
+      MODIFY COLUMN role ENUM('hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'payment_approver', 'employee', 'consultant', 'service_provider') NOT NULL
+    `);
+    console.log('  ✓ users.role ENUM updated (consultant, service_provider)');
+  } catch (error: any) {
+    if (error.code !== 'ER_INVALID_USE_OF_NULL' && !error.message?.includes('Duplicate')) {
+      console.warn('  ⚠ users.role migration:', error.message);
+    }
+  }
+  try {
+    const [cols]: any = await connection.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'hourly_rate'
+    `);
+    if (!cols?.length) {
+      await connection.query(`
+        ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(10,2) NULL AFTER position
+      `);
+      console.log('  ✓ users.hourly_rate column added');
+    }
+  } catch (error: any) {
+    console.warn('  ⚠ users.hourly_rate migration:', error.message);
+  }
+
+  // Migration: Add bank details and service provider fields to users
+  const userBankSpColumns = [
+    { name: 'bank_name', def: 'VARCHAR(150) NULL', after: 'hourly_rate' },
+    { name: 'account_holder_name', def: 'VARCHAR(150) NULL', after: 'bank_name' },
+    { name: 'account_number', def: 'VARCHAR(80) NULL', after: 'account_holder_name' },
+    { name: 'bank_branch', def: 'VARCHAR(150) NULL', after: 'account_number' },
+    { name: 'company_name', def: 'VARCHAR(200) NULL', after: 'bank_branch' },
+    { name: 'contact_number', def: 'VARCHAR(30) NULL', after: 'company_name' },
+  ];
+  for (const col of userBankSpColumns) {
+    try {
+      const [cols]: any = await connection.query(`
+        SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = ?
+      `, [col.name]);
+      if (!cols?.length) {
+        await connection.query(`
+          ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.def} AFTER \`${col.after}\`
+        `);
+        console.log(`  ✓ users.${col.name} column added`);
+      }
+    } catch (error: any) {
+      console.warn(`  ⚠ users.${col.name} migration:`, error.message);
+    }
+  }
+
+  // Create consultant_work_submissions table
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS consultant_work_submissions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        project VARCHAR(255) NOT NULL,
+        tech VARCHAR(255) NOT NULL,
+        total_hours DECIMAL(10,2) NOT NULL,
+        comment TEXT NULL,
+        log_sheet_url VARCHAR(500) NOT NULL,
+        status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+        admin_comment TEXT NULL,
+        reviewed_by INT NULL,
+        reviewed_at TIMESTAMP NULL,
+        resubmission_of INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (resubmission_of) REFERENCES consultant_work_submissions(id) ON DELETE SET NULL,
+        INDEX idx_user_status (user_id, status),
+        INDEX idx_status (status)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ consultant_work_submissions table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating consultant_work_submissions table:', error.message);
+    throw error;
+  }
+
+  // Create vendors table (separate from users; no email verification)
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS vendors (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        email VARCHAR(255) NOT NULL,
+        company_name VARCHAR(200) NOT NULL,
+        contact_number VARCHAR(30) NULL,
+        bank_name VARCHAR(150) NULL,
+        account_holder_name VARCHAR(150) NULL,
+        account_number VARCHAR(80) NULL,
+        bank_branch VARCHAR(150) NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY vendors_email_unique (email)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log('  ✓ vendors table');
+  } catch (error: any) {
+    console.error('  ✗ Error creating vendors table:', error.message);
+    throw error;
+  }
+
+  // Create payment_vouchers table (uses vendor_id -> vendors)
+  try {
+    const [pvExists]: any = await connection.query(`
+      SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'payment_vouchers'
+    `);
+    if (!pvExists?.length) {
+      await connection.query(`
+        CREATE TABLE payment_vouchers (
+          id INT PRIMARY KEY AUTO_INCREMENT,
+          voucher_number VARCHAR(50) UNIQUE NOT NULL,
+          created_by INT NOT NULL,
+          vendor_id INT NOT NULL,
+          amount DECIMAL(12,2) NOT NULL,
+          vat DECIMAL(12,2) NOT NULL DEFAULT 0,
+          description TEXT NULL,
+          invoice_url VARCHAR(500) NULL,
+          status ENUM('pending_review', 'approved', 'rejected', 'information_request', 'bank_upload', 'paid') NOT NULL DEFAULT 'pending_review',
+          executive_comment TEXT NULL,
+          reviewed_by INT NULL,
+          reviewed_at TIMESTAMP NULL,
+          resubmitted_at TIMESTAMP NULL,
+          bank_upload_by INT NULL,
+          bank_upload_at TIMESTAMP NULL,
+          paid_by INT NULL,
+          paid_at TIMESTAMP NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
+          FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (bank_upload_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE SET NULL,
+          INDEX idx_status (status),
+          INDEX idx_created_by (created_by)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+      `);
+      console.log('  ✓ payment_vouchers table (vendor_id)');
+    }
+  } catch (error: any) {
+    console.error('  ✗ Error creating payment_vouchers table:', error.message);
+    throw error;
+  }
+
+  // Migration: payment_vouchers from service_provider_id (users) to vendor_id (vendors)
+  try {
+    const [cols]: any = await connection.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers'
+    `);
+    const columnNames = (cols || []).map((c: any) => c.COLUMN_NAME);
+    if (columnNames.includes('service_provider_id') && !columnNames.includes('vendor_id')) {
+      const [fkRows]: any = await connection.query(`
+        SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers' AND COLUMN_NAME = 'service_provider_id' AND REFERENCED_TABLE_NAME IS NOT NULL
+      `);
+      const fkName = fkRows?.[0]?.CONSTRAINT_NAME;
+      if (fkName) {
+        await connection.query(`ALTER TABLE payment_vouchers DROP FOREIGN KEY \`${fkName}\``);
+      }
+      await connection.query(`
+        INSERT INTO vendors (id, email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
+        SELECT id, email, COALESCE(company_name, first_name), contact_number, bank_name, account_holder_name, account_number, bank_branch
+        FROM users WHERE role = 'service_provider'
+      `);
+      await connection.query(`ALTER TABLE payment_vouchers ADD COLUMN vendor_id INT NULL AFTER created_by`);
+      await connection.query(`UPDATE payment_vouchers SET vendor_id = service_provider_id`);
+      await connection.query(`ALTER TABLE payment_vouchers DROP COLUMN service_provider_id`);
+      await connection.query(`ALTER TABLE payment_vouchers MODIFY vendor_id INT NOT NULL`);
+      await connection.query(`
+        ALTER TABLE payment_vouchers ADD CONSTRAINT fk_pv_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE
+      `);
+      if (!columnNames.includes('invoice_url')) {
+        await connection.query(`ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`);
+      }
+      console.log('  ✓ payment_vouchers migrated to vendor_id');
+    }
+  } catch (error: any) {
+    console.warn('  ⚠ payment_vouchers vendor_id migration:', (error as Error).message);
+  }
+
+  // Migration: Add invoice_url to payment_vouchers (if missing)
+  try {
+    const [cols]: any = await connection.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers' AND COLUMN_NAME = 'invoice_url'
+    `);
+    if (!cols?.length) {
+      await connection.query(`
+        ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description
+      `);
+      console.log('  ✓ payment_vouchers.invoice_url column added');
+    }
+  } catch (error: any) {
+    console.warn('  ⚠ payment_vouchers.invoice_url migration:', error.message);
+  }
+
   // Add manager foreign key constraint after users table exists
   try {
     // Check if constraint already exists
@@ -420,8 +728,7 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
         INSERT INTO leave_types (name, description, max_days, is_active) VALUES
         ('Annual', 'Annual/Paid Leave', 14, true),
         ('Casual', 'Casual Leave', 7, true),
-        ('Maternity', 'Maternity Leave', 90, true),
-        ('Sick', 'Sick Leave', 10, true)
+        ('Maternity', 'Maternity Leave', 84, true)
       `);
       console.log('  ✓ Leave types inserted');
     } else {
@@ -450,6 +757,24 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
       console.log('  ✓ Salary components inserted');
     } else {
       console.log('  ✓ Salary components already exist');
+    }
+
+    // Insert default facilities
+    const [facilitiesResult]: any = await connection.query(`
+      SELECT COUNT(*) as count FROM facilities
+    `);
+    
+    if (facilitiesResult[0].count === 0) {
+      await connection.query(`
+        INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES
+        ('Workstation A1', 'workstation', 'Standard office workstation', 'Monitor, Keyboard, Mouse, LAN', 1, true),
+        ('Board Room 1', 'board_room', 'Executive board room for meetings', 'Projector, Whiteboard, Video Conference, AC', 12, true),
+        ('Meeting Room Small', 'meeting_room', 'Small meeting room for quick gatherings', 'Whiteboard, AC', 4, true),
+        ('Guest Room 101', 'accommodation', 'Comfortable accommodation for visitors', 'Bed, TV, AC, Attached Bathroom', 2, true)
+      `);
+      console.log('  ✓ Default facilities inserted');
+    } else {
+      console.log('  ✓ Facilities already exist');
     }
 
     // Insert dummy user

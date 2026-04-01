@@ -12,7 +12,7 @@ router.use(requireHR);
 // Leave Reports
 router.get('/leaves', async (req, res: Response) => {
   try {
-    const { department, year, status, format } = req.query;
+    const { department, year, month, status, format } = req.query;
 
     let query = `
       SELECT 
@@ -39,6 +39,11 @@ router.get('/leaves', async (req, res: Response) => {
       params.push(year);
     }
 
+    if (month) {
+      query += ' AND MONTH(lr.start_date) = ?';
+      params.push(month);
+    }
+
     if (status) {
       query += ' AND lr.status = ?';
       params.push(status);
@@ -62,6 +67,7 @@ router.get('/leaves', async (req, res: Response) => {
         { header: 'End Date', key: 'end_date', width: 15 },
         { header: 'Total Days', key: 'total_days', width: 12 },
         { header: 'Status', key: 'status', width: 15 },
+        { header: 'Reason', key: 'reason', width: 30 },
         { header: 'Created At', key: 'created_at', width: 20 }
       ];
 
@@ -75,12 +81,15 @@ router.get('/leaves', async (req, res: Response) => {
           end_date: new Date(row.end_date).toLocaleDateString(),
           total_days: row.total_days,
           status: row.status,
+          reason: row.reason || '',
           created_at: new Date(row.created_at).toLocaleString()
         });
       });
 
+      const yearMonth = [year, month].filter(Boolean).join('-');
+      const filename = `leave-report${yearMonth ? '-' + yearMonth : ''}.xlsx`;
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=leave-report.xlsx');
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
       await workbook.xlsx.write(res);
       res.end();
     } else {
@@ -160,8 +169,10 @@ router.get('/salaries', async (req, res: Response) => {
         });
       });
 
+      const yearMonth = [year, month].filter(Boolean).join('-');
+      const filename = `salary-report${yearMonth ? '-' + yearMonth : ''}.xlsx`;
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=salary-report.xlsx');
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
       await workbook.xlsx.write(res);
       res.end();
     } else {

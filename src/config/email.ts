@@ -1,65 +1,191 @@
-import nodemailer from 'nodemailer';
+import emailjs from '@emailjs/nodejs';
 import dotenv from 'dotenv';
+import path from 'path';
+import fs from 'fs';
 
-dotenv.config();
+/**
+ * EMAILJS TEMPLATE CONFIGURATION GUIDE
+ * ------------------------------------
+ * To use these templates, log in to your EmailJS Dashboard and create templates with the following:
+ * 
+ * 1. GENERAL SETTINGS (Required for all templates):
+ *    - To Email: {{to_email}}
+ *    - Subject: {{subject}} (to use the subject defined in code)
+ * 
+ * 2. WELCOME / CREDENTIALS TEMPLATE (EMAILJS_WELCOME_TEMPLATE_ID):
+ *    Variables: {{firstName}}, {{employeeId}}, {{email}}, {{password}}, {{loginUrl}}
+ * 
+ * 3. PASSWORD RESET / SETUP TEMPLATE (EMAILJS_RESET_TEMPLATE_ID):
+ *    Variables: {{firstName}}, {{setupLink}}, {{resetLink}}, {{expiry}}, {{employeeId}}
+ * 
+ * 4. EMAIL VERIFICATION TEMPLATE (EMAILJS_VERIFY_TEMPLATE_ID):
+ *    Variables: {{firstName}}, {{verificationLink}}, {{expiry}}
+ * 
+ * 5. TEST TEMPLATE (EMAILJS_TEMPLATE_ID):
+ *    Variables: {{message}}, {{timestamp}}
+ */
 
-// Gmail SMTP Configuration
-const isEmailConfigured = !!(process.env.SMTP_USER && process.env.SMTP_PASS);
-
-let transporter: nodemailer.Transporter | null = null;
-
-if (isEmailConfigured) {
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: parseInt(process.env.SMTP_PORT || '587'),
-    secure: false, // true for 465, false for other ports
-    auth: {
-      user: process.env.SMTP_USER,
-      pass: process.env.SMTP_PASS, // Use Gmail App Password here
-    },
-    tls: {
-      rejectUnauthorized: false
+// Safe logging for production environments
+const logToFile = (message: string) => {
+  try {
+    const logDir = path.join(process.cwd(), 'logs');
+    // Don't crash if folder creation is blocked by the server
+    if (!fs.existsSync(logDir)) {
+      try { fs.mkdirSync(logDir, { recursive: true }); } catch (e) {}
     }
-  });
-
-  // Verify transporter configuration (async, don't block startup)
-  transporter.verify((error, success) => {
-    if (error) {
-      console.error('❌ Email transporter verification failed:', error.message);
-      console.error('   Please check your SMTP credentials in .env file');
-      console.error('   See backend/EMAIL_SETUP.md for setup instructions');
-    } else {
-      console.log('✅ Email server is ready to send messages');
+    
+    if (fs.existsSync(logDir)) {
+      const logFile = path.join(logDir, 'email.log');
+      const timestamp = new Date().toISOString();
+      fs.appendFileSync(logFile, `[${timestamp}] ${message}\n`);
     }
-  });
-} else {
-  console.warn('⚠️  Email not configured: SMTP_USER and/or SMTP_PASS not set in .env');
-  console.warn('   Email functionality will be disabled. See backend/EMAIL_SETUP.md for setup instructions');
-}
+    console.log(`[Email] ${message}`);
+  } catch (error) {
+    console.log(`[Email-Log-Error] ${message}`);
+  }
+};
 
-export const sendEmail = async (to: string, subject: string, html: string) => {
-  if (!transporter || !isEmailConfigured) {
-    console.warn(`⚠️  Email not sent to ${to}: Email service not configured`);
-    console.warn('   Set SMTP_USER and SMTP_PASS in .env to enable email functionality');
+// Load environment variables
+const loadEnvironmentVariables = () => {
+  logToFile('Loading environment variables for EmailJS...');
+  
+  const possibleEnvPaths = [
+    path.resolve(process.cwd(), '.env'),
+    path.resolve(__dirname, '../../.env'),
+    path.resolve(__dirname, '../../../.env'),
+  ];
+
+  let envLoaded = false;
+  for (const envPath of possibleEnvPaths) {
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath });
+      envLoaded = true;
+      logToFile(`Loaded .env from: ${envPath}`);
+      break;
+    }
+  }
+
+  if (!envLoaded) {
+    dotenv.config();
+  }
+
+  // Log config (without sensitive info)
+  logToFile(`EMAILJS_SERVICE_ID: ${process.env.EMAILJS_SERVICE_ID ? '***set***' : 'not set'}`);
+  logToFile(`EMAILJS_PUBLIC_KEY: ${process.env.EMAILJS_PUBLIC_KEY ? '***set***' : 'not set'}`);
+};
+
+// Load environment variables
+loadEnvironmentVariables();
+
+// Main email sending function using EmailJS
+export const sendEmail = async (
+  to: string, 
+  subject: string, 
+  templateParams: any,
+  templateId?: string
+): Promise<any> => {
+  const serviceId = process.env.EMAILJS_SERVICE_ID || '';
+  
+  // Decide which template ID to use
+  let finalTemplateId = templateId;
+  
+  // If templateId is missing or looks like a placeholder, use fallbacks in order
+  if (!finalTemplateId || 
+      finalTemplateId.includes('xxxxxx') || 
+      finalTemplateId.includes('yyyyyy') || 
+      finalTemplateId.includes('zzzzzz') ||
+      finalTemplateId === 'template_id_here') {
+    
+    // Priority fallbacks
+    finalTemplateId = 
+      process.env.EMAILJS_TEMPLATE_ID || 
+      process.env.EMAILJS_WELCOME_TEMPLATE_ID || 
+      process.env.EMAILJS_RESET_TEMPLATE_ID || 
+      process.env.EMAILJS_VERIFY_TEMPLATE_ID || 
+      '';
+  }
+  
+  // Ensure EmailJS is initialized with latest keys (fixes issues with late-loading env)
+  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
+  const privateKey = process.env.EMAILJS_PRIVATE_KEY;
+
+  if (!publicKey || !privateKey || !serviceId || !finalTemplateId) {
+    logToFile(`❌ EmailJS missing credentials: Public=${!!publicKey}, Private=${!!privateKey}, Service=${!!serviceId}, Template=${!!finalTemplateId}`);
     return null;
   }
 
+  // Always re-init in production to ensures keys are valid
+  emailjs.init({ publicKey, privateKey });
+
+  logToFile(`Attempting to send EmailJS to: ${to}, subject: ${subject} using template: ${finalTemplateId}`);
+
   try {
-    const info = await transporter.sendMail({
-      from: process.env.SMTP_FROM || process.env.SMTP_USER,
-      to,
-      subject,
-      html,
-    });
-    console.log(`✅ Email sent successfully to ${to}`);
-    return info;
+    // 1. Clean the params: Strictly primitives, no hidden objects/prototypes
+    const cleanTemplateParams = JSON.parse(JSON.stringify(templateParams));
+    const sanitizedParams: any = {};
+    for (const key in cleanTemplateParams) {
+      const val = cleanTemplateParams[key];
+      if (typeof val === 'string' || typeof val === 'number' || typeof val === 'boolean') {
+        sanitizedParams[key] = val;
+      }
+    }
+    
+    // 2. Build the final flat object for EmailJS
+    const params: any = {
+      // Recipient
+      to_email: to,
+      recipient_email: to,
+      
+      // User Data
+      user_name: (cleanTemplateParams.firstName || cleanTemplateParams.name || 'User').toString(),
+      user_id: (cleanTemplateParams.employeeId || '').toString(),
+      user_pass: (cleanTemplateParams.password ? `Temporary Password: ${cleanTemplateParams.password}` : '').toString(),
+      
+      // Dynamic Content (Prepared in backend to avoid IF/ELSE in template)
+      message_body: (cleanTemplateParams.message_body || 'Notification from HRIS System').toString(),
+      button_text: (cleanTemplateParams.button_text || 'Click Here').toString(),
+      action_link: (cleanTemplateParams.setupLink || cleanTemplateParams.resetLink || cleanTemplateParams.verificationLink || process.env.FRONTEND_URL || 'https://app.oxocareers.com').toString(),
+      
+      // Email Identifiers (Use this as {{email_subject}} in your template settings)
+      email_subject: subject,
+      subject: subject,
+      expiry_info: (cleanTemplateParams.expiry ? `Note: This link expires in ${cleanTemplateParams.expiry}` : '').toString(),
+      send_time: new Date().toLocaleString(),
+      
+      // Pass original values too as backup
+      ...sanitizedParams
+    };
+
+    logToFile(`Sending EmailJS Template: ${finalTemplateId} to: ${to}`);
+    
+    // Explicitly pass credentials in options for maximum reliability
+    const options = {
+      publicKey: process.env.EMAILJS_PUBLIC_KEY,
+      privateKey: process.env.EMAILJS_PRIVATE_KEY,
+    };
+
+    const result = await emailjs.send(serviceId, finalTemplateId, params, options);
+
+    logToFile(`✅ Email sent successfully via EmailJS! Status: ${result.status}`);
+    return {
+      service: 'emailjs',
+      response: result,
+      status: result.status,
+    };
   } catch (error: any) {
-    console.error(`❌ Email sending failed to ${to}:`, error.message);
-    // Don't throw error - allow application to continue even if email fails
+    const errorMsg = error.text || error.message || JSON.stringify(error);
+    logToFile(`❌ EmailJS failed: ${errorMsg}`);
+    
+    // If it's a specific "template not found" error, maybe log a helpful hint
+    if (errorMsg.includes('template') && errorMsg.includes('not found')) {
+      logToFile('💡 HINT: Check if the Template ID in your .env matches the one in your EmailJS dashboard.');
+    }
+    
     return null;
   }
 };
 
+// Template functions refactored for EmailJS
 export const sendEmployeeCredentials = async (
   email: string,
   employeeId: string,
@@ -67,214 +193,136 @@ export const sendEmployeeCredentials = async (
   firstName: string
 ) => {
   const subject = 'Welcome to HRIS Payroll System - Your Login Credentials';
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
-        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
-        .header { background-color: #4CAF50; color: white; padding: 20px; text-align: center; }
-        .content { padding: 20px; background-color: #f9f9f9; }
-        .credentials { background-color: white; padding: 15px; border-left: 4px solid #4CAF50; margin: 20px 0; }
-        .footer { text-align: center; padding: 20px; color: #666; font-size: 12px; }
-        .warning { background-color: #fff3cd; border-left: 4px solid #ffc107; padding: 15px; margin: 20px 0; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Welcome to HRIS Payroll System</h1>
-        </div>
-        <div class="content">
-          <p>Dear ${firstName},</p>
-          <p>Your account has been created in the HRIS Payroll System. Please find your login credentials below:</p>
-          <div class="credentials">
-            <p><strong>Employee ID:</strong> ${employeeId}</p>
-            <p><strong>Email:</strong> ${email}</p>
-            <p><strong>Temporary Password:</strong> ${password}</p>
-          </div>
-          <div class="warning">
-            <p><strong>⚠️ Important:</strong> You will be required to change your password on first login for security purposes.</p>
-          </div>
-          <p>Please log in at: <a href="${process.env.FRONTEND_URL || 'http://localhost:3000'}/login">${process.env.FRONTEND_URL || 'http://localhost:3000'}/login</a></p>
-          <p>If you have any questions, please contact HR.</p>
-        </div>
-        <div class="footer">
-          <p>This is an automated email. Please do not reply.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+  const templateId = process.env.EMAILJS_WELCOME_TEMPLATE_ID;
+  
+  // You can design your EmailJS template to use these variables: {{firstName}}, {{employeeId}}, {{email}}, {{password}}, {{loginUrl}}
+  const params = {
+    firstName,
+    employeeId,
+    email,
+    password,
+    message_body: 'Your account for the HRIS Payroll System has been successfully created. Please use the temporary credentials below to access your portal.',
+    button_text: 'Go to Login Portal',
+    loginUrl: process.env.FRONTEND_URL || 'https://app.oxocareers.com'
+  };
 
-  return sendEmail(email, subject, html);
+  return sendEmail(email, subject, params, templateId);
 };
 
-export const sendPasswordSetupEmail = async (email: string, setupToken: string, firstName: string, employeeId: string) => {
-  const subject = 'Welcome to HRIS Payroll System - Set Up Your Password';
-  const setupLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${setupToken}`;
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 0; background-color: #ffffff; }
-        .header { background: linear-gradient(135deg, #465FFF 0%, #3641F5 100%); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; background-color: #ffffff; }
-        .info-box { background-color: #ECF3FF; border-left: 4px solid #465FFF; padding: 15px; margin: 20px 0; border-radius: 4px; }
-        .button { display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #465FFF 0%, #3641F5 100%); color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: 600; box-shadow: 0 4px 6px rgba(70, 95, 255, 0.3); }
-        .button:hover { box-shadow: 0 6px 8px rgba(70, 95, 255, 0.4); }
-        .link-box { background-color: #F9FAFB; border: 1px solid #E4E7EC; padding: 15px; margin: 20px 0; border-radius: 4px; word-break: break-all; }
-        .footer { text-align: center; padding: 20px; color: #98A2B3; font-size: 12px; background-color: #F9FAFB; }
-        .warning { background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 4px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Welcome to HRIS Payroll System</h1>
-        </div>
-        <div class="content">
-          <p>Dear ${firstName},</p>
-          <p>Your account has been created in the HRIS Payroll System. To get started, please set up your password by clicking the button below:</p>
-          
-          <div class="info-box">
-            <p style="margin: 0;"><strong>Employee ID:</strong> ${employeeId}</p>
-            <p style="margin: 5px 0 0 0;"><strong>Email:</strong> ${email}</p>
-          </div>
+export const sendPasswordSetupEmail = async (
+  email: string,
+  setupToken: string,
+  firstName: string,
+  employeeId: string
+) => {
+  const subject = 'Set Up Your Password - HRIS Payroll System';
+  const setupLink = `${process.env.FRONTEND_URL}/reset-password?token=${setupToken}`;
+  const templateId = process.env.EMAILJS_WELCOME_TEMPLATE_ID;
 
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${setupLink}" class="button">Set Up Your Password</a>
-          </div>
+  const params = {
+    firstName,
+    employeeId,
+    setupLink,
+    expiry: '7 days',
+    message_body: 'We are excited to have you on board! To get started, please use the button below to set up your secure account password.',
+    button_text: 'Complete Password Setup'
+  };
 
-          <p>Or copy and paste this link into your browser:</p>
-          <div class="link-box">
-            <p style="margin: 0; font-size: 12px; color: #475467;">${setupLink}</p>
-          </div>
-
-          <div class="warning">
-            <p style="margin: 0;"><strong>⚠️ Important:</strong> This link will expire in 7 days. Please set up your password as soon as possible.</p>
-          </div>
-
-          <p>If you did not expect this email, please contact your HR department.</p>
-        </div>
-        <div class="footer">
-          <p>This is an automated email from HRIS Payroll System. Please do not reply to this email.</p>
-          <p>If you need assistance, please contact your HR department.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  return sendEmail(email, subject, html);
+  return sendEmail(email, subject, params, templateId);
 };
 
-export const sendPasswordResetEmail = async (email: string, resetToken: string, firstName: string) => {
-  const subject = 'Password Reset Request - HRIS Payroll System';
-  const resetLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/reset-password?token=${resetToken}`;
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 0; background-color: #ffffff; }
-        .header { background: linear-gradient(135deg, #465FFF 0%, #3641F5 100%); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; background-color: #ffffff; }
-        .button { display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #465FFF 0%, #3641F5 100%); color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: 600; box-shadow: 0 4px 6px rgba(70, 95, 255, 0.3); }
-        .button:hover { box-shadow: 0 6px 8px rgba(70, 95, 255, 0.4); }
-        .link-box { background-color: #F9FAFB; border: 1px solid #E4E7EC; padding: 15px; margin: 20px 0; border-radius: 4px; word-break: break-all; }
-        .footer { text-align: center; padding: 20px; color: #98A2B3; font-size: 12px; background-color: #F9FAFB; }
-        .warning { background-color: #FEF3C7; border-left: 4px solid #F59E0B; padding: 15px; margin: 20px 0; border-radius: 4px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Password Reset Request</h1>
-        </div>
-        <div class="content">
-          <p>Dear ${firstName},</p>
-          <p>You have requested to reset your password. Click the button below to create a new password:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${resetLink}" class="button">Reset Password</a>
-          </div>
+export const sendPasswordResetEmail = async (
+  email: string,
+  resetToken: string,
+  firstName: string
+) => {
+  const subject = 'Password Reset - HRIS Payroll System';
+  const resetLink = `${process.env.FRONTEND_URL}/reset-password?token=${resetToken}`;
+  const templateId = process.env.EMAILJS_RESET_TEMPLATE_ID;
 
-          <p>Or copy and paste this link into your browser:</p>
-          <div class="link-box">
-            <p style="margin: 0; font-size: 12px; color: #475467;">${resetLink}</p>
-          </div>
+  const params = {
+    firstName,
+    resetLink,
+    expiry: '1 hour',
+    message_body: 'We received a request to reset your password. If you did not make this request, you can safely ignore this email.',
+    button_text: 'Reset My Password'
+  };
 
-          <div class="warning">
-            <p style="margin: 0;"><strong>⚠️ Security Notice:</strong> This link will expire in 1 hour. If you did not request this password reset, please ignore this email and contact your HR department immediately.</p>
-          </div>
-        </div>
-        <div class="footer">
-          <p>This is an automated email from HRIS Payroll System. Please do not reply to this email.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
-
-  return sendEmail(email, subject, html);
+  return sendEmail(email, subject, params, templateId);
 };
 
-export const sendEmailVerificationEmail = async (email: string, verificationToken: string, firstName: string) => {
-  const subject = 'Verify Your Email - HRIS Payroll System';
-  const verificationLink = `${process.env.FRONTEND_URL || 'http://localhost:3000'}/verify-email?token=${verificationToken}`;
-  const html = `
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; margin: 0; padding: 0; }
-        .container { max-width: 600px; margin: 0 auto; padding: 0; background-color: #ffffff; }
-        .header { background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; padding: 30px 20px; text-align: center; }
-        .header h1 { margin: 0; font-size: 24px; font-weight: 600; }
-        .content { padding: 30px 20px; background-color: #ffffff; }
-        .button { display: inline-block; padding: 14px 28px; background: linear-gradient(135deg, #10B981 0%, #059669 100%); color: white; text-decoration: none; border-radius: 8px; margin: 20px 0; font-weight: 600; box-shadow: 0 4px 6px rgba(16, 185, 129, 0.3); }
-        .button:hover { box-shadow: 0 6px 8px rgba(16, 185, 129, 0.4); }
-        .link-box { background-color: #F9FAFB; border: 1px solid #E4E7EC; padding: 15px; margin: 20px 0; border-radius: 4px; word-break: break-all; }
-        .footer { text-align: center; padding: 20px; color: #98A2B3; font-size: 12px; background-color: #F9FAFB; }
-        .info { background-color: #D1FADF; border-left: 4px solid #10B981; padding: 15px; margin: 20px 0; border-radius: 4px; }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="header">
-          <h1>Verify Your Email Address</h1>
-        </div>
-        <div class="content">
-          <p>Dear ${firstName},</p>
-          <p>Thank you for registering with HRIS Payroll System. Please verify your email address by clicking the button below:</p>
-          
-          <div style="text-align: center; margin: 30px 0;">
-            <a href="${verificationLink}" class="button">Verify Email Address</a>
-          </div>
+export const sendEmailVerificationEmail = async (
+  email: string,
+  verificationToken: string,
+  firstName: string
+) => {
+  const subject = 'Verify Your Email Address - HRIS Payroll System';
+  const frontendUrl = process.env.FRONTEND_URL || 'https://app.oxocareers.com';
+  const verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}`;
+  const templateId = process.env.EMAILJS_VERIFY_TEMPLATE_ID;
+  
+  const params = {
+    firstName,
+    verificationLink,
+    expiry: '24 hours'
+  };
 
-          <p>Or copy and paste this link into your browser:</p>
-          <div class="link-box">
-            <p style="margin: 0; font-size: 12px; color: #475467;">${verificationLink}</p>
-          </div>
+  return sendEmail(email, subject, params, templateId);
+};
 
-          <div class="info">
-            <p style="margin: 0;"><strong>ℹ️ Note:</strong> This verification link will expire in 24 hours. If you did not create an account, please ignore this email.</p>
-          </div>
-        </div>
-        <div class="footer">
-          <p>This is an automated email from HRIS Payroll System. Please do not reply to this email.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `;
+// Test email function
+export const sendTestEmail = async (to: string = ''): Promise<{success: boolean, message: string, details?: any}> => {
+  const testEmail = to || 'info@oxocareers.com';
+  const subject = 'Test Email from HRIS System (EmailJS)';
+  
+  const params = {
+    message: 'This is a test email to verify your EmailJS integration.',
+    timestamp: new Date().toISOString()
+  };
 
-  return sendEmail(email, subject, html);
+  try {
+    const result = await sendEmail(testEmail, subject, params);
+    
+    if (result) {
+      return {
+        success: true,
+        message: `Test email sent successfully via EmailJS`,
+        details: result
+      };
+    } else {
+      return {
+        success: false,
+        message: 'Failed to send test email via EmailJS. Check logs.'
+      };
+    }
+  } catch (error: any) {
+    return {
+      success: false,
+      message: `Error sending test email: ${error.message}`
+    };
+  }
+};
+
+export const getEmailServiceStatus = () => {
+  const ready = !!(process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY && process.env.EMAILJS_SERVICE_ID);
+  return {
+    emailJS: {
+      ready: ready,
+      serviceId: process.env.EMAILJS_SERVICE_ID,
+      templateId: process.env.EMAILJS_TEMPLATE_ID,
+      publicKeySet: !!process.env.EMAILJS_PUBLIC_KEY,
+      privateKeySet: !!process.env.EMAILJS_PRIVATE_KEY,
+    },
+    overall: ready,
+  };
+};
+
+// Periodic check on startup
+(async () => {
+  const status = getEmailServiceStatus();
+  logToFile(`System Startup - Email Status: ${status.overall ? '✅ READY' : '❌ NOT READY'}`);
+})();
+
+export const verifyEmailConfigOnStartup = async () => {
+  return !!(process.env.EMAILJS_PUBLIC_KEY && process.env.EMAILJS_PRIVATE_KEY);
 };

@@ -6,8 +6,7 @@ import crypto from 'crypto';
 import { sendPasswordSetupEmail, sendEmailVerificationEmail } from '../config/email';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 
-// Store password reset tokens (in production, use Redis or database)
-const passwordResetTokens = new Map<string, { userId: number; expiresAt: Date }>();
+import { passwordResetTokens } from '../utils/tokenStore';
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
@@ -32,8 +31,9 @@ export const getUserById = async (req: Request, res: Response) => {
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
-    // Employees can only view their own profile, HR can view any
-    if (req.user?.role === UserRole.EMPLOYEE && req.user.userId !== userId) {
+    // Employees, consultants, service providers can only view their own profile; HR can view any
+    const selfOnlyRoles = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
+    if (req.user && selfOnlyRoles.includes(req.user.role) && req.user.userId !== userId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -51,12 +51,17 @@ export const getUserById = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    // HR Manager and HR Executive can create users
-    if (req.user?.role !== UserRole.HR_MANAGER && req.user?.role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR Manager and HR Executive can create users' });
+    // Only HR can create users (employees, consultants, etc.). Finance can only create service providers via createServiceProvider.
+    const canCreateUser = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
+    if (!req.user?.role || !canCreateUser.includes(req.user.role)) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only HR can create employees. Finance can only create service providers via Create Service Provider.',
+      });
     }
 
     const {
+      employee_id,
       email,
       password,
       first_name,
@@ -65,11 +70,34 @@ export const createUser = async (req: Request, res: Response) => {
       department,
       position,
       hire_date,
-      manager_id
+      manager_id,
+      hourly_rate,
+      bank_name,
+      account_holder_name,
+      account_number,
+      bank_branch,
+      company_name,
+      contact_number,
     } = req.body;
 
-    if (!email || !first_name || !last_name) {
+    const userRoleInput = (role as UserRole) || UserRole.EMPLOYEE;
+    // Service providers are created only via createServiceProvider; do not allow here
+    if (userRoleInput === UserRole.SERVICE_PROVIDER) {
+      return res.status(400).json({
+        success: false,
+        message: 'Service providers must be created via Create Service Provider.',
+      });
+    }
+
+    const effectiveFirst = first_name;
+    const effectiveLast = last_name;
+
+    if (!email || !effectiveFirst || !effectiveLast) {
       return res.status(400).json({ success: false, message: 'Required fields are missing' });
+    }
+
+    if (role === UserRole.CONSULTANT && (hourly_rate == null || hourly_rate === '' || isNaN(parseFloat(hourly_rate)))) {
+      return res.status(400).json({ success: false, message: 'Hourly rate is required for Consultant role' });
     }
 
     const existingUser = await UserModel.findByEmail(email);
@@ -77,66 +105,86 @@ export const createUser = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Email already exists' });
     }
 
-    const employeeId = await UserModel.generateEmployeeId();
+    // Use provided employee_id or generate one automatically
+    const employeeId = employee_id && employee_id.trim() !== '' 
+      ? employee_id.trim() 
+      : await UserModel.generateEmployeeId();
+
+    // Check if employee_id already exists (if provided)
+    if (employee_id && employee_id.trim() !== '') {
+      const existingEmployee = await UserModel.findByEmployeeId(employeeId);
+      if (existingEmployee) {
+        return res.status(400).json({ success: false, message: 'Employee ID already exists' });
+      }
+    }
+
     const userRole = (role as UserRole) || UserRole.EMPLOYEE;
 
-    // Generate a temporary password (will be changed on first login)
     const tempPassword = password || crypto.randomBytes(12).toString('base64').slice(0, 12);
-    
-    // Generate email verification token
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const user = await UserModel.create({
       employee_id: employeeId,
       email,
       password: tempPassword,
-      first_name,
-      last_name,
+      first_name: effectiveFirst,
+      last_name: effectiveLast,
       role: userRole,
       department,
       position,
       hire_date: hire_date ? new Date(hire_date) : undefined,
       manager_id: manager_id ? parseInt(manager_id) : undefined,
-      email_verification_token: verificationToken
+      hourly_rate: role === UserRole.CONSULTANT && hourly_rate != null ? parseFloat(hourly_rate) : null,
+      bank_name: bank_name || null,
+      account_holder_name: account_holder_name || null,
+      account_number: account_number || null,
+      bank_branch: bank_branch || null,
+      company_name: null,
+      contact_number: null,
+      email_verification_token: verificationToken,
     });
 
-    // Initialize leave balances for the year
-    const currentYear = new Date().getFullYear();
-    const [leaveTypes] = await pool.execute('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
-    const types = leaveTypes as any[];
+    // Initialize leave balances only for employee/hr (not consultant or service_provider)
+    const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
+    if (isLeaveEligible) {
+      const currentYear = new Date().getFullYear();
+      const [leaveTypes] = await pool.execute('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
+      const types = leaveTypes as any[];
 
-    // Get user's hire date for pro-rated calculation
-    const hireDate = user.hire_date ? new Date(user.hire_date) : new Date();
+      const hireDate = user.hire_date ? new Date(user.hire_date) : new Date();
 
-    for (const type of types) {
-      let totalDays = type.max_days;
-      
-      // Apply pro-rated calculation for Annual leave in the first year
-      if (type.name.toLowerCase() === 'annual' || type.name.toLowerCase() === 'annual/paid leave') {
-        totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+      for (const type of types) {
+        let totalDays = type.max_days;
+        if (type.name.toLowerCase() === 'annual' || type.name.toLowerCase() === 'annual/paid leave') {
+          totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+        }
+        await pool.execute(
+          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES (?, ?, ?, 0, ?, ?)',
+          [user.id, type.id, totalDays, totalDays, currentYear]
+        );
       }
-
-      await pool.execute(
-        'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES (?, ?, ?, 0, ?, ?)',
-        [user.id, type.id, totalDays, totalDays, currentYear]
-      );
     }
 
 
-    // Generate password setup token and send emails
     const resetToken = crypto.randomBytes(32).toString('hex');
     const expiresAt = new Date(Date.now() + 7 * 24 * 3600000); // 7 days
     passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
 
     try {
-      // Send email verification email
-      await sendEmailVerificationEmail(email, verificationToken, first_name);
-      
-      // Send password setup email
-      await sendPasswordSetupEmail(email, resetToken, first_name, employeeId);
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError);
-      // Don't fail the request if email fails
+      console.log(`[UserController] 📨 New User Created. Sending verification email to ${email}...`);
+      const verificationEmailResult = await sendEmailVerificationEmail(email, verificationToken, effectiveFirst);
+      if (!verificationEmailResult) {
+        console.error(`⚠️  Failed to send email verification email to ${email}`);
+      }
+      console.log(`[UserController] 📨 Sending password setup email to ${email}...`);
+      const setupEmailResult = await sendPasswordSetupEmail(email, resetToken, effectiveFirst, employeeId);
+      if (!setupEmailResult) {
+        console.error(`⚠️  Failed to send password setup email to ${email}`);
+      } else {
+        console.log(`✅ Password setup email sent successfully to ${email}`);
+      }
+    } catch (emailError: any) {
+      console.error('❌ Error sending emails:', emailError);
     }
 
     const { password: _, ...userWithoutPassword } = user;
@@ -144,7 +192,7 @@ export const createUser = async (req: Request, res: Response) => {
     res.status(201).json({
       success: true,
       message: 'User created successfully. Password setup email has been sent.',
-      user: userWithoutPassword
+      user: userWithoutPassword,
     });
   } catch (error: any) {
     console.error('Create user error:', error);
@@ -158,8 +206,9 @@ export const updateUser = async (req: Request, res: Response) => {
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
-    // Employees can only update their own profile (limited fields)
-    if (req.user?.role === UserRole.EMPLOYEE && req.user.userId !== userId) {
+    // Employees, consultants, service providers can only update their own profile (limited fields)
+    const selfOnlyRoles = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
+    if (req.user && selfOnlyRoles.includes(req.user.role) && req.user.userId !== userId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -230,10 +279,13 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
+    console.log(`[UserController] 🔄 Admin initiating password reset for user ID: ${userId}`);
     const user = await UserModel.findById(userId);
     if (!user) {
+      console.warn(`[UserController] ❌ User not found for ID: ${userId}`);
       return res.status(404).json({ success: false, message: 'User not found' });
     }
+    console.log(`[UserController] 👤 Found user: ${user.email} (${user.first_name})`);
 
     // Generate password reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -241,13 +293,27 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
 
     try {
-      await sendPasswordSetupEmail(user.email, resetToken, user.first_name, user.employee_id);
+      console.log(`[UserController] 📨 Calling sendPasswordSetupEmail...`);
+      const emailResult = await sendPasswordSetupEmail(user.email, resetToken, user.first_name, user.employee_id);
+      
+      if (!emailResult) {
+        console.error(`[UserController] ❌ Email service returned null/false for ${user.email}`);
+        console.error(`⚠️  Failed to send password reset email to ${user.email}`);
+        console.error('   Please check SMTP configuration in .env file');
+        console.error('   Run "npm run test:email" to verify email configuration');
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Failed to send reset email. Please check SMTP configuration.' 
+        });
+      }
+      console.log(`✅ Password reset email sent successfully to ${user.email}`);
       res.json({ 
         success: true, 
         message: 'Password reset email has been sent to the user' 
       });
-    } catch (emailError) {
-      console.error('Failed to send email:', emailError);
+    } catch (emailError: any) {
+      console.error('❌ Error sending password reset email:', emailError);
+      console.error('   Error details:', emailError.message);
       res.status(500).json({ success: false, message: 'Failed to send reset email' });
     }
   } catch (error: any) {

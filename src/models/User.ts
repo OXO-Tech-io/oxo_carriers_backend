@@ -14,7 +14,7 @@ export class UserModel {
 
   static async findById(id: number): Promise<User | null> {
     const [rows] = await pool.execute(
-      'SELECT id, employee_id, email, first_name, last_name, role, department, position, hire_date, manager_id, must_change_password, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, employee_id, email, first_name, last_name, role, department, position, hire_date, manager_id, hourly_rate, bank_name, account_holder_name, account_number, bank_branch, company_name, contact_number, must_change_password, created_at, updated_at FROM users WHERE id = ?',
       [id]
     );
     const users = rows as User[];
@@ -57,13 +57,20 @@ export class UserModel {
     position?: string;
     hire_date?: Date;
     manager_id?: number;
+    hourly_rate?: number | null;
+    bank_name?: string | null;
+    account_holder_name?: string | null;
+    account_number?: string | null;
+    bank_branch?: string | null;
+    company_name?: string | null;
+    contact_number?: string | null;
     email_verification_token?: string;
   }): Promise<User> {
     const hashedPassword = await bcrypt.hash(userData.password, 10);
     
     const [result] = await pool.execute(
-      `INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, manager_id, must_change_password, email_verified, email_verification_token)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, ?)`,
+      `INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, manager_id, hourly_rate, bank_name, account_holder_name, account_number, bank_branch, company_name, contact_number, must_change_password, email_verified, email_verification_token)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, true, false, ?)`,
       [
         userData.employee_id,
         userData.email,
@@ -75,6 +82,13 @@ export class UserModel {
         userData.position || null,
         userData.hire_date || null,
         userData.manager_id || null,
+        userData.hourly_rate ?? null,
+        userData.bank_name ?? null,
+        userData.account_holder_name ?? null,
+        userData.account_number ?? null,
+        userData.bank_branch ?? null,
+        userData.company_name ?? null,
+        userData.contact_number ?? null,
         userData.email_verification_token || null
       ]
     );
@@ -122,7 +136,7 @@ export class UserModel {
     department?: string;
     search?: string;
   }): Promise<User[]> {
-    let query = 'SELECT id, employee_id, email, first_name, last_name, role, department, position, hire_date, manager_id, must_change_password, email_verified, created_at, updated_at FROM users WHERE 1=1';
+    let query = 'SELECT id, employee_id, email, first_name, last_name, role, department, position, hire_date, manager_id, hourly_rate, bank_name, account_holder_name, account_number, bank_branch, company_name, contact_number, must_change_password, email_verified, created_at, updated_at FROM users WHERE 1=1';
     const params: any[] = [];
 
     if (filters?.role) {

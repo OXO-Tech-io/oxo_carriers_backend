@@ -162,13 +162,17 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const role = (req as any).user?.role;
 
+    console.log(`[SalaryController] 📄 Generating PDF for salary ID: ${id}`);
+
     const salary = await SalaryModel.findById(parseInt(id));
     if (!salary) {
+      console.warn(`[SalaryController] ❌ Salary not found: ${id}`);
       return res.status(404).json({ success: false, message: 'Salary not found' });
     }
 
     // Employees can only view their own salary
     if (role === UserRole.EMPLOYEE && salary.user_id !== userId) {
+      console.warn(`[SalaryController] 🚫 Access denied for user ${userId} to salary ${id}`);
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -177,31 +181,67 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     const users = userRows as any[];
     const user = users[0];
 
+    if (!user) {
+      console.warn(`[SalaryController] ❌ User not found for salary: ${salary.user_id}`);
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
     // Generate PDF
-    const pdfBuffer = await generatePDF(salary, details, user);
+    console.log(`[SalaryController] ⚙️ Calling pdfGenerator for ${user.first_name}...`);
+    let pdfBuffer: Buffer;
+    try {
+      pdfBuffer = await generatePDF({
+        salary,
+        details,
+        user
+      });
+      console.log(`[SalaryController] ✅ PDF buffer generated (${pdfBuffer.length} bytes)`);
+    } catch (error: any) {
+      console.error(`[SalaryController] ❌ PDF generation failed:`, error);
+      console.error(`[SalaryController] Error stack:`, error.stack);
+      return res.status(500).json({ 
+        success: false, 
+        message: 'Failed to generate PDF', 
+        error: error.message 
+      });
+    }
 
     // Save PDF if not already saved
     if (!salary.pdf_url) {
       const pdfDir = path.join(process.cwd(), 'uploads', 'salary-slips');
-      if (!fs.existsSync(pdfDir)) {
-        fs.mkdirSync(pdfDir, { recursive: true });
+      try {
+        if (!fs.existsSync(pdfDir)) {
+          console.log(`[SalaryController] 📁 Creating directory: ${pdfDir}`);
+          fs.mkdirSync(pdfDir, { recursive: true });
+        }
+        const pdfFilename = `salary-slip-${salary.id}-${Date.now()}.pdf`;
+        const pdfPath = path.join(pdfDir, pdfFilename);
+        fs.writeFileSync(pdfPath, pdfBuffer);
+        
+        const pdfUrl = `/uploads/salary-slips/${pdfFilename}`;
+        await SalaryModel.updatePdfUrl(parseInt(id as string), pdfUrl);
+        console.log(`[SalaryController] 💾 Saved and updated PDF URL: ${pdfUrl}`);
+      } catch (saveError: any) {
+        console.error(`[SalaryController] ⚠️ Failed to save PDF file:`, saveError.message);
+        // Continue to send the buffer even if saving fails
       }
-      const pdfFilename = `salary-slip-${salary.id}-${Date.now()}.pdf`;
-      const pdfPath = path.join(pdfDir, pdfFilename);
-      fs.writeFileSync(pdfPath, pdfBuffer);
-      
-      const pdfUrl = `/uploads/salary-slips/${pdfFilename}`;
-      await SalaryModel.updatePdfUrl(parseInt(id as string), pdfUrl);
     }
 
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="salary-slip-${id as string}.pdf"`);
     res.send(pdfBuffer);
+    console.log(`[SalaryController] 🚀 PDF sent successfully`);
   } catch (error: any) {
-    console.error('Generate PDF error:', error);
-    res.status(500).json({ success: false, message: 'Failed to generate PDF', error: error.message });
+    console.error('[SalaryController] ❌ Generate PDF error:', error);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Failed to generate PDF', 
+      error: error.message,
+      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+    });
   }
 };
+
 
 export const uploadBulkSalaries = async (req: Request, res: Response) => {
   try {
@@ -235,7 +275,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
 
     // Find header row and column indices
     let headerRow = 1;
-    let idCol = 0, nameCol = 0, fullSalaryCol = 0, localSalaryCol = 0, oxoSalaryCol = 0, workingDaysCol = 0, epfCol = 0;
+    let idCol = 0, nameCol = 0, fullSalaryCol = 0, localSalaryCol = 0, oxoSalaryCol = 0, workingDaysCol = 0, epfCol = 0, allowancesCol = 0, deductionsCol = 0;
     
     // Search for header row (first 10 rows to handle merged cells or spacing)
     for (let rowNum = 1; rowNum <= 10; rowNum++) {
@@ -286,6 +326,20 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
           epfCol = colNumber;
           foundHeaders++;
         }
+        // Allowances column
+        else if ((cellValue.includes('allowances') || cellValue.includes('allowance') || 
+                  cellValue.includes('bonus')) && allowancesCol === 0) {
+          allowancesCol = colNumber;
+          foundHeaders++;
+          console.log(`  ✓ Found Allowances column at index ${colNumber}, header value: "${cell.value?.toString()}"`);
+        }
+        // Salary Advance/Deductions column
+        else if ((cellValue.includes('salary advance') || cellValue.includes('deductions') || 
+                  cellValue.includes('salary deduction') || cellValue.includes('advance')) && deductionsCol === 0) {
+          deductionsCol = colNumber;
+          foundHeaders++;
+          console.log(`  ✓ Found Salary Advance/Deductions column at index ${colNumber}, header value: "${cell.value?.toString()}"`);
+        }
       });
       
       if (foundHeaders >= 3) { // At least 3 columns found
@@ -295,7 +349,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     }
 
     // Validate required columns (Local Salary and OXO International are required, Full Salary is optional)
-    console.log(`Column detection results: ID=${idCol}, Local=${localSalaryCol}, OXO=${oxoSalaryCol}, WorkingDays=${workingDaysCol}, EPF=${epfCol}`);
+    console.log(`Column detection results: ID=${idCol}, Local=${localSalaryCol}, OXO=${oxoSalaryCol}, WorkingDays=${workingDaysCol}, EPF=${epfCol}, Allowances=${allowancesCol}, Deductions=${deductionsCol}`);
     
     const missingColumns: string[] = [];
     if (idCol === 0) missingColumns.push('id');
@@ -415,9 +469,13 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         }
         
         const epfDeduction = epfCol > 0 ? parseNumericValue(row.getCell(epfCol)) : 0;
+        
+        // Parse allowances and salary advance/deductions
+        const allowances = allowancesCol > 0 ? parseNumericValue(row.getCell(allowancesCol)) : 0;
+        const salaryAdvanceDeductions = deductionsCol > 0 ? parseNumericValue(row.getCell(deductionsCol)) : 0;
 
         // Create salary from Excel data
-        console.log(`Creating salary for user ${userId}: Local=${localSalary}, OXO=${oxoSalary}, EPF=${epfDeduction}`);
+        console.log(`Creating salary for user ${userId}: Local=${localSalary}, OXO=${oxoSalary}, EPF=${epfDeduction}, Allowances=${allowances}, Deductions=${salaryAdvanceDeductions}`);
         await SalaryModel.createSalaryFromExcel(
           userId,
           monthYear,
@@ -428,7 +486,9 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
             workedDays,
             availableDates,
             leaves,
-            epfDeduction
+            epfDeduction,
+            allowances,
+            salaryAdvanceDeductions
           },
           generatedBy
         );

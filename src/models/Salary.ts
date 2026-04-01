@@ -249,6 +249,8 @@ export class SalaryModel {
       availableDates: number;
       leaves: number;
       epfDeduction: number;
+      allowances?: number;
+      salaryAdvanceDeductions?: number;
     },
     generatedBy: number
   ): Promise<MonthlySalary> {
@@ -262,8 +264,12 @@ export class SalaryModel {
     // Calculate basic salary (use Full Salary as basic)
     const basicSalary = fullSalary;
     
-    // Calculate earnings (Full Salary = Local + OXO International)
-    const totalEarnings = fullSalary;
+    // Get allowances and salary advance/deductions (default to 0 if not provided)
+    const allowances = excelData.allowances || 0;
+    const salaryAdvanceDeductions = excelData.salaryAdvanceDeductions || 0;
+    
+    // Calculate earnings (Full Salary + Allowances)
+    const totalEarnings = fullSalary + allowances;
     
     // Calculate EPF deduction (8% of Local Salary) - use provided value or calculate if not provided
     let epfDeduction = excelData.epfDeduction;
@@ -271,8 +277,8 @@ export class SalaryModel {
       epfDeduction = excelData.localSalary * 0.08; // 8% of Local Salary
     }
     
-    // Calculate deductions
-    const totalDeductions = epfDeduction;
+    // Calculate deductions (EPF + Salary Advance/Deductions)
+    const totalDeductions = epfDeduction + salaryAdvanceDeductions;
     
     const netSalary = totalEarnings - totalDeductions;
 
@@ -441,6 +447,56 @@ export class SalaryModel {
         'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
         [salaryId, epfId, epfDeduction, 'deduction']
       );
+    }
+    
+    // Insert Allowances (if provided and > 0)
+    if (excelData.allowances && excelData.allowances > 0) {
+      // Get or create Allowances component
+      let [allowancesComponent] = await pool.execute(
+        "SELECT id FROM salary_components WHERE name = 'Allowances'"
+      );
+      let allowancesId = (allowancesComponent as any[])[0]?.id;
+      
+      if (!allowancesId) {
+        const [insertResult] = await pool.execute(
+          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Allowances', 'earning', false, true)"
+        );
+        allowancesId = (insertResult as any).insertId;
+        console.log('Created Allowances component with ID:', allowancesId);
+      }
+      
+      if (allowancesId) {
+        await pool.execute(
+          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+          [salaryId, allowancesId, excelData.allowances, 'earning']
+        );
+        console.log(`Inserted Allowances: ${excelData.allowances} for salary ID: ${salaryId}`);
+      }
+    }
+    
+    // Insert Salary Advance/Deductions (if provided and > 0)
+    if (excelData.salaryAdvanceDeductions && excelData.salaryAdvanceDeductions > 0) {
+      // Get or create Salary Advance/Deductions component
+      let [deductionsComponent] = await pool.execute(
+        "SELECT id FROM salary_components WHERE name = 'Salary Advance/Deductions'"
+      );
+      let deductionsId = (deductionsComponent as any[])[0]?.id;
+      
+      if (!deductionsId) {
+        const [insertResult] = await pool.execute(
+          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Salary Advance/Deductions', 'deduction', false, true)"
+        );
+        deductionsId = (insertResult as any).insertId;
+        console.log('Created Salary Advance/Deductions component with ID:', deductionsId);
+      }
+      
+      if (deductionsId) {
+        await pool.execute(
+          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+          [salaryId, deductionsId, excelData.salaryAdvanceDeductions, 'deduction']
+        );
+        console.log(`Inserted Salary Advance/Deductions: ${excelData.salaryAdvanceDeductions} for salary ID: ${salaryId}`);
+      }
     }
 
     const createdSalary = await this.findById(salaryId);

@@ -6,8 +6,7 @@ import { UserRole } from '../types';
 import crypto from 'crypto';
 import pool from '../config/database';
 
-// Store password reset tokens (in production, use Redis or database)
-const passwordResetTokens = new Map<string, { userId: number; expiresAt: Date }>();
+import { passwordResetTokens } from '../utils/tokenStore';
 
 export const login = async (req: Request, res: Response) => {
   try {

@@ -10,7 +10,8 @@ if (!fs.existsSync(uploadsDir)) {
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const subDir = file.fieldname === 'document' ? 'documents' : 'others';
+    const docFields = ['document', 'supportive_document', 'relevant_document', 'log_sheet', 'invoice'];
+    const subDir = docFields.includes(file.fieldname) ? 'documents' : 'others';
     const dir = path.join(uploadsDir, subDir);
     if (!fs.existsSync(dir)) {
       fs.mkdirSync(dir, { recursive: true });
@@ -35,13 +36,14 @@ const fileFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCa
     'application/msword',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
     'application/vnd.ms-excel',
-    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/csv'
   ];
 
   if (allowedMimes.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images, PDFs, and documents are allowed.'));
+    cb(new Error('Invalid file type. Only images, PDFs, Excel, CSV, and documents are allowed.'));
   }
 };
 
@@ -55,3 +57,24 @@ export const upload = multer({
 
 export const uploadDocument = upload.single('document');
 export const uploadExcel = upload.single('excel');
+
+export const uploadMedicalDocuments = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).fields([
+  { name: 'supportive_document', maxCount: 1 },
+  { name: 'relevant_document', maxCount: 1 }
+]);
+
+export const uploadConsultantLogSheet = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).single('log_sheet');
+
+export const uploadVoucherInvoice = multer({
+  storage,
+  fileFilter,
+  limits: { fileSize: 10 * 1024 * 1024 }
+}).single('invoice');

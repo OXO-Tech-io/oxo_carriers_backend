@@ -1,8 +1,38 @@
 import { Request, Response } from 'express';
 import { LeaveModel } from '../models/Leave';
+import { LeaveCalendarModel } from '../models/LeaveCalendar';
 import { LeaveStatus, UserRole } from '../types';
 import pool from '../config/database';
 import path from 'path';
+
+/**
+ * Calculate working days between two dates (excluding weekends and holidays)
+ */
+async function calculateWorkingDays(startDate: Date, endDate: Date): Promise<number> {
+  let count = 0;
+  const current = new Date(startDate);
+  const end = new Date(endDate);
+  
+  // Get all holidays in the date range
+  const holidays = await LeaveCalendarModel.getHolidaysInRange(startDate, endDate);
+  const holidayDates = new Set(
+    holidays.map(h => h.date.toISOString().split('T')[0])
+  );
+
+  while (current <= end) {
+    const dayOfWeek = current.getDay(); // 0 = Sunday, 6 = Saturday
+    const dateStr = current.toISOString().split('T')[0];
+    
+    // Count only weekdays (Monday-Friday) that are not holidays
+    if (dayOfWeek !== 0 && dayOfWeek !== 6 && !holidayDates.has(dateStr)) {
+      count++;
+    }
+    
+    current.setDate(current.getDate() + 1);
+  }
+  
+  return count;
+}
 
 export const createLeaveRequest = async (req: Request, res: Response) => {
   try {
@@ -39,12 +69,14 @@ export const createLeaveRequest = async (req: Request, res: Response) => {
       });
     }
 
-    // Calculate total days
+    // Calculate total days (excluding weekends and holidays)
     let totalDays: number;
     if (isHalfDay) {
       totalDays = 0.5;
     } else {
-      totalDays = Math.ceil((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+      // Calculate working days excluding weekends and holidays
+      const workingDays = await calculateWorkingDays(start, end);
+      totalDays = workingDays;
     }
 
     if (totalDays <= 0) {
