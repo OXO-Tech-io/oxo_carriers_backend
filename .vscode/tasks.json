@@ -1,0 +1,17 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Install backend test deps",
+			"type": "shell",
+			"command": "pnpm",
+			"args": [
+				"add",
+				"-D",
+				"vitest",
+				"@vitest/coverage-v8"
+			],
+			"isBackground": false
+		}
+	]
+}

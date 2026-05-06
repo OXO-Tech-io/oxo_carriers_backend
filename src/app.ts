@@ -32,6 +32,7 @@ import express from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import { initializeDatabase } from './config/initDatabase';
+import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import leaveRoutes from './routes/leaveRoutes';
@@ -322,15 +323,8 @@ app.use((req, res) => {
   });
 });
 
-// Error handling middleware
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
-  res.status(500).json({
-    success: false,
-    message: 'Something went wrong!',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined
-  });
-});
+// Global error handler — must be the last middleware
+app.use(errorHandler);
 
 // Initialize database and start server
 const startServer = async () => {

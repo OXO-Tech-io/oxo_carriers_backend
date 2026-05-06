@@ -1,0 +1,67 @@
+version: '3.8'
+
+services:
+  # Production-like build
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - '5000:5000'
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+    volumes:
+      - ./uploads:/app/uploads
+    container_name: oxo-carriers-backend
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles:
+      - production
+
+  # Development with hot reload (nodemon + ts-node via dev script)
+  dev:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install -g pnpm && pnpm install && pnpm run dev"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    ports:
+      - '5000:5000'
+    env_file:
+      - .env
+    environment:
+      DB_HOST: mysql
+    container_name: oxo-carriers-backend-dev
+    depends_on:
+      mysql:
+        condition: service_healthy
+    profiles:
+      - dev
+
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
+      MYSQL_DATABASE: ${DB_NAME:-hris_payroll}
+    ports:
+      - '3306:3306'
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./database_init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    container_name: oxo-carriers-mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    profiles:
+      - production
+      - dev
+
+volumes:
+  mysql-data:
