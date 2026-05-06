@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as userController from '../controllers/userController';
-import { authenticate, requireHRManager, requireHR, requireHROrFinance } from '../middleware/auth';
+import { authenticate, requireHRManager, requireHR, requireHROrFinance, requireSuperAdmin } from '../middleware/auth';
 
 const router = Router();
 
@@ -12,6 +12,7 @@ router.get('/departments', requireHROrFinance, userController.getDepartments);
 router.get('/:id', userController.getUserById);
 router.post('/', requireHROrFinance, userController.createUser);
 router.put('/:id', userController.updateUser);
+router.patch('/:id/role', requireSuperAdmin, userController.updateUserRole);
 router.post('/:id/reset-password', requireHR, userController.resetUserPassword);
 router.delete('/:id', requireHRManager, userController.deleteUser);
 

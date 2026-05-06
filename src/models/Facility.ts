@@ -28,16 +28,17 @@ export class FacilityModel {
   }
 
   static async create(facilityData: Partial<Facility>): Promise<Facility> {
+    const params: any[] = [
+      facilityData.name,
+      facilityData.type,
+      facilityData.description || null,
+      facilityData.facilities || null,
+      facilityData.capacity || 1,
+      facilityData.is_active !== undefined ? facilityData.is_active : true
+    ];
     const [result] = await pool.execute(
       'INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES (?, ?, ?, ?, ?, ?)',
-      [
-        facilityData.name,
-        facilityData.type,
-        facilityData.description || null,
-        facilityData.facilities || null,
-        facilityData.capacity || 1,
-        facilityData.is_active !== undefined ? facilityData.is_active : true
-      ]
+      params
     );
 
     const insertResult = result as any;

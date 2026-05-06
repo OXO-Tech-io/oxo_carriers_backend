@@ -14,7 +14,7 @@ declare global {
 export const authenticate = (req: Request, res: Response, next: NextFunction) => {
   try {
     const authHeader = req.headers.authorization;
-    
+
     if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return res.status(401).json({ success: false, message: 'No token provided' });
     }
@@ -23,7 +23,6 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
     const secret = process.env.JWT_SECRET || 'your-secret-key';
 
     const decoded = jwt.verify(token, secret) as JwtPayload;
-    // console.log(`[Auth] ✅ Authenticated user: ${decoded.email} (${decoded.role})`);
     req.user = decoded;
     next();
   } catch (error) {
@@ -32,10 +31,19 @@ export const authenticate = (req: Request, res: Response, next: NextFunction) =>
   }
 };
 
+/**
+ * Generic role-based authorization.
+ * Super admins always pass regardless of the roles list.
+ */
 export const authorize = (...roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction) => {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
+    }
+
+    // Super admin bypasses all role restrictions
+    if (req.user.role === UserRole.SUPER_ADMIN) {
+      return next();
     }
 
     if (!roles.includes(req.user.role)) {
@@ -46,6 +54,9 @@ export const authorize = (...roles: UserRole[]) => {
   };
 };
 
+// ── Pre-built middleware shortcuts ────────────────────────────────────────
+export const requireSuperAdmin = authorize(UserRole.SUPER_ADMIN);
+
 export const requireHRManager = authorize(UserRole.HR_MANAGER);
 export const requireHRExecutive = authorize(UserRole.HR_EXECUTIVE);
 export const requireHR = authorize(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE);
@@ -55,3 +66,7 @@ export const requireHROrFinance = authorize(
   UserRole.FINANCE_MANAGER,
   UserRole.FINANCE_EXECUTIVE
 );
+
+/** Helper used inside controllers to check if the requester is super_admin */
+export const isSuperAdmin = (req: Request): boolean =>
+  req.user?.role === UserRole.SUPER_ADMIN;

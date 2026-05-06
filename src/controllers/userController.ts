@@ -5,8 +5,12 @@ import pool from '../config/database';
 import crypto from 'crypto';
 import { sendPasswordSetupEmail, sendEmailVerificationEmail } from '../config/email';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
+import { isSuperAdmin } from '../middleware/auth';
 
 import { passwordResetTokens } from '../utils/tokenStore';
+
+/** All valid role values accepted by the API */
+const VALID_ROLES: string[] = Object.values(UserRole);
 
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
@@ -51,9 +55,9 @@ export const getUserById = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    // Only HR can create users (employees, consultants, etc.). Finance can only create service providers via createServiceProvider.
+    // Only HR (and super_admin) can create users; Finance can only create service providers via createServiceProvider.
     const canCreateUser = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
-    if (!req.user?.role || !canCreateUser.includes(req.user.role)) {
+    if (!req.user?.role || (!isSuperAdmin(req) && !canCreateUser.includes(req.user.role))) {
       return res.status(403).json({
         success: false,
         message: 'Only HR can create employees. Finance can only create service providers via Create Service Provider.',
@@ -227,9 +231,13 @@ export const updateUser = async (req: Request, res: Response) => {
     if (position !== undefined) updates.position = position;
     if (manager_id !== undefined) updates.manager_id = manager_id ? parseInt(manager_id) : null;
 
-    // Only HR can update role and other sensitive fields
-    if (req.user?.role === UserRole.HR_MANAGER || req.user?.role === UserRole.HR_EXECUTIVE) {
-      if (req.body.role) updates.role = req.body.role;
+    // Only HR and super_admin can update role
+    const canUpdateRole =
+      isSuperAdmin(req) ||
+      req.user?.role === UserRole.HR_MANAGER ||
+      req.user?.role === UserRole.HR_EXECUTIVE;
+    if (canUpdateRole && req.body.role) {
+      updates.role = req.body.role;
     }
 
     const user = await UserModel.update(userId, updates);
@@ -246,16 +254,17 @@ export const updateUser = async (req: Request, res: Response) => {
 
 export const deleteUser = async (req: Request, res: Response) => {
   try {
-    // Only HR Manager can delete users
-    if ((req as any).user?.role !== UserRole.HR_MANAGER) {
-      return res.status(403).json({ success: false, message: 'Only HR Manager can delete users' });
+    // Only HR Manager or super_admin can delete users
+    const canDelete = isSuperAdmin(req) || req.user?.role === UserRole.HR_MANAGER;
+    if (!canDelete) {
+      return res.status(403).json({ success: false, message: 'Only HR Manager or Super Admin can delete users' });
     }
 
     const { id: idParam } = req.params;
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
-    if ((req as any).user.userId === userId) {
+    if (req.user?.userId === userId) {
       return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
     }
 
@@ -270,9 +279,13 @@ export const deleteUser = async (req: Request, res: Response) => {
 
 export const resetUserPassword = async (req: Request, res: Response) => {
   try {
-    // HR Manager and HR Executive can reset passwords
-    if (req.user?.role !== UserRole.HR_MANAGER && req.user?.role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR can reset passwords' });
+    // HR Manager, HR Executive, and super_admin can reset passwords
+    const canReset =
+      isSuperAdmin(req) ||
+      req.user?.role === UserRole.HR_MANAGER ||
+      req.user?.role === UserRole.HR_EXECUTIVE;
+    if (!canReset) {
+      return res.status(403).json({ success: false, message: 'Only HR or Super Admin can reset passwords' });
     }
 
     const { id: idParam } = req.params;
@@ -332,5 +345,63 @@ export const getDepartments = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Get departments error:', error);
     res.status(500).json({ success: false, message: 'Failed to fetch departments', error: error.message });
+  }
+};
+
+/**
+ * PATCH /users/:id/role
+ * Super Admin only — assign any role to any user (except self-demotion from super_admin).
+ */
+export const updateUserRole = async (req: Request, res: Response) => {
+  try {
+    if (!isSuperAdmin(req)) {
+      return res.status(403).json({ success: false, message: 'Only Super Admin can change user roles' });
+    }
+
+    const { id: idParam } = req.params;
+    const userId = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
+
+    if (isNaN(userId)) {
+      return res.status(400).json({ success: false, message: 'Invalid user ID' });
+    }
+
+    // Prevent super_admin from changing their own role (safety guard)
+    if (req.user?.userId === userId) {
+      return res.status(400).json({ success: false, message: 'Cannot change your own role' });
+    }
+
+    const { role } = req.body;
+    if (!role || !VALID_ROLES.includes(role)) {
+      return res.status(400).json({
+        success: false,
+        message: `Invalid role. Must be one of: ${VALID_ROLES.join(', ')}`,
+      });
+    }
+
+    const targetUser = await UserModel.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const previousRole = targetUser.role;
+
+    // Update role
+    const updated = await UserModel.update(userId, { role });
+    if (!updated) {
+      return res.status(500).json({ success: false, message: 'Failed to update role' });
+    }
+
+    console.log(
+      `[Permissions] 🔑 Super Admin (userId=${req.user?.userId}) changed user ${userId} role: ${previousRole} → ${role}`
+    );
+
+    res.json({
+      success: true,
+      message: `Role updated from '${previousRole}' to '${role}'`,
+      user: { id: userId, previous_role: previousRole, new_role: role },
+    });
+  } catch (error: any) {
+    console.error('Update user role error:', error);
+    res.status(500).json({ success: false, message: 'Failed to update role', error: error.message });
   }
 };

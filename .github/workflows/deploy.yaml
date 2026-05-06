@@ -1,0 +1,154 @@
+name: Deploy OXO Carriers Backend to Cloud Run
+
+on:
+  pull_request:
+    branches: [ develop ]
+    types: [closed]
+    paths-ignore:
+      - '.github/workflows/**'
+
+env:
+  PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
+  SERVICE_NAME: oxo-carriers-backend
+  REGION: us-central1
+  AR_HOSTNAME: us-central1-docker.pkg.dev
+  REPOSITORY: oxo-carriers-repo
+
+jobs:
+  build-and-test:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+          run_install: false
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ env.STORE_PATH }}
+            ~/.cache/Cypress
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install Dependencies
+        run: pnpm install --frozen-lockfile
+
+#      - name: Run Linter
+#        run: pnpm run lint --if-present
+
+      - name: Run Tests
+        run: pnpm test --if-present
+
+      - name: Build Application
+        run: pnpm run build
+
+  deploy-to-cloud-run:
+    if: github.event_name == 'push' || (github.event_name == 'pull_request' && github.event.pull_request.merged == true)
+    runs-on: ubuntu-latest
+    needs: [build-and-test]
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Google Cloud Auth
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+
+      - name: Setup Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT_ID }}
+          export_default_credentials: true
+
+      - name: Configure Docker for Artifact Registry
+        run: |
+          gcloud auth configure-docker $AR_HOSTNAME --quiet
+
+      - name: Get Application Version
+        id: application-version
+        run: |
+          # Extract version from package.json
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Extracted version: $VERSION"
+
+      - name: Build Docker Image
+        run: |
+          docker build \
+            --build-arg COMMIT_SHA=${{ github.sha }} \
+            --build-arg BUILD_DATE=$(date -u +'%Y-%m-%dT%H:%M:%SZ') \
+            -t $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
+            -t $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:latest \
+            .
+
+      - name: Push to Artifact Registry
+        run: |
+          docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }}
+          docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:latest
+
+      - name: Deploy to Cloud Run
+        id: deploy
+        run: |
+          # Deploy the service
+          gcloud run deploy $SERVICE_NAME \
+            --image=$AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
+            --region=$REGION \
+            --platform=managed \
+            --allow-unauthenticated \
+            --memory=1Gi \
+            --cpu=1 \
+            --port=5000 \
+            --set-env-vars="NODE_ENV=production" \
+            --set-env-vars="PORT=${{ secrets.PORT }}" \
+            --set-env-vars="DB_HOST=${{ secrets.DB_HOST }}" \
+            --set-env-vars="DB_USER=${{ secrets.DB_USER }}" \
+            --set-env-vars="DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
+            --set-env-vars="DB_NAME=${{ secrets.DB_NAME }}" \
+            --set-env-vars="DB_PORT=${{ secrets.DB_PORT }}" \
+            --set-env-vars="JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+            --set-env-vars="FRONTEND_URL=${{ secrets.FRONTEND_URL }}" \
+            --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.EMAILJS_SERVICE_ID }}" \
+            --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.EMAILJS_TEMPLATE_ID }}" \
+            --set-env-vars="EMAILJS_PUBLIC_KEY=${{ secrets.EMAILJS_PUBLIC_KEY }}" \
+            --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.EMAILJS_PRIVATE_KEY }}" \
+            --revision-suffix=${{ github.sha }} \
+            --network=default \
+            --subnet=default \
+            --vpc-egress=all-traffic \
+            --labels="commit=${{ github.sha }},branch=develop,app=oxo-carriers-backend" \
+            --quiet
+
+          # Get service URL
+          SERVICE_URL=$(gcloud run services describe $SERVICE_NAME \
+            --region=$REGION \
+            --format='value(status.url)')
+          echo "url=$SERVICE_URL" >> $GITHUB_OUTPUT
+          echo "service_name=$SERVICE_NAME" >> $GITHUB_OUTPUT
+
+      - name: Show Deployment Info
+        run: |
+          echo "Deployment Successful!"
+          echo "URL: ${{ steps.deploy.outputs.url }}"
+          echo "Image: $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }}"

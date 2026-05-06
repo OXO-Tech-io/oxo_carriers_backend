@@ -8,13 +8,15 @@
     "build": "tsc",
     "start": "node dist/app.js",
     "deploy:check": "node scripts/check-deployment.js",
-    "migrate": "npm run db:init",
+    "migrate": "pnpm db:init",
     "db:init": "ts-node src/scripts/init-db.ts",
     "create-test-user": "ts-node src/scripts/createTestUser.ts",
     "fix-leave-balances": "ts-node src/scripts/fixLeaveBalances.ts",
     "add-salary-columns": "ts-node src/scripts/addSalaryColumns.ts",
     "test:email": "ts-node src/scripts/testEmail.ts",
-    "check:email-config": "ts-node src/scripts/checkEmailConfig.ts"
+    "check:email-config": "ts-node src/scripts/checkEmailConfig.ts",
+    "migrate:superadmin": "ts-node src/scripts/addSuperAdminRole.ts",
+    "create:superadmin": "ts-node src/scripts/createSuperAdmin.ts"
   },
   "keywords": [],
   "author": "",
@@ -42,8 +44,8 @@
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/multer": "^2.0.0",
-    "@types/node": "^25.0.9",
-    "nodemon": "^3.1.11",
+    "@types/node": "^25.6.0",
+    "nodemon": "^3.1.14",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3"
   }

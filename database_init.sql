@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(100) NOT NULL,
   email_verified BOOLEAN DEFAULT false,
   email_verification_token VARCHAR(255),
-  role ENUM('hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'payment_approver', 'employee', 'consultant', 'service_provider') NOT NULL,
+  role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'payment_approver', 'employee', 'consultant', 'service_provider') NOT NULL,
   department VARCHAR(100),
   position VARCHAR(100),
   hourly_rate DECIMAL(10,2) NULL,
