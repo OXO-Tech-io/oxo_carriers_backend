@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS users (
   last_name VARCHAR(100) NOT NULL,
   email_verified BOOLEAN DEFAULT false,
   email_verification_token VARCHAR(255),
-  role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'payment_approver', 'employee', 'consultant', 'service_provider') NOT NULL,
+  role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'employee', 'consultant', 'service_provider') NOT NULL,
   department VARCHAR(100),
   position VARCHAR(100),
   hourly_rate DECIMAL(10,2) NULL,
@@ -32,6 +32,22 @@ CREATE TABLE IF NOT EXISTS users (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_manager FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- ----------------------------
+-- Table structure for user_permissions
+-- ----------------------------
+CREATE TABLE IF NOT EXISTS user_permissions (
+  id INT PRIMARY KEY AUTO_INCREMENT,
+  user_id INT NOT NULL,
+  permission_key VARCHAR(100) NOT NULL,
+  access_level ENUM('read', 'write') NOT NULL DEFAULT 'read',
+  assigned_by INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_user_permission (user_id, permission_key),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 -- ----------------------------
@@ -353,6 +369,10 @@ INSERT INTO facilities (name, type, description, facilities, capacity, is_active
 -- Dummy User (Password: Nimshan@12)
 INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
 VALUES ('EMP001', 'nimshan@gmail.com', '$2b$10$yIHVuFsaLgOFbkkRtmux3e1OrbGAxbWeHSt9RjWLOR040OortDng.', 'Nimshan', 'User', 'employee', 'IT', 'Software Developer', CURDATE(), true, false);
+
+-- Default Super Admin User (Password: Admin@123)
+INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
+VALUES ('SA001', 'superadmin@oxocareers.com', '$2b$10$bNe7lcHqX.bTX7/0RIV6Cumm7VsVMmdYn45gzHp7D2ggx1Q9QmFz2', 'Super', 'Admin', 'super_admin', 'Administration', 'System Administrator', CURDATE(), true, true);
 
 -- Initialize Leave Balances for Dummy User (ID 1)
 INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)

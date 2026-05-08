@@ -1,22 +1,21 @@
-export enum UserRole {
-  SUPER_ADMIN = 'super_admin',
-  HR_MANAGER = 'hr_manager',
-  HR_EXECUTIVE = 'hr_executive',
-  FINANCE_MANAGER = 'finance_manager',
-  FINANCE_EXECUTIVE = 'finance_executive',
-  PAYMENT_APPROVER = 'payment_approver',
-  EMPLOYEE = 'employee',
-  CONSULTANT = 'consultant',
-  SERVICE_PROVIDER = 'service_provider'
+ export enum UserRole {
+  SUPER_ADMIN = "super_admin",
+  HR_MANAGER = "hr_manager",
+  HR_EXECUTIVE = "hr_executive",
+  FINANCE_MANAGER = "finance_manager",
+  FINANCE_EXECUTIVE = "finance_executive",
+  EMPLOYEE = "employee",
+  CONSULTANT = "consultant",
+  SERVICE_PROVIDER = "service_provider",
 }
 
 export enum VoucherStatus {
-  PENDING_REVIEW = 'pending_review',
-  APPROVED = 'approved',
-  REJECTED = 'rejected',
-  INFORMATION_REQUEST = 'information_request',
-  BANK_UPLOAD = 'bank_upload',
-  PAID = 'paid'
+  PENDING_REVIEW = "pending_review",
+  APPROVED = "approved",
+  REJECTED = "rejected",
+  INFORMATION_REQUEST = "information_request",
+  BANK_UPLOAD = "bank_upload",
+  PAID = "paid",
 }
 
 export interface Vendor {
@@ -55,22 +54,22 @@ export interface PaymentVoucher {
 }
 
 export enum LeaveStatus {
-  PENDING = 'pending',
-  TEAM_LEADER_APPROVED = 'team_leader_approved',
-  HR_APPROVED = 'hr_approved',
-  REJECTED = 'rejected',
-  CANCELLED = 'cancelled'
+  PENDING = "pending",
+  TEAM_LEADER_APPROVED = "team_leader_approved",
+  HR_APPROVED = "hr_approved",
+  REJECTED = "rejected",
+  CANCELLED = "cancelled",
 }
 
 export enum SalaryStatus {
-  GENERATED = 'generated',
-  PAID = 'paid',
-  PENDING = 'pending'
+  GENERATED = "generated",
+  PAID = "paid",
+  PENDING = "pending",
 }
 
 export enum ComponentType {
-  EARNING = 'earning',
-  DEDUCTION = 'deduction'
+  EARNING = "earning",
+  DEDUCTION = "deduction",
 }
 
 export interface User {
@@ -78,6 +77,7 @@ export interface User {
   employee_id: string;
   email: string;
   password?: string;
+  keycloak_sub?: string | null;
   first_name: string;
   last_name: string;
   role: UserRole;
@@ -129,7 +129,7 @@ export interface LeaveRequest {
   end_date: Date;
   total_days: number;
   is_half_day?: boolean;
-  half_day_period?: 'morning' | 'evening';
+  half_day_period?: "morning" | "evening";
   reason?: string;
   status: LeaveStatus;
   team_leader_approval_date?: Date;
@@ -204,10 +204,10 @@ export interface SalarySlipDetail {
 }
 
 export enum FacilityType {
-  WORKSTATION = 'workstation',
-  BOARD_ROOM = 'board_room',
-  MEETING_ROOM = 'meeting_room',
-  ACCOMMODATION = 'accommodation'
+  WORKSTATION = "workstation",
+  BOARD_ROOM = "board_room",
+  MEETING_ROOM = "meeting_room",
+  ACCOMMODATION = "accommodation",
 }
 
 export interface Facility {
@@ -223,10 +223,10 @@ export interface Facility {
 }
 
 export enum BookingStatus {
-  PENDING = 'pending',
-  CONFIRMED = 'confirmed',
-  CANCELLED = 'cancelled',
-  COMPLETED = 'completed'
+  PENDING = "pending",
+  CONFIRMED = "confirmed",
+  CANCELLED = "cancelled",
+  COMPLETED = "completed",
 }
 
 export interface FacilityBooking {
@@ -242,14 +242,14 @@ export interface FacilityBooking {
 }
 
 export enum MedicalClaimType {
-  IN = 'IN',
-  OPD = 'OPD'
+  IN = "IN",
+  OPD = "OPD",
 }
 
 export enum MedicalClaimStatus {
-  PENDING = 'pending',
-  APPROVED = 'approved',
-  REJECTED = 'rejected'
+  PENDING = "pending",
+  APPROVED = "approved",
+  REJECTED = "rejected",
 }
 
 export interface MedicalInsuranceClaim {
@@ -267,13 +267,19 @@ export interface MedicalInsuranceClaim {
   resubmission_of?: number | null;
   created_at: Date;
   updated_at: Date;
-  user?: { id: number; first_name: string; last_name: string; email: string; employee_id: string };
+  user?: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    employee_id: string;
+  };
 }
 
 export enum ConsultantSubmissionStatus {
-  PENDING = 'pending',
-  APPROVED = 'approved',
-  REJECTED = 'rejected'
+  PENDING = "pending",
+  APPROVED = "approved",
+  REJECTED = "rejected",
 }
 
 export interface ConsultantWorkSubmission {
@@ -291,16 +297,24 @@ export interface ConsultantWorkSubmission {
   resubmission_of?: number | null;
   created_at: Date;
   updated_at: Date;
-  user?: { id: number; first_name: string; last_name: string; email: string; employee_id: string; hourly_rate?: number | null };
+  user?: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    employee_id: string;
+    hourly_rate?: number | null;
+  };
 }
 
 export interface JwtPayload {
   userId: number;
   email: string;
   role: UserRole;
+  sub?: string;
 }
 
-import { Request } from 'express';
+import { Request } from "express";
 
 export interface AuthRequest extends Request {
   user?: JwtPayload;

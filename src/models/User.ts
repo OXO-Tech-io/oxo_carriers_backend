@@ -14,11 +14,63 @@ export class UserModel {
 
   static async findById(id: number): Promise<User | null> {
     const [rows] = await pool.execute(
-      'SELECT id, employee_id, email, first_name, last_name, role, department, position, hire_date, manager_id, hourly_rate, bank_name, account_holder_name, account_number, bank_branch, company_name, contact_number, must_change_password, created_at, updated_at FROM users WHERE id = ?',
+      'SELECT id, employee_id, email, keycloak_sub, first_name, last_name, role, department, position, hire_date, manager_id, hourly_rate, bank_name, account_holder_name, account_number, bank_branch, company_name, contact_number, must_change_password, created_at, updated_at FROM users WHERE id = ?',
       [id]
     );
     const users = rows as User[];
     return users[0] || null;
+  }
+
+  static async findByKeycloakSub(sub: string): Promise<User | null> {
+    const [rows] = await pool.execute(
+      'SELECT * FROM users WHERE keycloak_sub = ?',
+      [sub]
+    );
+    const users = rows as User[];
+    return users[0] || null;
+  }
+
+  static async linkKeycloakSub(userId: number, sub: string): Promise<void> {
+    await pool.execute(
+      'UPDATE users SET keycloak_sub = ? WHERE id = ?',
+      [sub, userId]
+    );
+  }
+
+  static async findOrCreateFromKeycloak(claims: {
+    sub: string;
+    email: string;
+    first_name: string;
+    last_name: string;
+    role: UserRole;
+  }): Promise<User> {
+    const bySub = await this.findByKeycloakSub(claims.sub);
+    if (bySub) return bySub;
+
+    const byEmail = await this.findByEmail(claims.email);
+    if (byEmail) {
+      await this.linkKeycloakSub(byEmail.id, claims.sub);
+      return { ...byEmail, keycloak_sub: claims.sub };
+    }
+
+    const employeeId = await this.generateEmployeeId();
+    const [result] = await pool.execute(
+      `INSERT INTO users (employee_id, email, keycloak_sub, first_name, last_name, role, must_change_password, email_verified)
+       VALUES (?, ?, ?, ?, ?, ?, false, true)`,
+      [
+        employeeId,
+        claims.email,
+        claims.sub,
+        claims.first_name || claims.email.split('@')[0],
+        claims.last_name || '',
+        claims.role,
+      ]
+    );
+
+    const insertResult = result as { insertId: number };
+    const user = await this.findById(insertResult.insertId);
+    if (!user) throw new Error('Failed to create user from Keycloak claims');
+    return user;
   }
 
   static async findByEmployeeId(employeeId: string): Promise<User | null> {

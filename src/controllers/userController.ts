@@ -6,6 +6,7 @@ import crypto from 'crypto';
 import { sendPasswordSetupEmail, sendEmailVerificationEmail } from '../config/email';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
+import { keycloakAdminService } from '../services/keycloakAdmin.service';
 
 import { passwordResetTokens } from '../utils/tokenStore';
 
@@ -147,6 +148,32 @@ export const createUser = async (req: Request, res: Response) => {
       contact_number: null,
       email_verification_token: verificationToken,
     });
+
+    // Provision the user in Keycloak so they can sign in via the OXO login form.
+    // Keycloak owns the password from this point forward; the bcrypt hash in the
+    // `users` table is dead weight kept only for backwards compatibility.
+    try {
+      const kcSub = await keycloakAdminService.createUser({
+        email,
+        firstName: effectiveFirst,
+        lastName: effectiveLast,
+        password: tempPassword,
+        temporaryPassword: true,
+        role: userRole,
+      });
+      await UserModel.linkKeycloakSub(user.id, kcSub);
+    } catch (kcError) {
+      console.error('[UserController] ⚠️  Keycloak provisioning failed:', kcError);
+      // Surface to HR — they need to know the user can't log in yet. The DB row
+      // remains so they can retry by manually creating the KC user later.
+      return res.status(502).json({
+        success: false,
+        message:
+          'User saved but Keycloak provisioning failed. They will not be able to sign in until provisioned in Keycloak.',
+        error: (kcError as Error).message,
+        userId: user.id,
+      });
+    }
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;

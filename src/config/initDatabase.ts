@@ -1,7 +1,7 @@
-import mysql from 'mysql2/promise';
-import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
-import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
+import mysql from "mysql2/promise";
+import dotenv from "dotenv";
+import bcrypt from "bcryptjs";
+import { calculateProRatedAnnualLeave } from "../utils/leaveCalculation";
 
 dotenv.config();
 
@@ -10,13 +10,13 @@ export const initializeDatabase = async (): Promise<void> => {
   let dbConnection: mysql.Connection | null = null;
 
   try {
-    console.log('🔄 Initializing database...');
+    console.log("🔄 Initializing database...");
 
-    const dbName = process.env.DB_NAME || 'hris_payroll';
-    const dbHost = process.env.DB_HOST || 'localhost';
-    const dbUser = process.env.DB_USER || 'root';
-    const dbPassword = process.env.DB_PASSWORD || '';
-    const dbPort = parseInt(process.env.DB_PORT || '3306');
+    const dbName = process.env.DB_NAME || "hris_payroll";
+    const dbHost = process.env.DB_HOST || "localhost";
+    const dbUser = process.env.DB_USER || "root";
+    const dbPassword = process.env.DB_PASSWORD || "";
+    const dbPort = parseInt(process.env.DB_PORT || "3306");
 
     // Step 1: Connect to MySQL server (without specifying database)
     // This is optional - on some servers, we only have access to a specific database
@@ -29,15 +29,21 @@ export const initializeDatabase = async (): Promise<void> => {
         port: dbPort,
         multipleStatements: true,
       });
-      console.log('✅ Connected to MySQL server');
+      console.log("✅ Connected to MySQL server");
 
       // Step 2: Create database if it doesn't exist
       console.log(`📦 Creating database '${dbName}' if it doesn't exist...`);
-      await connection.query(`CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`);
+      await connection.query(
+        `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
+      );
       console.log(`✅ Database '${dbName}' is ready`);
     } catch (error: any) {
-      console.warn(`⚠️  Notice: Optional database creation skipped/failed: ${error.message}`);
-      console.log('   Continuing to step 3 to connect to pre-existing database...');
+      console.warn(
+        `⚠️  Notice: Optional database creation skipped/failed: ${error.message}`,
+      );
+      console.log(
+        "   Continuing to step 3 to connect to pre-existing database...",
+      );
     }
 
     // Step 3: Connect to the specific database
@@ -61,24 +67,27 @@ export const initializeDatabase = async (): Promise<void> => {
     // Step 6: Verify tables were created
     await verifyTables(dbConnection);
 
-    console.log('✅ Database initialization completed successfully!');
+    console.log("✅ Database initialization completed successfully!");
   } catch (error: any) {
-    console.error('❌ Database initialization failed:', error.message);
+    console.error("❌ Database initialization failed:", error.message);
     if (error.code) {
       console.error(`   Error code: ${error.code}`);
     }
     if (error.sqlMessage) {
       console.error(`   SQL Error: ${error.sqlMessage}`);
     }
-    
+
     // Check if it's a connection error
-    if (error.code === 'ECONNREFUSED' || error.code === 'ER_ACCESS_DENIED_ERROR') {
-      console.error('\n💡 Troubleshooting tips:');
-      console.error('   1. Make sure MySQL server is running');
-      console.error('   2. Check your database credentials in .env file');
-      console.error('   3. Verify MySQL user has CREATE DATABASE privileges');
+    if (
+      error.code === "ECONNREFUSED" ||
+      error.code === "ER_ACCESS_DENIED_ERROR"
+    ) {
+      console.error("\n💡 Troubleshooting tips:");
+      console.error("   1. Make sure MySQL server is running");
+      console.error("   2. Check your database credentials in .env file");
+      console.error("   3. Verify MySQL user has CREATE DATABASE privileges");
     }
-    
+
     throw error; // Re-throw to prevent server from starting with broken DB
   } finally {
     if (dbConnection) {
@@ -100,39 +109,46 @@ const verifyTables = async (connection: mysql.Connection): Promise<void> => {
     `);
 
     const expectedTables = [
-      'users',
-      'leave_types',
-      'employee_leave_balance',
-      'leave_requests',
-      'salary_components',
-      'employee_salary_structure',
-      'monthly_salaries',
-      'salary_slip_details',
-      'audit_logs',
-      'facilities',
-      'facility_bookings',
-      'medical_insurance_claims',
-      'consultant_work_submissions'
+      "users",
+      "user_permissions",
+      "leave_types",
+      "employee_leave_balance",
+      "leave_requests",
+      "salary_components",
+      "employee_salary_structure",
+      "monthly_salaries",
+      "salary_slip_details",
+      "audit_logs",
+      "facilities",
+      "facility_bookings",
+      "medical_insurance_claims",
+      "consultant_work_submissions",
+      "vendors",
+      "payment_vouchers",
     ];
 
     const existingTables = tables.map((t: any) => t.TABLE_NAME);
-    const missingTables = expectedTables.filter(t => !existingTables.includes(t));
+    const missingTables = expectedTables.filter(
+      (t) => !existingTables.includes(t),
+    );
 
     if (missingTables.length > 0) {
-      console.warn(`⚠️  Missing tables: ${missingTables.join(', ')}`);
+      console.warn(`⚠️  Missing tables: ${missingTables.join(", ")}`);
     } else {
       console.log(`✅ Verified: All ${expectedTables.length} tables exist`);
     }
   } catch (error: any) {
-    console.warn('⚠️  Could not verify tables:', error.message);
+    console.warn("⚠️  Could not verify tables:", error.message);
   }
 };
 
-const createTablesManually = async (connection: mysql.Connection): Promise<void> => {
-  console.log('📋 Creating tables...');
+const createTablesManually = async (
+  connection: mysql.Connection,
+): Promise<void> => {
+  console.log("📋 Creating tables...");
 
   // Disable foreign key checks temporarily
-  await connection.query('SET FOREIGN_KEY_CHECKS = 0');
+  await connection.query("SET FOREIGN_KEY_CHECKS = 0");
 
   // Create users table first (no dependencies)
   try {
@@ -146,7 +162,7 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         last_name VARCHAR(100) NOT NULL,
         email_verified BOOLEAN DEFAULT false,
         email_verification_token VARCHAR(255),
-        role ENUM('hr_manager', 'hr_executive', 'employee') NOT NULL,
+        role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'employee', 'consultant', 'service_provider') NOT NULL,
         department VARCHAR(100),
         position VARCHAR(100),
         hire_date DATE,
@@ -156,9 +172,31 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ users table');
+    console.log("  ✓ users table");
   } catch (error: any) {
-    console.error('  ✗ Error creating users table:', error.message);
+    console.error("  ✗ Error creating users table:", error.message);
+    throw error;
+  }
+
+  // Create user_permissions table (depends on users)
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        permission_key VARCHAR(100) NOT NULL,
+        access_level ENUM('read', 'write') NOT NULL DEFAULT 'read',
+        assigned_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_permission (user_id, permission_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("  ✓ user_permissions table");
+  } catch (error: any) {
+    console.error("  ✗ Error creating user_permissions table:", error.message);
     throw error;
   }
 
@@ -174,9 +212,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ leave_types table');
+    console.log("  ✓ leave_types table");
   } catch (error: any) {
-    console.error('  ✗ Error creating leave_types table:', error.message);
+    console.error("  ✗ Error creating leave_types table:", error.message);
     throw error;
   }
 
@@ -192,9 +230,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ salary_components table');
+    console.log("  ✓ salary_components table");
   } catch (error: any) {
-    console.error('  ✗ Error creating salary_components table:', error.message);
+    console.error("  ✗ Error creating salary_components table:", error.message);
     throw error;
   }
 
@@ -216,9 +254,12 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         UNIQUE KEY unique_user_leave_year (user_id, leave_type_id, year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ employee_leave_balance table');
+    console.log("  ✓ employee_leave_balance table");
   } catch (error: any) {
-    console.error('  ✗ Error creating employee_leave_balance table:', error.message);
+    console.error(
+      "  ✗ Error creating employee_leave_balance table:",
+      error.message,
+    );
     throw error;
   }
 
@@ -246,9 +287,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ leave_requests table');
+    console.log("  ✓ leave_requests table");
   } catch (error: any) {
-    console.error('  ✗ Error creating leave_requests table:', error.message);
+    console.error("  ✗ Error creating leave_requests table:", error.message);
     throw error;
   }
 
@@ -270,9 +311,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         INDEX idx_year (year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ leave_calendar table');
+    console.log("  ✓ leave_calendar table");
   } catch (error: any) {
-    console.error('  ✗ Error creating leave_calendar table:', error.message);
+    console.error("  ✗ Error creating leave_calendar table:", error.message);
     throw error;
   }
 
@@ -293,9 +334,12 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ employee_salary_structure table');
+    console.log("  ✓ employee_salary_structure table");
   } catch (error: any) {
-    console.error('  ✗ Error creating employee_salary_structure table:', error.message);
+    console.error(
+      "  ✗ Error creating employee_salary_structure table:",
+      error.message,
+    );
     throw error;
   }
 
@@ -322,9 +366,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         UNIQUE KEY unique_user_month (user_id, month_year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ monthly_salaries table');
+    console.log("  ✓ monthly_salaries table");
   } catch (error: any) {
-    console.error('  ✗ Error creating monthly_salaries table:', error.message);
+    console.error("  ✗ Error creating monthly_salaries table:", error.message);
     throw error;
   }
 
@@ -341,9 +385,12 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ salary_slip_details table');
+    console.log("  ✓ salary_slip_details table");
   } catch (error: any) {
-    console.error('  ✗ Error creating salary_slip_details table:', error.message);
+    console.error(
+      "  ✗ Error creating salary_slip_details table:",
+      error.message,
+    );
     throw error;
   }
 
@@ -364,9 +411,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ audit_logs table');
+    console.log("  ✓ audit_logs table");
   } catch (error: any) {
-    console.error('  ✗ Error creating audit_logs table:', error.message);
+    console.error("  ✗ Error creating audit_logs table:", error.message);
     throw error;
   }
 
@@ -385,9 +432,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ facilities table');
+    console.log("  ✓ facilities table");
   } catch (error: any) {
-    console.error('  ✗ Error creating facilities table:', error.message);
+    console.error("  ✗ Error creating facilities table:", error.message);
     throw error;
   }
 
@@ -408,9 +455,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ facility_bookings table');
+    console.log("  ✓ facility_bookings table");
   } catch (error: any) {
-    console.error('  ✗ Error creating facility_bookings table:', error.message);
+    console.error("  ✗ Error creating facility_bookings table:", error.message);
     throw error;
   }
 
@@ -440,23 +487,106 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ medical_insurance_claims table');
+    console.log("  ✓ medical_insurance_claims table");
   } catch (error: any) {
-    console.error('  ✗ Error creating medical_insurance_claims table:', error.message);
+    console.error(
+      "  ✗ Error creating medical_insurance_claims table:",
+      error.message,
+    );
     throw error;
+  }
+
+  // Migration: remove legacy payment_approver role and align users.role ENUM
+  try {
+    await connection.query(`
+      UPDATE users SET role = 'finance_executive' WHERE role = 'payment_approver'
+    `);
+    console.log("  ✓ migrated payment_approver users to finance_executive");
+  } catch (error: any) {
+    console.warn("  ⚠ users.role data migration:", error.message);
   }
 
   // Migration: Add consultant/service_provider roles and hourly_rate to users
   try {
     await connection.query(`
       ALTER TABLE users
-      MODIFY COLUMN role ENUM('hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'payment_approver', 'employee', 'consultant', 'service_provider') NOT NULL
+      MODIFY COLUMN role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'employee', 'consultant', 'service_provider') NOT NULL
     `);
-    console.log('  ✓ users.role ENUM updated (consultant, service_provider)');
+    console.log("  ✓ users.role ENUM updated");
   } catch (error: any) {
-    if (error.code !== 'ER_INVALID_USE_OF_NULL' && !error.message?.includes('Duplicate')) {
-      console.warn('  ⚠ users.role migration:', error.message);
+    if (
+      error.code !== "ER_INVALID_USE_OF_NULL" &&
+      !error.message?.includes("Duplicate")
+    ) {
+      console.warn("  ⚠ users.role migration:", error.message);
     }
+  }
+
+  // Migration: ensure user_permissions table exists
+  try {
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS user_permissions (
+        id INT PRIMARY KEY AUTO_INCREMENT,
+        user_id INT NOT NULL,
+        permission_key VARCHAR(100) NOT NULL,
+        access_level ENUM('read', 'write') NOT NULL DEFAULT 'read',
+        assigned_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_user_permission (user_id, permission_key),
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+    `);
+    console.log("  ✓ user_permissions table verified");
+  } catch (error: any) {
+    console.warn("  ⚠ user_permissions migration:", error.message);
+  }
+
+  // Migration: upgrade user_permissions from allowed boolean to access_level read/write
+  try {
+    const [accessLevelCol]: any = await connection.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'user_permissions'
+        AND COLUMN_NAME = 'access_level'
+    `);
+
+    if (!accessLevelCol?.length) {
+      await connection.query(`
+        ALTER TABLE user_permissions
+        ADD COLUMN access_level ENUM('read', 'write') NOT NULL DEFAULT 'read' AFTER permission_key
+      `);
+      console.log("  ✓ user_permissions.access_level column added");
+    }
+
+    const [allowedCol]: any = await connection.query(`
+      SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'user_permissions'
+        AND COLUMN_NAME = 'allowed'
+    `);
+
+    if (allowedCol?.length) {
+      await connection.query(`
+        UPDATE user_permissions
+        SET access_level = CASE WHEN allowed = 1 THEN 'write' ELSE 'read' END
+      `);
+      console.log(
+        "  ✓ user_permissions existing rows migrated to access_level",
+      );
+
+      try {
+        await connection.query(
+          `ALTER TABLE user_permissions DROP COLUMN allowed`,
+        );
+        console.log("  ✓ user_permissions.allowed column removed");
+      } catch (dropError: any) {
+        console.warn("  ⚠ user_permissions.allowed drop:", dropError.message);
+      }
+    }
+  } catch (error: any) {
+    console.warn("  ⚠ user_permissions access_level migration:", error.message);
   }
   try {
     const [cols]: any = await connection.query(`
@@ -467,27 +597,38 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
       await connection.query(`
         ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(10,2) NULL AFTER position
       `);
-      console.log('  ✓ users.hourly_rate column added');
+      console.log("  ✓ users.hourly_rate column added");
     }
   } catch (error: any) {
-    console.warn('  ⚠ users.hourly_rate migration:', error.message);
+    console.warn("  ⚠ users.hourly_rate migration:", error.message);
   }
 
   // Migration: Add bank details and service provider fields to users
   const userBankSpColumns = [
-    { name: 'bank_name', def: 'VARCHAR(150) NULL', after: 'hourly_rate' },
-    { name: 'account_holder_name', def: 'VARCHAR(150) NULL', after: 'bank_name' },
-    { name: 'account_number', def: 'VARCHAR(80) NULL', after: 'account_holder_name' },
-    { name: 'bank_branch', def: 'VARCHAR(150) NULL', after: 'account_number' },
-    { name: 'company_name', def: 'VARCHAR(200) NULL', after: 'bank_branch' },
-    { name: 'contact_number', def: 'VARCHAR(30) NULL', after: 'company_name' },
+    { name: "bank_name", def: "VARCHAR(150) NULL", after: "hourly_rate" },
+    {
+      name: "account_holder_name",
+      def: "VARCHAR(150) NULL",
+      after: "bank_name",
+    },
+    {
+      name: "account_number",
+      def: "VARCHAR(80) NULL",
+      after: "account_holder_name",
+    },
+    { name: "bank_branch", def: "VARCHAR(150) NULL", after: "account_number" },
+    { name: "company_name", def: "VARCHAR(200) NULL", after: "bank_branch" },
+    { name: "contact_number", def: "VARCHAR(30) NULL", after: "company_name" },
   ];
   for (const col of userBankSpColumns) {
     try {
-      const [cols]: any = await connection.query(`
+      const [cols]: any = await connection.query(
+        `
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = ?
-      `, [col.name]);
+      `,
+        [col.name],
+      );
       if (!cols?.length) {
         await connection.query(`
           ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.def} AFTER \`${col.after}\`
@@ -524,9 +665,12 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ consultant_work_submissions table');
+    console.log("  ✓ consultant_work_submissions table");
   } catch (error: any) {
-    console.error('  ✗ Error creating consultant_work_submissions table:', error.message);
+    console.error(
+      "  ✗ Error creating consultant_work_submissions table:",
+      error.message,
+    );
     throw error;
   }
 
@@ -547,9 +691,9 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         UNIQUE KEY vendors_email_unique (email)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log('  ✓ vendors table');
+    console.log("  ✓ vendors table");
   } catch (error: any) {
-    console.error('  ✗ Error creating vendors table:', error.message);
+    console.error("  ✗ Error creating vendors table:", error.message);
     throw error;
   }
 
@@ -589,10 +733,10 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
           INDEX idx_created_by (created_by)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
-      console.log('  ✓ payment_vouchers table (vendor_id)');
+      console.log("  ✓ payment_vouchers table (vendor_id)");
     }
   } catch (error: any) {
-    console.error('  ✗ Error creating payment_vouchers table:', error.message);
+    console.error("  ✗ Error creating payment_vouchers table:", error.message);
     throw error;
   }
 
@@ -603,34 +747,52 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
       WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers'
     `);
     const columnNames = (cols || []).map((c: any) => c.COLUMN_NAME);
-    if (columnNames.includes('service_provider_id') && !columnNames.includes('vendor_id')) {
+    if (
+      columnNames.includes("service_provider_id") &&
+      !columnNames.includes("vendor_id")
+    ) {
       const [fkRows]: any = await connection.query(`
         SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers' AND COLUMN_NAME = 'service_provider_id' AND REFERENCED_TABLE_NAME IS NOT NULL
       `);
       const fkName = fkRows?.[0]?.CONSTRAINT_NAME;
       if (fkName) {
-        await connection.query(`ALTER TABLE payment_vouchers DROP FOREIGN KEY \`${fkName}\``);
+        await connection.query(
+          `ALTER TABLE payment_vouchers DROP FOREIGN KEY \`${fkName}\``,
+        );
       }
       await connection.query(`
         INSERT INTO vendors (id, email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
         SELECT id, email, COALESCE(company_name, first_name), contact_number, bank_name, account_holder_name, account_number, bank_branch
         FROM users WHERE role = 'service_provider'
       `);
-      await connection.query(`ALTER TABLE payment_vouchers ADD COLUMN vendor_id INT NULL AFTER created_by`);
-      await connection.query(`UPDATE payment_vouchers SET vendor_id = service_provider_id`);
-      await connection.query(`ALTER TABLE payment_vouchers DROP COLUMN service_provider_id`);
-      await connection.query(`ALTER TABLE payment_vouchers MODIFY vendor_id INT NOT NULL`);
+      await connection.query(
+        `ALTER TABLE payment_vouchers ADD COLUMN vendor_id INT NULL AFTER created_by`,
+      );
+      await connection.query(
+        `UPDATE payment_vouchers SET vendor_id = service_provider_id`,
+      );
+      await connection.query(
+        `ALTER TABLE payment_vouchers DROP COLUMN service_provider_id`,
+      );
+      await connection.query(
+        `ALTER TABLE payment_vouchers MODIFY vendor_id INT NOT NULL`,
+      );
       await connection.query(`
         ALTER TABLE payment_vouchers ADD CONSTRAINT fk_pv_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE
       `);
-      if (!columnNames.includes('invoice_url')) {
-        await connection.query(`ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`);
+      if (!columnNames.includes("invoice_url")) {
+        await connection.query(
+          `ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`,
+        );
       }
-      console.log('  ✓ payment_vouchers migrated to vendor_id');
+      console.log("  ✓ payment_vouchers migrated to vendor_id");
     }
   } catch (error: any) {
-    console.warn('  ⚠ payment_vouchers vendor_id migration:', (error as Error).message);
+    console.warn(
+      "  ⚠ payment_vouchers vendor_id migration:",
+      (error as Error).message,
+    );
   }
 
   // Migration: Add invoice_url to payment_vouchers (if missing)
@@ -643,10 +805,10 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
       await connection.query(`
         ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description
       `);
-      console.log('  ✓ payment_vouchers.invoice_url column added');
+      console.log("  ✓ payment_vouchers.invoice_url column added");
     }
   } catch (error: any) {
-    console.warn('  ⚠ payment_vouchers.invoice_url migration:', error.message);
+    console.warn("  ⚠ payment_vouchers.invoice_url migration:", error.message);
   }
 
   // Add manager foreign key constraint after users table exists
@@ -666,19 +828,23 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
         ADD CONSTRAINT fk_manager 
         FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL
       `);
-      console.log('  ✓ manager foreign key constraint');
+      console.log("  ✓ manager foreign key constraint");
     } else {
-      console.log('  ✓ manager foreign key constraint (already exists)');
+      console.log("  ✓ manager foreign key constraint (already exists)");
     }
   } catch (error: any) {
     // Ignore if constraint already exists or other non-critical errors
-    if (error.code !== 'ER_DUP_KEY' && error.code !== 'ER_CANT_CREATE_TABLE' && !error.message.includes('Duplicate key')) {
-      console.warn('  ⚠ Warning adding manager FK:', error.message);
+    if (
+      error.code !== "ER_DUP_KEY" &&
+      error.code !== "ER_CANT_CREATE_TABLE" &&
+      !error.message.includes("Duplicate key")
+    ) {
+      console.warn("  ⚠ Warning adding manager FK:", error.message);
     }
   }
 
   // Re-enable foreign key checks
-  await connection.query('SET FOREIGN_KEY_CHECKS = 1');
+  await connection.query("SET FOREIGN_KEY_CHECKS = 1");
 
   // Add new columns to monthly_salaries if they don't exist (for existing databases)
   try {
@@ -689,40 +855,47 @@ const createTablesManually = async (connection: mysql.Connection): Promise<void>
       AND TABLE_NAME = 'monthly_salaries' 
       AND COLUMN_NAME IN ('local_salary', 'oxo_international_salary')
     `);
-    
+
     const existingColumns = columns.map((c: any) => c.COLUMN_NAME);
-    
-    if (!existingColumns.includes('local_salary')) {
+
+    if (!existingColumns.includes("local_salary")) {
       await connection.query(`
         ALTER TABLE monthly_salaries 
         ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0 AFTER basic_salary
       `);
-      console.log('  ✓ Added local_salary column to monthly_salaries');
+      console.log("  ✓ Added local_salary column to monthly_salaries");
     }
-    
-    if (!existingColumns.includes('oxo_international_salary')) {
+
+    if (!existingColumns.includes("oxo_international_salary")) {
       await connection.query(`
         ALTER TABLE monthly_salaries 
         ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0 AFTER local_salary
       `);
-      console.log('  ✓ Added oxo_international_salary column to monthly_salaries');
+      console.log(
+        "  ✓ Added oxo_international_salary column to monthly_salaries",
+      );
     }
   } catch (error: any) {
-    console.warn('  ⚠ Warning adding columns to monthly_salaries:', error.message);
+    console.warn(
+      "  ⚠ Warning adding columns to monthly_salaries:",
+      error.message,
+    );
   }
 
-  console.log('✅ All tables created successfully');
+  console.log("✅ All tables created successfully");
 };
 
-const insertDefaultData = async (connection: mysql.Connection): Promise<void> => {
+const insertDefaultData = async (
+  connection: mysql.Connection,
+): Promise<void> => {
   try {
-    console.log('📊 Inserting default data...');
+    console.log("📊 Inserting default data...");
 
     // Insert leave types
     const [leaveTypesResult]: any = await connection.query(`
       SELECT COUNT(*) as count FROM leave_types
     `);
-    
+
     if (leaveTypesResult[0].count === 0) {
       await connection.query(`
         INSERT INTO leave_types (name, description, max_days, is_active) VALUES
@@ -730,16 +903,16 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
         ('Casual', 'Casual Leave', 7, true),
         ('Maternity', 'Maternity Leave', 84, true)
       `);
-      console.log('  ✓ Leave types inserted');
+      console.log("  ✓ Leave types inserted");
     } else {
-      console.log('  ✓ Leave types already exist');
+      console.log("  ✓ Leave types already exist");
     }
 
     // Insert salary components
     const [componentsResult]: any = await connection.query(`
       SELECT COUNT(*) as count FROM salary_components
     `);
-    
+
     if (componentsResult[0].count === 0) {
       await connection.query(`
         INSERT INTO salary_components (name, type, is_default, is_active) VALUES
@@ -754,16 +927,16 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
         ('Tax Deduction', 'deduction', true, true),
         ('Late Attendance', 'deduction', false, true)
       `);
-      console.log('  ✓ Salary components inserted');
+      console.log("  ✓ Salary components inserted");
     } else {
-      console.log('  ✓ Salary components already exist');
+      console.log("  ✓ Salary components already exist");
     }
 
     // Insert default facilities
     const [facilitiesResult]: any = await connection.query(`
       SELECT COUNT(*) as count FROM facilities
     `);
-    
+
     if (facilitiesResult[0].count === 0) {
       await connection.query(`
         INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES
@@ -772,35 +945,72 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
         ('Meeting Room Small', 'meeting_room', 'Small meeting room for quick gatherings', 'Whiteboard, AC', 4, true),
         ('Guest Room 101', 'accommodation', 'Comfortable accommodation for visitors', 'Bed, TV, AC, Attached Bathroom', 2, true)
       `);
-      console.log('  ✓ Default facilities inserted');
+      console.log("  ✓ Default facilities inserted");
     } else {
-      console.log('  ✓ Facilities already exist');
+      console.log("  ✓ Facilities already exist");
+    }
+
+    // Insert default super admin user
+    const [existingSuperAdmin]: any = await connection.query(`
+      SELECT id FROM users WHERE role = 'super_admin' LIMIT 1
+    `);
+
+    if (existingSuperAdmin.length === 0) {
+      const superAdminHash =
+        "$2b$10$bNe7lcHqX.bTX7/0RIV6Cumm7VsVMmdYn45gzHp7D2ggx1Q9QmFz2"; // Admin@123
+      await connection.query(
+        `
+        INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
+        VALUES (?, ?, ?, ?, ?, 'super_admin', ?, ?, ?, true, true)
+      `,
+        [
+          "SA001",
+          "superadmin@oxocareers.com",
+          superAdminHash,
+          "Super",
+          "Admin",
+          "Administration",
+          "System Administrator",
+          new Date(),
+        ],
+      );
+      console.log(
+        "  ✓ Default super admin created: superadmin@oxocareers.com (password: Admin@123)",
+      );
+    } else {
+      console.log("  ✓ Super admin already exists");
     }
 
     // Insert dummy user
-    const [existingUser]: any = await connection.query(`
+    const [existingUser]: any = await connection.query(
+      `
       SELECT id FROM users WHERE email = ?
-    `, ['nimshan@gmail.com']);
-    
+    `,
+      ["nimshan@gmail.com"],
+    );
+
     if (existingUser.length === 0) {
-      const hashedPassword = await bcrypt.hash('Nimshan@12', 10);
-      const employeeId = 'EMP' + String(Date.now()).slice(-6);
+      const hashedPassword = await bcrypt.hash("Nimshan@12", 10);
+      const employeeId = "EMP" + String(Date.now()).slice(-6);
       const hireDate = new Date(); // Current date as hire date
-      
-      const [userResult]: any = await connection.query(`
+
+      const [userResult]: any = await connection.query(
+        `
         INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false)
-      `, [
-        employeeId,
-        'nimshan@gmail.com',
-        hashedPassword,
-        'Nimshan',
-        'User',
-        'employee',
-        'IT',
-        'Software Developer',
-        hireDate
-      ]);
+      `,
+        [
+          employeeId,
+          "nimshan@gmail.com",
+          hashedPassword,
+          "Nimshan",
+          "User",
+          "employee",
+          "IT",
+          "Software Developer",
+          hireDate,
+        ],
+      );
 
       const userId = userResult.insertId;
       console.log(`  ✓ Dummy user created: nimshan@gmail.com (ID: ${userId})`);
@@ -813,26 +1023,32 @@ const insertDefaultData = async (connection: mysql.Connection): Promise<void> =>
 
       for (const type of leaveTypes) {
         let totalDays = type.max_days;
-        
+
         // Apply pro-rated calculation for Annual leave in the first year
-        if (type.name.toLowerCase() === 'annual' || type.name.toLowerCase() === 'annual/paid leave') {
+        if (
+          type.name.toLowerCase() === "annual" ||
+          type.name.toLowerCase() === "annual/paid leave"
+        ) {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
 
-        await connection.query(`
+        await connection.query(
+          `
           INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
           VALUES (?, ?, ?, 0, ?, ?)
-        `, [userId, type.id, totalDays, totalDays, currentYear]);
+        `,
+          [userId, type.id, totalDays, totalDays, currentYear],
+        );
       }
 
-      console.log('  ✓ Leave balances initialized for dummy user');
+      console.log("  ✓ Leave balances initialized for dummy user");
     } else {
-      console.log('  ✓ Dummy user already exists');
+      console.log("  ✓ Dummy user already exists");
     }
 
-    console.log('✅ Default data ready');
+    console.log("✅ Default data ready");
   } catch (error: any) {
-    console.error('⚠️  Warning inserting default data:', error.message);
+    console.error("⚠️  Warning inserting default data:", error.message);
     // Don't throw - default data is not critical for startup
   }
 };

@@ -1,18 +1,12 @@
 import { Router } from 'express';
 import * as authController from '../controllers/authController';
-import { authenticate, requireHRManager } from '../middleware/auth';
+import { authenticate } from '../middleware/auth';
+import { asyncHandler } from '../utils/asyncHandler';
 
 const router = Router();
 
-// Public routes
-router.post('/login', authController.login);
-router.post('/forgot-password', authController.forgotPassword);
-router.post('/reset-password', authController.resetPassword);
-router.get('/verify-email', authController.verifyEmail);
-
-// Protected routes
-router.post('/register', authenticate, requireHRManager, authController.register);
-router.post('/change-password', authenticate, authController.changePassword);
-router.get('/me', authenticate, authController.getMe);
+// Identity is owned by Keycloak. The only endpoint we expose is /me, which
+// returns the DB profile linked to the verified Keycloak token.
+router.get('/me', authenticate, asyncHandler(authController.getMe));
 
 export default router;
