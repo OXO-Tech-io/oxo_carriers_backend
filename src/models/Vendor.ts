@@ -1,15 +1,17 @@
 import pool from '../config/database';
 import { Vendor } from '../types';
+import { VENDOR_QUERIES } from '../constants/dbQueries';
+import { VENDOR_ERRORS } from '../constants/errorMessages';
 
 export class VendorModel {
   static async findByEmail(email: string): Promise<Vendor | null> {
-    const result = await pool.query('SELECT * FROM vendors WHERE email = $1', [email]);
+    const result = await pool.query(VENDOR_QUERIES.FIND_BY_EMAIL, [email]);
     const list = result.rows as Vendor[];
     return list[0] || null;
   }
 
   static async findById(id: number): Promise<Vendor | null> {
-    const result = await pool.query('SELECT * FROM vendors WHERE id = $1', [id]);
+    const result = await pool.query(VENDOR_QUERIES.FIND_BY_ID, [id]);
     const list = result.rows as Vendor[];
     return list[0] || null;
   }
@@ -38,7 +40,7 @@ export class VendorModel {
     );
     const newId = (result.rows[0] as any).id;
     const vendor = await this.findById(newId);
-    if (!vendor) throw new Error('Failed to create vendor');
+    if (!vendor) throw new Error(VENDOR_ERRORS.FAILED_TO_CREATE);
     return vendor;
   }
 

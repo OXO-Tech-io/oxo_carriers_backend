@@ -4,12 +4,13 @@ import {
   PermissionAssignment,
   PermissionKey,
 } from "../constants/permissions";
+import { PERMISSION_QUERIES } from "../constants/dbQueries";
 
 export const getUserPermissionAssignments = async (
   userId: number,
 ): Promise<PermissionAssignment[]> => {
   const result = await pool.query(
-    `SELECT permission_key, access_level FROM user_permissions WHERE user_id = $1`,
+    PERMISSION_QUERIES.GET_USER_PERMISSIONS,
     [userId],
   );
 
@@ -34,15 +35,7 @@ export const hasPermission = async (
   requiredLevel: AccessLevel = "read",
 ): Promise<boolean> => {
   const result = await pool.query(
-    `SELECT 1
-     FROM user_permissions
-     WHERE user_id = $1
-       AND permission_key = $2
-       AND (
-         access_level = 'write'
-         OR ($3 = 'read' AND access_level = 'read')
-       )
-     LIMIT 1`,
+    PERMISSION_QUERIES.CHECK_PERMISSION,
     [userId, permissionKey, requiredLevel],
   );
 

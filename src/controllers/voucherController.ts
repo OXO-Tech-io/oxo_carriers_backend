@@ -8,6 +8,7 @@ import {
   PERMISSIONS,
   PermissionKey,
 } from "../constants/permissions";
+import { ERROR_MESSAGES, HTTP_STATUS, VOUCHER_ERRORS } from "../constants/errorMessages";
 
 const FINANCE_MANAGER = UserRole.FINANCE_MANAGER;
 const FINANCE_EXECUTIVE = UserRole.FINANCE_EXECUTIVE;
@@ -44,7 +45,7 @@ export class VoucherController {
       );
 
       if (!canView) {
-        return res.status(403).json({ message: "Forbidden" });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ message: ERROR_MESSAGES.FORBIDDEN });
       }
       const vendors = await VendorModel.getAll({});
       res.json(
@@ -55,7 +56,7 @@ export class VoucherController {
         })),
       );
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -70,8 +71,8 @@ export class VoucherController {
       );
 
       if (!canCreate) {
-        return res.status(403).json({
-          message: "Forbidden: insufficient permission to create vouchers",
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          message: VOUCHER_ERRORS.INSUFFICIENT_PERMISSION_CREATE,
         });
       }
       const { service_provider_id, vendor_id, amount, vat, description } =
@@ -87,13 +88,13 @@ export class VoucherController {
       const invoice_url = file ? `/uploads/documents/${file.filename}` : null;
       if (vid == null || isNaN(vid) || amount == null || amount === "") {
         return res
-          .status(400)
-          .json({ message: "Vendor and Amount are required" });
+          .status(HTTP_STATUS.BAD_REQUEST)
+          .json({ message: VOUCHER_ERRORS.VENDOR_AND_AMOUNT_REQUIRED });
       }
       const vatNum = vat != null && vat !== "" ? parseFloat(vat) : 0;
       const amountNum = parseFloat(amount);
       if (isNaN(amountNum) || amountNum < 0) {
-        return res.status(400).json({ message: "Invalid amount" });
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: VOUCHER_ERRORS.INVALID_AMOUNT });
       }
       const voucher = await PaymentVoucherModel.create({
         created_by: Number(created_by),
@@ -103,9 +104,9 @@ export class VoucherController {
         description: description || null,
         invoice_url,
       });
-      res.status(201).json(voucher);
+      res.status(HTTP_STATUS.CREATED).json(voucher);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -119,13 +120,13 @@ export class VoucherController {
       );
 
       if (!canView) {
-        return res.status(403).json({ message: "Forbidden" });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ message: ERROR_MESSAGES.FORBIDDEN });
       }
       const status = req.query.status as VoucherStatus | undefined;
       const vouchers = await PaymentVoucherModel.getAll({ status });
       res.json(vouchers);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -139,16 +140,16 @@ export class VoucherController {
       );
 
       if (!canView) {
-        return res.status(403).json({ message: "Forbidden" });
+        return res.status(HTTP_STATUS.FORBIDDEN).json({ message: ERROR_MESSAGES.FORBIDDEN });
       }
       const idParam = req.params.id;
       const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
       const voucher = await PaymentVoucherModel.findById(id);
       if (!voucher)
-        return res.status(404).json({ message: "Voucher not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: VOUCHER_ERRORS.NOT_FOUND });
       res.json(voucher);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -164,8 +165,8 @@ export class VoucherController {
       );
 
       if (!canReview) {
-        return res.status(403).json({
-          message: "Forbidden: insufficient permission to review vouchers",
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          message: VOUCHER_ERRORS.INSUFFICIENT_PERMISSION_REVIEW,
         });
       }
       const idParam = req.params.id;
@@ -173,18 +174,18 @@ export class VoucherController {
       const { action, comment } = req.body; // action: 'approve' | 'reject' | 'information_request'
       const voucher = await PaymentVoucherModel.findById(id);
       if (!voucher)
-        return res.status(404).json({ message: "Voucher not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: VOUCHER_ERRORS.NOT_FOUND });
       if (voucher.status !== VoucherStatus.PENDING_REVIEW) {
         return res
-          .status(400)
-          .json({ message: "Voucher is not pending review" });
+          .status(HTTP_STATUS.BAD_REQUEST)
+          .json({ message: VOUCHER_ERRORS.NOT_PENDING_REVIEW });
       }
       let newStatus: VoucherStatus;
       if (action === "approve") newStatus = VoucherStatus.APPROVED;
       else if (action === "reject") newStatus = VoucherStatus.REJECTED;
       else if (action === "information_request")
         newStatus = VoucherStatus.INFORMATION_REQUEST;
-      else return res.status(400).json({ message: "Invalid action" });
+      else return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: VOUCHER_ERRORS.INVALID_ACTION });
 
       await PaymentVoucherModel.updateStatus(id, newStatus, {
         reviewed_by: authReq.user!.userId,
@@ -194,7 +195,7 @@ export class VoucherController {
       const updated = await PaymentVoucherModel.findById(id);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -210,18 +211,18 @@ export class VoucherController {
       );
 
       if (!canResubmit) {
-        return res.status(403).json({
-          message: "Forbidden: insufficient permission to resubmit vouchers",
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          message: VOUCHER_ERRORS.INSUFFICIENT_PERMISSION_RESUBMIT,
         });
       }
       const idParam = req.params.id;
       const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
       const voucher = await PaymentVoucherModel.findById(id);
       if (!voucher)
-        return res.status(404).json({ message: "Voucher not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: VOUCHER_ERRORS.NOT_FOUND });
       if (voucher.status !== VoucherStatus.INFORMATION_REQUEST) {
-        return res.status(400).json({
-          message: "Only Information Request vouchers can be resubmitted",
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          message: VOUCHER_ERRORS.ONLY_INFORMATION_REQUEST_CAN_RESUBMIT,
         });
       }
       await PaymentVoucherModel.updateStatus(id, VoucherStatus.PENDING_REVIEW, {
@@ -231,7 +232,7 @@ export class VoucherController {
       const updated = await PaymentVoucherModel.findById(id);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -247,18 +248,18 @@ export class VoucherController {
       );
 
       if (!canBankUpload) {
-        return res.status(403).json({
-          message: "Forbidden: insufficient permission to mark bank upload",
+        return res.status(HTTP_STATUS.FORBIDDEN).json({
+          message: VOUCHER_ERRORS.INSUFFICIENT_PERMISSION_BANK_UPLOAD,
         });
       }
       const idParam = req.params.id;
       const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
       const voucher = await PaymentVoucherModel.findById(id);
       if (!voucher)
-        return res.status(404).json({ message: "Voucher not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: VOUCHER_ERRORS.NOT_FOUND });
       if (voucher.status !== VoucherStatus.APPROVED) {
-        return res.status(400).json({
-          message: "Only Approved vouchers can be marked as Bank Upload",
+        return res.status(HTTP_STATUS.BAD_REQUEST).json({
+          message: VOUCHER_ERRORS.ONLY_APPROVED_CAN_BANK_UPLOAD,
         });
       }
       await PaymentVoucherModel.updateStatus(id, VoucherStatus.BANK_UPLOAD, {
@@ -268,7 +269,7 @@ export class VoucherController {
       const updated = await PaymentVoucherModel.findById(id);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 
@@ -285,18 +286,18 @@ export class VoucherController {
 
       if (!canMarkPaid) {
         return res
-          .status(403)
-          .json({ message: "Forbidden: insufficient permission to mark paid" });
+          .status(HTTP_STATUS.FORBIDDEN)
+          .json({ message: VOUCHER_ERRORS.INSUFFICIENT_PERMISSION_MARK_PAID });
       }
       const idParam = req.params.id;
       const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
       const voucher = await PaymentVoucherModel.findById(id);
       if (!voucher)
-        return res.status(404).json({ message: "Voucher not found" });
+        return res.status(HTTP_STATUS.NOT_FOUND).json({ message: VOUCHER_ERRORS.NOT_FOUND });
       if (voucher.status !== VoucherStatus.BANK_UPLOAD) {
         return res
-          .status(400)
-          .json({ message: "Only Bank Upload vouchers can be marked as Paid" });
+          .status(HTTP_STATUS.BAD_REQUEST)
+          .json({ message: VOUCHER_ERRORS.ONLY_BANK_UPLOAD_CAN_MARK_PAID });
       }
       await PaymentVoucherModel.updateStatus(id, VoucherStatus.PAID, {
         paid_by: authReq.user!.userId,
@@ -305,7 +306,7 @@ export class VoucherController {
       const updated = await PaymentVoucherModel.findById(id);
       res.json(updated);
     } catch (error: any) {
-      res.status(500).json({ message: error.message });
+      res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({ message: error.message });
     }
   }
 }

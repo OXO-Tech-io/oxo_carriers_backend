@@ -9,6 +9,8 @@ import {
 } from "../constants/permissions";
 import { getUserPermissionAssignments } from "../middleware/permissions";
 import { UserModel } from "../models/User";
+import { ERROR_MESSAGES, HTTP_STATUS, PERMISSION_ERRORS, USER_ERRORS } from "../constants/errorMessages";
+import { USER_QUERIES, PERMISSION_QUERIES } from "../constants/dbQueries";
 
 const parseUserId = (idParam: string | string[]): number => {
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
@@ -22,14 +24,14 @@ export const getPermissionCatalog = async (_req: Request, res: Response) => {
 export const getManageableUsers = async (_req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      `SELECT id, email, first_name, last_name, role FROM users ORDER BY first_name, last_name`,
+      USER_QUERIES.SELECT_ALL_USERS_FOR_PERMISSIONS,
     );
 
     return res.json({ success: true, users: result.rows });
   } catch (error: any) {
-    return res.status(500).json({
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: "Failed to fetch users",
+      message: USER_ERRORS.FAILED_TO_FETCH,
       error: error.message,
     });
   }
@@ -39,7 +41,7 @@ export const getMyPermissions = async (req: Request, res: Response) => {
   try {
     const userId = req.user?.userId;
     if (!userId) {
-      return res.status(401).json({ success: false, message: "Unauthorized" });
+      return res.status(HTTP_STATUS.UNAUTHORIZED).json({ success: false, message: ERROR_MESSAGES.UNAUTHORIZED });
     }
 
     const assignments = await getUserPermissionAssignments(userId);
@@ -59,9 +61,9 @@ export const getMyPermissions = async (req: Request, res: Response) => {
       permissions: assignments.map((item) => item.key),
     });
   } catch (error: any) {
-    return res.status(500).json({
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: "Failed to fetch permissions",
+      message: PERMISSION_ERRORS.FAILED_TO_FETCH,
       error: error.message,
     });
   }
@@ -72,15 +74,15 @@ export const getUserPermissions = async (req: Request, res: Response) => {
     const userId = parseUserId(req.params.id);
     if (Number.isNaN(userId)) {
       return res
-        .status(400)
-        .json({ success: false, message: "Invalid user ID" });
+        .status(HTTP_STATUS.BAD_REQUEST)
+        .json({ success: false, message: USER_ERRORS.INVALID_USER_ID });
     }
 
     const targetUser = await UserModel.findById(userId);
     if (!targetUser) {
       return res
-        .status(404)
-        .json({ success: false, message: "User not found" });
+        .status(HTTP_STATUS.NOT_FOUND)
+        .json({ success: false, message: USER_ERRORS.NOT_FOUND });
     }
 
     const assignments = await getUserPermissionAssignments(userId);
@@ -100,9 +102,9 @@ export const getUserPermissions = async (req: Request, res: Response) => {
       permissions: assignments.map((item) => item.key),
     });
   } catch (error: any) {
-    return res.status(500).json({
+    return res.status(HTTP_STATUS.INTERNAL_SERVER_ERROR).json({
       success: false,
-      message: "Failed to fetch user permissions",
+      message: PERMISSION_ERRORS.FAILED_TO_FETCH_USER_PERMISSIONS,
       error: error.message,
     });
   }
@@ -111,7 +113,7 @@ export const getUserPermissions = async (req: Request, res: Response) => {
 export const getAllUserPermissions = async (_req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      `SELECT user_id, permission_key, access_level FROM user_permissions ORDER BY user_id`,
+      PERMISSION_QUERIES.GET_ALL_USER_PERMISSIONS,
     );
 
     const assignments: Record<number, PermissionAssignment[]> = {};
