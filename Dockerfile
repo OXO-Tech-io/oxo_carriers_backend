@@ -8,12 +8,15 @@ COPY . .
 RUN pnpm run build
 
 FROM node:20-alpine
+RUN apk add --no-cache postgresql-client
 RUN npm install -g pnpm
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/dist ./dist
-RUN mkdir -p /app/uploads && \
+COPY --from=builder /app/src/db ./src/db
+COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
+RUN mkdir -p /app/uploads /app/logs && \
     addgroup -g 1001 -S nodejs && \
     adduser -S express -u 1001 && \
     chown -R express:nodejs /app

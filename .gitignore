@@ -272,3 +272,12 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 # SendGrid env
 sendgrid.env
+
+# Drizzle ORM migrations
+drizzle/
+
+# Project specific
+uploads/*
+!uploads/.gitkeep
+logs/*
+!logs/.gitkeep

@@ -1,19 +1,21 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError } from 'zod';
 import { AppError } from '../utils/AppError';
+import { env } from '../config/env';
+import { logger as baseLogger } from '../lib/logger';
 
 export const errorHandler = (
   err: Error,
-  _req: Request,
+  req: Request,
   res: Response,
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  _next: NextFunction
+  _next: NextFunction,
 ): void => {
   if (err instanceof ZodError) {
     res.status(400).json({
       success: false,
       message: 'Validation failed',
-      errors: err.issues.map(issue => ({
+      errors: err.issues.map((issue) => ({
         path: issue.path.join('.'),
         message: issue.message,
       })),
@@ -29,10 +31,13 @@ export const errorHandler = (
     return;
   }
 
-  console.error('[ErrorHandler] Unhandled error:', err);
+  // Prefer the per-request logger (carries req.id) when available.
+  const log = (req as Request & { log?: typeof baseLogger }).log ?? baseLogger;
+  log.error({ err }, 'Unhandled error');
+
   res.status(500).json({
     success: false,
     message: 'Internal server error',
-    error: process.env.NODE_ENV === 'development' ? err.message : undefined,
+    error: env.IS_DEVELOPMENT ? err.message : undefined,
   });
 };

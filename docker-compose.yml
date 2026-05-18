@@ -1,8 +1,30 @@
 version: '3.8'
 
 services:
-  # Production-like build
-  app:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-oxo_carriers}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    container_name: oxo-carriers-postgres
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - oxo-network
+
+  # Backend - Production Build
+  backend:
     build:
       context: .
       dockerfile: Dockerfile
@@ -11,18 +33,23 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: mysql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      NODE_ENV: production
     volumes:
       - ./uploads:/app/uploads
+      - ./logs:/app/logs
     container_name: oxo-carriers-backend
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
+    networks:
+      - oxo-network
     profiles:
       - production
 
-  # Development with hot reload (nodemon + ts-node via dev script)
-  dev:
+  # Backend - Development with Hot Reload
+  backend-dev:
     image: node:20-alpine
     working_dir: /app
     command: sh -c "npm install -g pnpm && pnpm install && pnpm run dev"
@@ -34,34 +61,43 @@ services:
     env_file:
       - .env
     environment:
-      DB_HOST: mysql
+      DB_HOST: postgres
+      DB_PORT: 5432
+      NODE_ENV: development
     container_name: oxo-carriers-backend-dev
     depends_on:
-      mysql:
+      postgres:
         condition: service_healthy
+    networks:
+      - oxo-network
     profiles:
       - dev
 
-  mysql:
-    image: mysql:8.0
+  # PgAdmin - Database Management UI (Optional)
+  pgadmin:
+    image: dpage/pgadmin4:latest
     restart: unless-stopped
     environment:
-      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD:-root}
-      MYSQL_DATABASE: ${DB_NAME:-hris_payroll}
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL:-admin@oxocarriers.com}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD:-admin}
+      PGADMIN_LISTEN_PORT: 80
     ports:
-      - '3306:3306'
+      - '5050:80'
     volumes:
-      - mysql-data:/var/lib/mysql
-      - ./database_init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
-    container_name: oxo-carriers-mysql
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 5s
-      retries: 10
+      - pgadmin-data:/var/lib/pgadmin
+    container_name: oxo-carriers-pgadmin
+    depends_on:
+      - postgres
+    networks:
+      - oxo-network
     profiles:
-      - production
       - dev
+      - production
+
+networks:
+  oxo-network:
+    driver: bridge
 
 volumes:
-  mysql-data:
+  postgres-data:
+  pgadmin-data:

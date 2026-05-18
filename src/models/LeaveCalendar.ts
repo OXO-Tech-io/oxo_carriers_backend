@@ -13,9 +13,9 @@ export class LeaveCalendarModel {
     year?: number;
     created_by?: number;
   }): Promise<LeaveCalendar> {
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO leave_calendar (date, name, description, is_recurring, year, created_by)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [
         calendar.date,
         calendar.name,
@@ -26,8 +26,8 @@ export class LeaveCalendarModel {
       ]
     );
 
-    const insertResult = result as any;
-    const created = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const created = await this.findById(newId);
     if (!created) {
       throw new Error('Failed to create leave calendar entry');
     }
@@ -38,12 +38,12 @@ export class LeaveCalendarModel {
    * Find calendar entry by ID
    */
   static async findById(id: number): Promise<LeaveCalendar | null> {
-    const [rows] = await pool.execute(
-      `SELECT * FROM leave_calendar WHERE id = ?`,
+    const result = await pool.query(
+      `SELECT * FROM leave_calendar WHERE id = $1`,
       [id]
     );
 
-    const calendar = (rows as any[])[0];
+    const calendar = (result.rows as any[])[0];
     if (!calendar) return null;
 
     return {
@@ -63,14 +63,14 @@ export class LeaveCalendarModel {
    * Get all calendar entries for a specific year
    */
   static async getByYear(year: number): Promise<LeaveCalendar[]> {
-    const [rows] = await pool.execute(
-      `SELECT * FROM leave_calendar 
-       WHERE year = ? OR (is_recurring = true AND (year IS NULL OR year = ?))
+    const result = await pool.query(
+      `SELECT * FROM leave_calendar
+       WHERE year = $1 OR (is_recurring = true AND (year IS NULL OR year = $2))
        ORDER BY date ASC`,
       [year, year]
     );
 
-    return (rows as any[]).map(row => ({
+    return (result.rows as any[]).map(row => ({
       id: row.id,
       date: new Date(row.date),
       name: row.name,
@@ -87,14 +87,14 @@ export class LeaveCalendarModel {
    * Get all calendar entries within a date range
    */
   static async getByDateRange(startDate: Date, endDate: Date): Promise<LeaveCalendar[]> {
-    const [rows] = await pool.execute(
-      `SELECT * FROM leave_calendar 
-       WHERE date BETWEEN ? AND ?
+    const result = await pool.query(
+      `SELECT * FROM leave_calendar
+       WHERE date BETWEEN $1 AND $2
        ORDER BY date ASC`,
       [startDate, endDate]
     );
 
-    return (rows as any[]).map(row => ({
+    return (result.rows as any[]).map(row => ({
       id: row.id,
       date: new Date(row.date),
       name: row.name,
@@ -111,11 +111,11 @@ export class LeaveCalendarModel {
    * Get all calendar entries
    */
   static async getAll(): Promise<LeaveCalendar[]> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT * FROM leave_calendar ORDER BY date ASC`
     );
 
-    return (rows as any[]).map(row => ({
+    return (result.rows as any[]).map(row => ({
       id: row.id,
       date: new Date(row.date),
       name: row.name,
@@ -134,45 +134,46 @@ export class LeaveCalendarModel {
   static async isHoliday(date: Date): Promise<boolean> {
     const dateStr = date.toISOString().split('T')[0];
     const year = date.getFullYear();
-    
-    const [rows] = await pool.execute(
-      `SELECT COUNT(*) as count FROM leave_calendar 
-       WHERE DATE(date) = ? 
-       AND (year = ? OR (is_recurring = true AND (year IS NULL OR year = ?)))`,
+
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM leave_calendar
+       WHERE date::date = $1
+       AND (year = $2 OR (is_recurring = true AND (year IS NULL OR year = $3)))`,
       [dateStr, year, year]
     );
 
-    const result = (rows as any[])[0];
-    return result.count > 0;
+    const row = (result.rows as any[])[0];
+    return Number(row.count) > 0;
   }
 
   /**
-   * Get count of holidays between two dates (excluding weekends)
+   * Get count of holidays between two dates (excluding weekends).
+   * Note: EXTRACT(DOW) returns 0 (Sun) .. 6 (Sat) in Postgres.
    */
   static async getHolidayCount(startDate: Date, endDate: Date): Promise<number> {
-    const [rows] = await pool.execute(
-      `SELECT COUNT(*) as count FROM leave_calendar 
-       WHERE date BETWEEN ? AND ?
-       AND DAYOFWEEK(date) NOT IN (1, 7)`,
+    const result = await pool.query(
+      `SELECT COUNT(*) as count FROM leave_calendar
+       WHERE date BETWEEN $1 AND $2
+       AND EXTRACT(DOW FROM date) NOT IN (0, 6)`,
       [startDate, endDate]
     );
 
-    const result = (rows as any[])[0];
-    return result.count || 0;
+    const row = (result.rows as any[])[0];
+    return Number(row.count) || 0;
   }
 
   /**
    * Get all holidays between two dates
    */
   static async getHolidaysInRange(startDate: Date, endDate: Date): Promise<LeaveCalendar[]> {
-    const [rows] = await pool.execute(
-      `SELECT * FROM leave_calendar 
-       WHERE date BETWEEN ? AND ?
+    const result = await pool.query(
+      `SELECT * FROM leave_calendar
+       WHERE date BETWEEN $1 AND $2
        ORDER BY date ASC`,
       [startDate, endDate]
     );
 
-    return (rows as any[]).map(row => ({
+    return (result.rows as any[]).map(row => ({
       id: row.id,
       date: new Date(row.date),
       name: row.name,
@@ -199,24 +200,24 @@ export class LeaveCalendarModel {
     const values: any[] = [];
 
     if (updates.date !== undefined) {
-      fields.push('date = ?');
       values.push(updates.date);
+      fields.push(`date = $${values.length}`);
     }
     if (updates.name !== undefined) {
-      fields.push('name = ?');
       values.push(updates.name);
+      fields.push(`name = $${values.length}`);
     }
     if (updates.description !== undefined) {
-      fields.push('description = ?');
       values.push(updates.description);
+      fields.push(`description = $${values.length}`);
     }
     if (updates.is_recurring !== undefined) {
-      fields.push('is_recurring = ?');
       values.push(updates.is_recurring);
+      fields.push(`is_recurring = $${values.length}`);
     }
     if (updates.year !== undefined) {
-      fields.push('year = ?');
       values.push(updates.year);
+      fields.push(`year = $${values.length}`);
     }
 
     if (fields.length === 0) {
@@ -226,8 +227,8 @@ export class LeaveCalendarModel {
     }
 
     values.push(id);
-    await pool.execute(
-      `UPDATE leave_calendar SET ${fields.join(', ')} WHERE id = ?`,
+    await pool.query(
+      `UPDATE leave_calendar SET ${fields.join(', ')} WHERE id = $${values.length}`,
       values
     );
 
@@ -242,12 +243,11 @@ export class LeaveCalendarModel {
    * Delete calendar entry
    */
   static async delete(id: number): Promise<boolean> {
-    const [result] = await pool.execute(
-      `DELETE FROM leave_calendar WHERE id = ?`,
+    const result = await pool.query(
+      `DELETE FROM leave_calendar WHERE id = $1`,
       [id]
     );
 
-    const deleteResult = result as any;
-    return deleteResult.affectedRows > 0;
+    return (result.rowCount ?? 0) > 0;
   }
 }

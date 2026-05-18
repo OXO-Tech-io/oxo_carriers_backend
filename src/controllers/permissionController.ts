@@ -21,11 +21,11 @@ export const getPermissionCatalog = async (_req: Request, res: Response) => {
 
 export const getManageableUsers = async (_req: Request, res: Response) => {
   try {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT id, email, first_name, last_name, role FROM users ORDER BY first_name, last_name`,
     );
 
-    return res.json({ success: true, users: rows });
+    return res.json({ success: true, users: result.rows });
   } catch (error: any) {
     return res.status(500).json({
       success: false,
@@ -110,7 +110,7 @@ export const getUserPermissions = async (req: Request, res: Response) => {
 
 export const getAllUserPermissions = async (_req: Request, res: Response) => {
   try {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT user_id, permission_key, access_level FROM user_permissions ORDER BY user_id`,
     );
 
@@ -119,7 +119,7 @@ export const getAllUserPermissions = async (_req: Request, res: Response) => {
       number,
       Record<PermissionKey, AccessLevel>
     > = {};
-    for (const row of rows as Array<{
+    for (const row of result.rows as Array<{
       user_id: number;
       permission_key: PermissionKey;
       access_level: AccessLevel;
@@ -153,7 +153,7 @@ export const getAllUserPermissions = async (_req: Request, res: Response) => {
 };
 
 export const replaceUserPermissions = async (req: Request, res: Response) => {
-  const connection = await pool.getConnection();
+  const client = await pool.connect();
   try {
     const actorId = req.user?.userId;
     const userId = parseUserId(req.params.id);
@@ -229,26 +229,28 @@ export const replaceUserPermissions = async (req: Request, res: Response) => {
       });
     }
 
-    await connection.beginTransaction();
-    await connection.execute("DELETE FROM user_permissions WHERE user_id = ?", [
+    await client.query("BEGIN");
+    await client.query("DELETE FROM user_permissions WHERE user_id = $1", [
       userId,
     ]);
 
     if (assignments.length > 0) {
-      const placeholders = assignments.map(() => "(?, ?, ?, ?)").join(", ");
-      const values = assignments.flatMap((permission) => [
-        userId,
-        permission.key,
-        permission.accessLevel,
-        actorId,
-      ]);
-      await connection.execute(
-        `INSERT INTO user_permissions (user_id, permission_key, access_level, assigned_by) VALUES ${placeholders}`,
+      const values: any[] = [];
+      const placeholders: string[] = [];
+      assignments.forEach((permission) => {
+        const base = values.length;
+        values.push(userId, permission.key, permission.accessLevel, actorId);
+        placeholders.push(
+          `($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`,
+        );
+      });
+      await client.query(
+        `INSERT INTO user_permissions (user_id, permission_key, access_level, assigned_by) VALUES ${placeholders.join(", ")}`,
         values,
       );
     }
 
-    await connection.commit();
+    await client.query("COMMIT");
 
     return res.json({
       success: true,
@@ -257,13 +259,13 @@ export const replaceUserPermissions = async (req: Request, res: Response) => {
       assignments,
     });
   } catch (error: any) {
-    await connection.rollback();
+    await client.query("ROLLBACK");
     return res.status(500).json({
       success: false,
       message: "Failed to update permissions",
       error: error.message,
     });
   } finally {
-    connection.release();
+    client.release();
   }
 };

@@ -11,9 +11,9 @@ export class ConsultantWorkSubmissionModel {
     log_sheet_url: string;
     resubmission_of?: number | null;
   }): Promise<CWS> {
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO consultant_work_submissions (user_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
         data.user_id,
         data.project,
@@ -24,21 +24,21 @@ export class ConsultantWorkSubmissionModel {
         data.resubmission_of ?? null
       ]
     );
-    const insertResult = result as any;
-    const created = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const created = await this.findById(newId);
     if (!created) throw new Error('Failed to create consultant work submission');
     return created;
   }
 
   static async findById(id: number): Promise<CWS | null> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
        FROM consultant_work_submissions c
        LEFT JOIN users u ON c.user_id = u.id
-       WHERE c.id = ?`,
+       WHERE c.id = $1`,
       [id]
     );
-    const rowsArray = rows as any[];
+    const rowsArray = result.rows as any[];
     if (rowsArray.length === 0) return null;
     return this.mapRow(rowsArray[0]);
   }
@@ -48,16 +48,16 @@ export class ConsultantWorkSubmissionModel {
       SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
       FROM consultant_work_submissions c
       LEFT JOIN users u ON c.user_id = u.id
-      WHERE c.user_id = ?
+      WHERE c.user_id = $1
     `;
     const params: any[] = [userId];
     if (filters?.status) {
-      query += ' AND c.status = ?';
       params.push(filters.status);
+      query += ` AND c.status = $${params.length}`;
     }
     query += ' ORDER BY c.created_at DESC';
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map(this.mapRow);
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map(this.mapRow);
   }
 
   static async getAll(filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
@@ -69,12 +69,12 @@ export class ConsultantWorkSubmissionModel {
     `;
     const params: any[] = [];
     if (filters?.status) {
-      query += ' AND c.status = ?';
       params.push(filters.status);
+      query += ` AND c.status = $${params.length}`;
     }
     query += ' ORDER BY c.created_at DESC';
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map(this.mapRow);
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map(this.mapRow);
   }
 
   static async updateStatus(
@@ -83,8 +83,8 @@ export class ConsultantWorkSubmissionModel {
     reviewedBy: number,
     adminComment?: string | null
   ): Promise<CWS | null> {
-    await pool.execute(
-      `UPDATE consultant_work_submissions SET status = ?, admin_comment = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+    await pool.query(
+      `UPDATE consultant_work_submissions SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
       [status, adminComment ?? null, reviewedBy, id]
     );
     return this.findById(id);

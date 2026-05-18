@@ -13,9 +13,9 @@ export class LeaveModel {
     reason?: string;
     attachment_url?: string;
   }): Promise<LeaveRequest> {
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO leave_requests (user_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
       [
         request.user_id,
         request.leave_type_id,
@@ -29,8 +29,8 @@ export class LeaveModel {
       ]
     );
 
-    const insertResult = result as any;
-    const createdRequest = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const createdRequest = await this.findById(newId);
     if (!createdRequest) {
       throw new Error('Failed to create leave request');
     }
@@ -38,20 +38,20 @@ export class LeaveModel {
   }
 
   static async findById(id: number): Promise<LeaveRequest | null> {
-    const [rows] = await pool.execute(
-      `SELECT lr.*, 
-              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description, 
+    const result = await pool.query(
+      `SELECT lr.*,
+              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
               lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
               u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
        FROM leave_requests lr
        LEFT JOIN leave_types lt ON lr.leave_type_id = lt.id
        LEFT JOIN users u ON lr.user_id = u.id
-       WHERE lr.id = ?`,
+       WHERE lr.id = $1`,
       [id]
     );
-    const rowsArray = rows as any[];
+    const rowsArray = result.rows as any[];
     if (rowsArray.length === 0) return null;
-    
+
     const row = rowsArray[0];
     return {
       id: row.id,
@@ -91,31 +91,31 @@ export class LeaveModel {
     year?: number;
   }): Promise<LeaveRequest[]> {
     let query = `
-      SELECT lr.*, 
-             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description, 
+      SELECT lr.*,
+             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
       FROM leave_requests lr
       LEFT JOIN leave_types lt ON lr.leave_type_id = lt.id
       LEFT JOIN users u ON lr.user_id = u.id
-      WHERE lr.user_id = ?
+      WHERE lr.user_id = $1
     `;
     const params: any[] = [userId];
 
     if (filters?.status) {
-      query += ' AND lr.status = ?';
       params.push(filters.status);
+      query += ` AND lr.status = $${params.length}`;
     }
 
     if (filters?.year) {
-      query += ' AND YEAR(lr.start_date) = ?';
       params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM lr.start_date) = $${params.length}`;
     }
 
     query += ' ORDER BY lr.created_at DESC';
 
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map((row: any) => ({
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map((row: any) => ({
       id: row.id,
       user_id: row.user_id,
       leave_type_id: row.leave_type_id,
@@ -157,8 +157,8 @@ export class LeaveModel {
     year?: number;
   }): Promise<LeaveRequest[]> {
     let query = `
-      SELECT lr.*, 
-             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description, 
+      SELECT lr.*,
+             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id, u.department
       FROM leave_requests lr
@@ -169,29 +169,29 @@ export class LeaveModel {
     const params: any[] = [];
 
     if (filters?.status) {
-      query += ' AND lr.status = ?';
       params.push(filters.status);
+      query += ` AND lr.status = $${params.length}`;
     }
 
     if (filters?.department) {
-      query += ' AND u.department = ?';
       params.push(filters.department);
+      query += ` AND u.department = $${params.length}`;
     }
 
     if (filters?.userId) {
-      query += ' AND lr.user_id = ?';
       params.push(filters.userId);
+      query += ` AND lr.user_id = $${params.length}`;
     }
 
     if (filters?.year) {
-      query += ' AND YEAR(lr.start_date) = ?';
       params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM lr.start_date) = $${params.length}`;
     }
 
     query += ' ORDER BY lr.created_at DESC';
 
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map((row: any) => ({
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map((row: any) => ({
       id: row.id,
       user_id: row.user_id,
       leave_type_id: row.leave_type_id,
@@ -232,8 +232,8 @@ export class LeaveModel {
     approvedBy: 'team_leader' | 'hr',
     rejectionReason?: string
   ): Promise<LeaveRequest | null> {
-    const updateFields: string[] = ['status = ?'];
     const params: any[] = [status];
+    const updateFields: string[] = [`status = $${params.length}`];
 
     if (approvedBy === 'team_leader' && status === LeaveStatus.TEAM_LEADER_APPROVED) {
       updateFields.push('team_leader_approval_date = NOW()');
@@ -244,14 +244,14 @@ export class LeaveModel {
     }
 
     if (rejectionReason) {
-      updateFields.push('rejection_reason = ?');
       params.push(rejectionReason);
+      updateFields.push(`rejection_reason = $${params.length}`);
     }
 
     params.push(id);
 
-    await pool.execute(
-      `UPDATE leave_requests SET ${updateFields.join(', ')} WHERE id = ?`,
+    await pool.query(
+      `UPDATE leave_requests SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
       params
     );
 
@@ -268,35 +268,35 @@ export class LeaveModel {
 
   static async deductLeaveBalance(userId: number, leaveTypeId: number, days: number): Promise<void> {
     const currentYear = new Date().getFullYear();
-    await pool.execute(
-      `UPDATE employee_leave_balance 
-       SET used_days = used_days + ?, 
-           remaining_days = total_days - (used_days + ?)
-       WHERE user_id = ? AND leave_type_id = ? AND year = ?`,
+    await pool.query(
+      `UPDATE employee_leave_balance
+       SET used_days = used_days + $1,
+           remaining_days = total_days - (used_days + $2)
+       WHERE user_id = $3 AND leave_type_id = $4 AND year = $5`,
       [days, days, userId, leaveTypeId, currentYear]
     );
   }
 
   static async getLeaveBalance(userId: number, year?: number): Promise<LeaveBalance[]> {
     const currentYear = year || new Date().getFullYear();
-    const [rows] = await pool.execute(
-      `SELECT elb.*, 
+    const result = await pool.query(
+      `SELECT elb.*,
               lt.id as lt_id, lt.name, lt.description, lt.max_days, lt.is_active,
               (elb.total_days - elb.used_days) as calculated_remaining_days
        FROM employee_leave_balance elb
        JOIN leave_types lt ON elb.leave_type_id = lt.id
-       WHERE elb.user_id = ? AND elb.year = ?
+       WHERE elb.user_id = $1 AND elb.year = $2
        ORDER BY lt.name`,
       [userId, currentYear]
     );
-    
+
     // Transform the flat structure to nested structure
-    const balances = (rows as any[]).map((row: any) => {
+    const balances = (result.rows as any[]).map((row: any) => {
       // Use calculated remaining_days (always accurate)
       const remainingDays = row.calculated_remaining_days !== null && row.calculated_remaining_days !== undefined
         ? row.calculated_remaining_days
         : (row.total_days - row.used_days);
-      
+
       return {
         id: row.id,
         user_id: row.user_id,
@@ -317,12 +317,12 @@ export class LeaveModel {
         updated_at: row.updated_at ? new Date(row.updated_at) : new Date()
       };
     });
-    
+
     return balances as LeaveBalance[];
   }
 
   static async getLeaveTypes(): Promise<LeaveType[]> {
-    const [rows] = await pool.execute('SELECT * FROM leave_types WHERE is_active = true ORDER BY name');
-    return rows as LeaveType[];
+    const result = await pool.query('SELECT * FROM leave_types WHERE is_active = true ORDER BY name');
+    return result.rows as LeaveType[];
   }
 }

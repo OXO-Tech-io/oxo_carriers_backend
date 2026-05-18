@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from '../models/MedicalInsurance';
 import { MedicalClaimType, MedicalClaimStatus, UserRole } from '../types';
+import { logger } from '../lib/logger';
+
+const log = (req: Request) => req.log ?? logger;
 
 export const apply = async (req: Request, res: Response) => {
   try {
@@ -58,7 +61,7 @@ export const apply = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Medical insurance claim submitted', claim });
   } catch (error: any) {
-    console.error('Medical insurance apply error:', error);
+    log(req).error({ err: error }, 'Medical insurance apply failed');
     res.status(500).json({ success: false, message: 'Failed to submit claim', error: error.message });
   }
 };
@@ -73,7 +76,7 @@ export const getMyClaims = async (req: Request, res: Response) => {
     const claims = await MedicalInsuranceModel.findByUserId(userId, { status });
     res.json({ success: true, claims });
   } catch (error: any) {
-    console.error('Get my medical claims error:', error);
+    log(req).error({ err: error }, 'Get my medical claims failed');
     res.status(500).json({ success: false, message: 'Failed to fetch claims', error: error.message });
   }
 };
@@ -85,7 +88,7 @@ export const getAll = async (req: Request, res: Response) => {
     const claims = await MedicalInsuranceModel.getAll({ status, type });
     res.json({ success: true, claims });
   } catch (error: any) {
-    console.error('Get all medical claims error:', error);
+    log(req).error({ err: error }, 'Get all medical claims failed');
     res.status(500).json({ success: false, message: 'Failed to fetch claims', error: error.message });
   }
 };
@@ -116,7 +119,7 @@ export const getById = async (req: Request, res: Response) => {
 
     res.json({ success: true, claim });
   } catch (error: any) {
-    console.error('Get medical claim error:', error);
+    log(req).error({ err: error }, 'Get medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to fetch claim', error: error.message });
   }
 };
@@ -143,7 +146,7 @@ export const approve = async (req: Request, res: Response) => {
     const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.APPROVED, userId!, null);
     res.json({ success: true, message: 'Claim approved', claim: updated });
   } catch (error: any) {
-    console.error('Approve medical claim error:', error);
+    log(req).error({ err: error }, 'Approve medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to approve claim', error: error.message });
   }
 };
@@ -175,7 +178,7 @@ export const reject = async (req: Request, res: Response) => {
     const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.REJECTED, userId!, admin_comment.trim());
     res.json({ success: true, message: 'Claim rejected', claim: updated });
   } catch (error: any) {
-    console.error('Reject medical claim error:', error);
+    log(req).error({ err: error }, 'Reject medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to reject claim', error: error.message });
   }
 };
@@ -247,7 +250,7 @@ export const resubmit = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Claim resubmitted', claim });
   } catch (error: any) {
-    console.error('Resubmit medical claim error:', error);
+    log(req).error({ err: error }, 'Resubmit medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to resubmit claim', error: error.message });
   }
 };

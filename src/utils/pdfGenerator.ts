@@ -2,6 +2,9 @@
 import PDFDocument from 'pdfkit';
 import fs from 'fs';
 import path from 'path';
+import { logger as baseLogger } from '../lib/logger';
+
+const log = baseLogger.child({ module: 'pdf-generator' });
 
 interface SalaryData {
   salary: {
@@ -133,15 +136,15 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
       doc.on('end', () => {
         try {
           const pdfBuffer = Buffer.concat(buffers);
-          console.log(`[PDFGenerator] ✅ PDF generated successfully (${pdfBuffer.length} bytes)`);
+          log.info({ bytes: pdfBuffer.length }, 'PDF generated');
           resolve(pdfBuffer);
         } catch (error: any) {
-          console.error(`[PDFGenerator] ❌ Error creating buffer:`, error);
+          log.error({ err: error }, 'Error creating PDF buffer');
           reject(error);
         }
       });
       doc.on('error', (error) => {
-        console.error(`[PDFGenerator] ❌ PDF document error:`, error);
+        log.error({ err: error }, 'PDF document error');
         reject(error);
       });
 
@@ -170,18 +173,21 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
       const netForeignPay = isNaN(oxoInternationalSalary) ? 0 : oxoInternationalSalary;
       const monthlyTotalNetPay = netLocalPay + netForeignPay;
       
-      console.log(`[PDFGenerator] Calculated values:`, {
-        localSalary,
-        allowances,
-        localEarnings,
-        epfDeduction,
-        salaryAdvanceDeductions,
-        totalDeductions,
-        netLocalPay,
-        oxoInternationalSalary,
-        netForeignPay,
-        monthlyTotalNetPay
-      });
+      log.debug(
+        {
+          localSalary,
+          allowances,
+          localEarnings,
+          epfDeduction,
+          salaryAdvanceDeductions,
+          totalDeductions,
+          netLocalPay,
+          oxoInternationalSalary,
+          netForeignPay,
+          monthlyTotalNetPay,
+        },
+        'PDF calculated values',
+      );
 
       // Set up constants for layout
       const pageWidth = doc.page.width;
@@ -216,7 +222,7 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
             logoLoaded = true;
             break;
           } catch (error) {
-            console.log('Could not load logo from:', logoPath);
+            log.warn({ logoPath }, 'Could not load logo');
           }
         }
       }
@@ -512,7 +518,7 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
             sealLoaded = true;
             break;
           } catch (error) {
-            console.log('Could not load seal from:', sealPath);
+            log.warn({ sealPath }, 'Could not load seal');
           }
         }
       }
@@ -544,8 +550,7 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
 
       doc.end();
     } catch (error: any) {
-      console.error(`[PDFGenerator] ❌ Error in PDF generation:`, error);
-      console.error(`[PDFGenerator] Error stack:`, error?.stack);
+      log.error({ err: error }, 'Error in PDF generation');
       reject(error);
     }
   });

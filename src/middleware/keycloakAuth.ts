@@ -1,25 +1,22 @@
 import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { env } from "../config/env";
 
 const issuerUrl = (() => {
-  const base = (process.env.KC_URL || "http://localhost:5400").replace(
-    /\/$/,
-    "",
-  );
-  const realm = process.env.KC_REALM || "hris";
-  return `${base}/realms/${realm}`;
+  const base = env.KC_URL.replace(/\/$/, "");
+  return `${base}/realms/${env.KC_REALM}`;
 })();
 
 const jwksUri = `${issuerUrl}/protocol/openid-connect/certs`;
 
 const parseAudience = (): string[] | undefined => {
-  const fromEnv = (process.env.KC_AUDIENCE || "")
+  const fromEnv = (env.KC_AUDIENCE ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
   const fallbackClients = [
-    process.env.KC_BACKEND_CLIENT_ID,
-    process.env.KC_FRONTEND_CLIENT_ID,
+    env.KC_BACKEND_CLIENT_ID,
+    env.KC_FRONTEND_CLIENT_ID,
   ].filter(Boolean) as string[];
 
   const audiences = Array.from(new Set([...fromEnv, ...fallbackClients]));

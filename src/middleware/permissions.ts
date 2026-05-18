@@ -8,13 +8,13 @@ import {
 export const getUserPermissionAssignments = async (
   userId: number,
 ): Promise<PermissionAssignment[]> => {
-  const [rows] = await pool.execute(
-    `SELECT permission_key, access_level FROM user_permissions WHERE user_id = ?`,
+  const result = await pool.query(
+    `SELECT permission_key, access_level FROM user_permissions WHERE user_id = $1`,
     [userId],
   );
 
   return (
-    rows as Array<{ permission_key: PermissionKey; access_level: AccessLevel }>
+    result.rows as Array<{ permission_key: PermissionKey; access_level: AccessLevel }>
   ).map((row) => ({
     key: row.permission_key,
     accessLevel: row.access_level,
@@ -33,18 +33,18 @@ export const hasPermission = async (
   permissionKey: PermissionKey,
   requiredLevel: AccessLevel = "read",
 ): Promise<boolean> => {
-  const [rows] = await pool.execute(
+  const result = await pool.query(
     `SELECT 1
      FROM user_permissions
-     WHERE user_id = ?
-       AND permission_key = ?
+     WHERE user_id = $1
+       AND permission_key = $2
        AND (
          access_level = 'write'
-         OR (? = 'read' AND access_level = 'read')
+         OR ($3 = 'read' AND access_level = 'read')
        )
      LIMIT 1`,
     [userId, permissionKey, requiredLevel],
   );
 
-  return (rows as any[]).length > 0;
+  return (result.rows as any[]).length > 0;
 };

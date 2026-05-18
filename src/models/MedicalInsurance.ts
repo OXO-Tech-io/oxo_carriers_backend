@@ -26,9 +26,9 @@ export class MedicalInsuranceModel {
     relevant_document_url?: string | null;
     resubmission_of?: number | null;
   }): Promise<MedicalInsuranceClaim> {
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO medical_insurance_claims (user_id, type, quarter, amount, supportive_document_url, relevant_document_url, resubmission_of, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
         claim.user_id,
         claim.type,
@@ -39,21 +39,21 @@ export class MedicalInsuranceModel {
         claim.resubmission_of ?? null
       ]
     );
-    const insertResult = result as any;
-    const created = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const created = await this.findById(newId);
     if (!created) throw new Error('Failed to create medical insurance claim');
     return created;
   }
 
   static async findById(id: number): Promise<MedicalInsuranceClaim | null> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
        FROM medical_insurance_claims mc
        LEFT JOIN users u ON mc.user_id = u.id
-       WHERE mc.id = ?`,
+       WHERE mc.id = $1`,
       [id]
     );
-    const rowsArray = rows as any[];
+    const rowsArray = result.rows as any[];
     if (rowsArray.length === 0) return null;
     return this.mapRow(rowsArray[0]);
   }
@@ -63,16 +63,16 @@ export class MedicalInsuranceModel {
       SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
       FROM medical_insurance_claims mc
       LEFT JOIN users u ON mc.user_id = u.id
-      WHERE mc.user_id = ?
+      WHERE mc.user_id = $1
     `;
     const params: any[] = [userId];
     if (filters?.status) {
-      query += ' AND mc.status = ?';
       params.push(filters.status);
+      query += ` AND mc.status = $${params.length}`;
     }
     query += ' ORDER BY mc.created_at DESC';
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map(this.mapRow);
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map(this.mapRow);
   }
 
   static async getAll(filters?: { status?: MedicalClaimStatus; type?: MedicalClaimType }): Promise<MedicalInsuranceClaim[]> {
@@ -84,26 +84,26 @@ export class MedicalInsuranceModel {
     `;
     const params: any[] = [];
     if (filters?.status) {
-      query += ' AND mc.status = ?';
       params.push(filters.status);
+      query += ` AND mc.status = $${params.length}`;
     }
     if (filters?.type) {
-      query += ' AND mc.type = ?';
       params.push(filters.type);
+      query += ` AND mc.type = $${params.length}`;
     }
     query += ' ORDER BY mc.created_at DESC';
-    const [rows] = await pool.execute(query, params);
-    return (rows as any[]).map(this.mapRow);
+    const result = await pool.query(query, params);
+    return (result.rows as any[]).map(this.mapRow);
   }
 
   static async getUsedOPDAmountForQuarter(userId: number, quarter: string): Promise<number> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total
        FROM medical_insurance_claims
-       WHERE user_id = ? AND quarter = ? AND type = 'OPD' AND status = 'approved'`,
+       WHERE user_id = $1 AND quarter = $2 AND type = 'OPD' AND status = 'approved'`,
       [userId, quarter]
     );
-    const row = (rows as any[])[0];
+    const row = (result.rows as any[])[0];
     return parseFloat(row?.total || 0);
   }
 
@@ -113,8 +113,8 @@ export class MedicalInsuranceModel {
     reviewedBy: number,
     adminComment?: string | null
   ): Promise<MedicalInsuranceClaim | null> {
-    await pool.execute(
-      `UPDATE medical_insurance_claims SET status = ?, admin_comment = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?`,
+    await pool.query(
+      `UPDATE medical_insurance_claims SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
       [status, adminComment ?? null, reviewedBy, id]
     );
     return this.findById(id);

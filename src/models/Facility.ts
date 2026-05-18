@@ -8,22 +8,22 @@ export class FacilityModel {
     const params: any[] = [];
 
     if (filters?.type) {
-      query += ' AND type = ?';
       params.push(filters.type);
+      query += ` AND type = $${params.length}`;
     }
 
     if (filters?.is_active !== undefined) {
-      query += ' AND is_active = ?';
       params.push(filters.is_active);
+      query += ` AND is_active = $${params.length}`;
     }
 
-    const [rows] = await pool.execute(query, params);
-    return rows as Facility[];
+    const result = await pool.query(query, params);
+    return result.rows as Facility[];
   }
 
   static async findById(id: number): Promise<Facility | null> {
-    const [rows] = await pool.execute('SELECT * FROM facilities WHERE id = ?', [id]);
-    const facilities = rows as Facility[];
+    const result = await pool.query('SELECT * FROM facilities WHERE id = $1', [id]);
+    const facilities = result.rows as Facility[];
     return facilities[0] || null;
   }
 
@@ -36,13 +36,13 @@ export class FacilityModel {
       facilityData.capacity || 1,
       facilityData.is_active !== undefined ? facilityData.is_active : true
     ];
-    const [result] = await pool.execute(
-      'INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES (?, ?, ?, ?, ?, ?)',
+    const result = await pool.query(
+      'INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
       params
     );
 
-    const insertResult = result as any;
-    const facility = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const facility = await this.findById(newId);
     if (!facility) {
       throw new Error('Failed to create facility');
     }
@@ -55,21 +55,21 @@ export class FacilityModel {
 
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined && key !== 'id' && key !== 'created_at') {
-        fields.push(`${key} = ?`);
         values.push(value);
+        fields.push(`${key} = $${values.length}`);
       }
     });
 
     if (fields.length === 0) return await this.findById(id);
 
     values.push(id);
-    await pool.execute(`UPDATE facilities SET ${fields.join(', ')} WHERE id = ?`, values);
+    await pool.query(`UPDATE facilities SET ${fields.join(', ')} WHERE id = $${values.length}`, values);
 
     return await this.findById(id);
   }
 
   static async delete(id: number): Promise<void> {
-    await pool.execute('DELETE FROM facilities WHERE id = ?', [id]);
+    await pool.query('DELETE FROM facilities WHERE id = $1', [id]);
   }
 
   /** Get facilities of a given type that are available for the time range (no overlapping confirmed bookings). */

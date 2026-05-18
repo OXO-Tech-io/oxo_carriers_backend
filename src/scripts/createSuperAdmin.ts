@@ -2,7 +2,6 @@
  * Seed script: Create the initial Super Admin user
  *
  * Run AFTER the migration:
- *   npm run migrate:superadmin
  *   npm run create:superadmin
  *
  * Set these env vars (or edit the defaults below) before running:
@@ -29,23 +28,23 @@ async function run() {
 
   console.log(`[Seed] Creating Super Admin: ${email}`);
 
-  const connection = await (pool as any).getConnection();
+  const client = await pool.connect();
   try {
     // Check if user already exists
-    const [existing] = await connection.execute<any[]>(
-      'SELECT id, role FROM users WHERE email = ? LIMIT 1',
+    const existing = await client.query<{ id: number; role: string }>(
+      'SELECT id, role FROM users WHERE email = $1 LIMIT 1',
       [email]
     );
 
-    if (existing.length > 0) {
-      const user = existing[0];
+    if (existing.rows.length > 0) {
+      const user = existing.rows[0];
       if (user.role === UserRole.SUPER_ADMIN) {
         console.log(`[Seed] ✅ Super Admin already exists (id=${user.id}). Nothing to do.`);
         return;
       }
       // Upgrade existing user to super_admin
-      await connection.execute(
-        "UPDATE users SET role = 'super_admin', must_change_password = 0 WHERE id = ?",
+      await client.query(
+        "UPDATE users SET role = 'super_admin', must_change_password = false WHERE id = $1",
         [user.id]
       );
       console.log(`[Seed] ✅ Upgraded existing user (id=${user.id}) to super_admin.`);
@@ -54,15 +53,16 @@ async function run() {
 
     const hashedPassword = await bcrypt.hash(password, 12);
 
-    const [result] = await connection.execute<any>(
+    const result = await client.query<{ id: number }>(
       `INSERT INTO users
          (employee_id, email, password, first_name, last_name, role, must_change_password, email_verified)
-       VALUES (?, ?, ?, ?, ?, 'super_admin', 0, 1)`,
+       VALUES ($1, $2, $3, $4, $5, 'super_admin', false, true)
+       RETURNING id`,
       [employeeId, email, hashedPassword, firstName, lastName]
     );
 
     console.log(`[Seed] ✅ Super Admin created successfully.`);
-    console.log(`       ID:       ${result.insertId}`);
+    console.log(`       ID:       ${result.rows[0].id}`);
     console.log(`       Email:    ${email}`);
     console.log(`       Password: ${password}`);
     console.log(`       ⚠️  Change this password immediately after first login!`);
@@ -70,7 +70,7 @@ async function run() {
     console.error('[Seed] ❌ Error:', err.message);
     process.exit(1);
   } finally {
-    connection.release();
+    client.release();
     process.exit(0);
   }
 }

@@ -1,5 +1,8 @@
 import { Request, Response } from 'express';
 import { LeaveCalendarModel } from '../models/LeaveCalendar';
+import { logger } from '../lib/logger';
+
+const log = (req: Request) => req.log ?? logger;
 
 /**
  * Get all leave calendar entries
@@ -18,7 +21,7 @@ export const getAllCalendarEntries = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: entries });
   } catch (error: any) {
-    console.error('Get calendar entries error:', error);
+    log(req).error({ err: error }, 'Get calendar entries failed');
     res.status(500).json({ success: false, message: 'Failed to fetch calendar entries', error: error.message });
   }
 };
@@ -34,7 +37,7 @@ export const getCalendarByYear = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: entries });
   } catch (error: any) {
-    console.error('Get calendar by year error:', error);
+    log(req).error({ err: error }, 'Get calendar by year failed');
     res.status(500).json({ success: false, message: 'Failed to fetch calendar entries', error: error.message });
   }
 };
@@ -57,7 +60,7 @@ export const getCalendarByDateRange = async (req: Request, res: Response) => {
 
     res.json({ success: true, data: entries });
   } catch (error: any) {
-    console.error('Get calendar by date range error:', error);
+    log(req).error({ err: error }, 'Get calendar by date range failed');
     res.status(500).json({ success: false, message: 'Failed to fetch calendar entries', error: error.message });
   }
 };
@@ -91,7 +94,7 @@ export const createCalendarEntry = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Calendar entry created successfully', data: entry });
   } catch (error: any) {
-    console.error('Create calendar entry error:', error);
+    log(req).error({ err: error }, 'Create calendar entry failed');
     res.status(500).json({ success: false, message: 'Failed to create calendar entry', error: error.message });
   }
 };
@@ -115,7 +118,7 @@ export const updateCalendarEntry = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Calendar entry updated successfully', data: entry });
   } catch (error: any) {
-    console.error('Update calendar entry error:', error);
+    log(req).error({ err: error }, 'Update calendar entry failed');
     res.status(500).json({ success: false, message: 'Failed to update calendar entry', error: error.message });
   }
 };
@@ -135,7 +138,7 @@ export const deleteCalendarEntry = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Calendar entry deleted successfully' });
   } catch (error: any) {
-    console.error('Delete calendar entry error:', error);
+    log(req).error({ err: error }, 'Delete calendar entry failed');
     res.status(500).json({ success: false, message: 'Failed to delete calendar entry', error: error.message });
   }
 };
@@ -158,7 +161,7 @@ export const getHolidayCount = async (req: Request, res: Response) => {
 
     res.json({ success: true, count });
   } catch (error: any) {
-    console.error('Get holiday count error:', error);
+    log(req).error({ err: error }, 'Get holiday count failed');
     res.status(500).json({ success: false, message: 'Failed to get holiday count', error: error.message });
   }
 };
@@ -178,7 +181,7 @@ export const checkIsHoliday = async (req: Request, res: Response) => {
 
     res.json({ success: true, isHoliday });
   } catch (error: any) {
-    console.error('Check is holiday error:', error);
+    log(req).error({ err: error }, 'Check is-holiday failed');
     res.status(500).json({ success: false, message: 'Failed to check holiday', error: error.message });
   }
 };

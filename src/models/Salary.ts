@@ -1,22 +1,25 @@
 import pool from '../config/database';
 import { MonthlySalary, SalaryComponent, EmployeeSalaryStructure, EmployeeSalaryStructureWithComponent, SalaryStatus, ComponentType } from '../types';
+import { logger as baseLogger } from '../lib/logger';
+
+const log = baseLogger.child({ module: 'salary-model' });
 
 export class SalaryModel {
   static async getComponents(): Promise<SalaryComponent[]> {
-    const [rows] = await pool.execute('SELECT * FROM salary_components WHERE is_active = true ORDER BY type, name');
-    return rows as SalaryComponent[];
+    const result = await pool.query('SELECT * FROM salary_components WHERE is_active = true ORDER BY type, name');
+    return result.rows as SalaryComponent[];
   }
 
   static async getEmployeeSalaryStructure(userId: number): Promise<EmployeeSalaryStructureWithComponent[]> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT ess.*, sc.name as component_name, sc.type as component_type
        FROM employee_salary_structure ess
        JOIN salary_components sc ON ess.component_id = sc.id
-       WHERE ess.user_id = ? AND (ess.end_date IS NULL OR ess.end_date >= CURDATE())
+       WHERE ess.user_id = $1 AND (ess.end_date IS NULL OR ess.end_date >= CURRENT_DATE)
        ORDER BY sc.type, sc.name`,
       [userId]
     );
-    return rows as EmployeeSalaryStructureWithComponent[];
+    return result.rows as EmployeeSalaryStructureWithComponent[];
   }
 
   static async updateSalaryStructure(
@@ -24,16 +27,16 @@ export class SalaryModel {
     components: Array<{ component_id: number; amount: number; is_percentage?: boolean; percentage_of?: string }>
   ): Promise<void> {
     // End current structure
-    await pool.execute(
-      'UPDATE employee_salary_structure SET end_date = CURDATE() WHERE user_id = ? AND end_date IS NULL',
+    await pool.query(
+      'UPDATE employee_salary_structure SET end_date = CURRENT_DATE WHERE user_id = $1 AND end_date IS NULL',
       [userId]
     );
 
     // Insert new structure
     for (const component of components) {
-      await pool.execute(
+      await pool.query(
         `INSERT INTO employee_salary_structure (user_id, component_id, amount, is_percentage, percentage_of, effective_date)
-         VALUES (?, ?, ?, ?, ?, CURDATE())`,
+         VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)`,
         [
           userId,
           component.component_id,
@@ -52,7 +55,7 @@ export class SalaryModel {
   ): Promise<MonthlySalary> {
     // Get salary structure
     const structure = await this.getEmployeeSalaryStructure(userId);
-    
+
     let basicSalary = 0;
     let totalEarnings = 0;
     let totalDeductions = 0;
@@ -61,7 +64,7 @@ export class SalaryModel {
 
     for (const item of structure) {
       let amount = item.amount;
-      
+
       if (item.is_percentage && item.percentage_of) {
         // Calculate percentage-based component
         const baseComponent = structure.find(s => s.component_id === item.component_id);
@@ -91,7 +94,7 @@ export class SalaryModel {
     // Extract Local Salary and OXO International Salary from structure if available
     let localSalary = 0;
     let oxoInternationalSalary = 0;
-    
+
     for (const item of structure) {
       if (item.component_name === 'Local Salary') {
         localSalary = item.amount;
@@ -101,19 +104,18 @@ export class SalaryModel {
     }
 
     // Insert monthly salary
-    const [result] = await pool.execute(
+    const result = await pool.query(
       `INSERT INTO monthly_salaries (user_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generated', ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'generated', $9) RETURNING id`,
       [userId, monthYear, basicSalary, localSalary, oxoInternationalSalary, totalEarnings, totalDeductions, netSalary, generatedBy]
     );
 
-    const insertResult = result as any;
-    const salaryId = insertResult.insertId;
+    const salaryId = (result.rows[0] as any).id;
 
     // Insert slip details
     for (const detail of slipDetails) {
-      await pool.execute(
-        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+      await pool.query(
+        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
         [salaryId, detail.component_id, detail.amount, detail.type]
       );
     }
@@ -126,29 +128,29 @@ export class SalaryModel {
   }
 
   static async findById(id: number): Promise<MonthlySalary | null> {
-    const [rows] = await pool.execute('SELECT * FROM monthly_salaries WHERE id = ?', [id]);
-    const salaries = rows as MonthlySalary[];
+    const result = await pool.query('SELECT * FROM monthly_salaries WHERE id = $1', [id]);
+    const salaries = result.rows as MonthlySalary[];
     return salaries[0] || null;
   }
 
   static async findByUserId(userId: number, filters?: { year?: number; month?: number }): Promise<MonthlySalary[]> {
-    let query = 'SELECT * FROM monthly_salaries WHERE user_id = ?';
+    let query = 'SELECT * FROM monthly_salaries WHERE user_id = $1';
     const params: any[] = [userId];
 
     if (filters?.year) {
-      query += ' AND YEAR(month_year) = ?';
       params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM month_year) = $${params.length}`;
     }
 
     if (filters?.month) {
-      query += ' AND MONTH(month_year) = ?';
       params.push(filters.month);
+      query += ` AND EXTRACT(MONTH FROM month_year) = $${params.length}`;
     }
 
     query += ' ORDER BY month_year DESC';
 
-    const [rows] = await pool.execute(query, params);
-    return rows as MonthlySalary[];
+    const result = await pool.query(query, params);
+    return result.rows as MonthlySalary[];
   }
 
   static async getAll(filters?: {
@@ -167,62 +169,62 @@ export class SalaryModel {
     const params: any[] = [];
 
     if (filters?.userId) {
-      query += ' AND ms.user_id = ?';
       params.push(filters.userId);
+      query += ` AND ms.user_id = $${params.length}`;
     }
 
     if (filters?.department) {
-      query += ' AND u.department = ?';
       params.push(filters.department);
+      query += ` AND u.department = $${params.length}`;
     }
 
     if (filters?.year) {
-      query += ' AND YEAR(ms.month_year) = ?';
       params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM ms.month_year) = $${params.length}`;
     }
 
     if (filters?.month) {
-      query += ' AND MONTH(ms.month_year) = ?';
       params.push(filters.month);
+      query += ` AND EXTRACT(MONTH FROM ms.month_year) = $${params.length}`;
     }
 
     if (filters?.status) {
-      query += ' AND ms.status = ?';
       params.push(filters.status);
+      query += ` AND ms.status = $${params.length}`;
     }
 
     query += ' ORDER BY ms.month_year DESC, u.first_name';
 
-    const [rows] = await pool.execute(query, params);
-    return rows as any[];
+    const result = await pool.query(query, params);
+    return result.rows as any[];
   }
 
   static async getSlipDetails(salaryId: number): Promise<any[]> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `SELECT ssd.*, sc.name as component_name, sc.type as component_type
        FROM salary_slip_details ssd
        JOIN salary_components sc ON ssd.component_id = sc.id
-       WHERE ssd.salary_id = ?
+       WHERE ssd.salary_id = $1
        ORDER BY sc.type, sc.name`,
       [salaryId]
     );
-    return rows as any[];
+    return result.rows as any[];
   }
 
   static async updateStatus(id: number, status: SalaryStatus, paidDate?: Date): Promise<MonthlySalary | null> {
     if (status === SalaryStatus.PAID && paidDate) {
-      await pool.execute(
-        'UPDATE monthly_salaries SET status = ?, paid_date = ? WHERE id = ?',
+      await pool.query(
+        'UPDATE monthly_salaries SET status = $1, paid_date = $2 WHERE id = $3',
         [status, paidDate, id]
       );
     } else {
-      await pool.execute('UPDATE monthly_salaries SET status = ? WHERE id = ?', [status, id]);
+      await pool.query('UPDATE monthly_salaries SET status = $1 WHERE id = $2', [status, id]);
     }
     return await this.findById(id);
   }
 
   static async updatePdfUrl(id: number, pdfUrl: string): Promise<void> {
-    await pool.execute('UPDATE monthly_salaries SET pdf_url = ? WHERE id = ?', [pdfUrl, id]);
+    await pool.query('UPDATE monthly_salaries SET pdf_url = $1 WHERE id = $2', [pdfUrl, id]);
   }
 
   static async bulkGenerateSalaries(userIds: number[], monthYear: Date, generatedBy: number): Promise<number> {
@@ -232,7 +234,7 @@ export class SalaryModel {
         await this.generateSalary(userId, monthYear, generatedBy);
         count++;
       } catch (error) {
-        console.error(`Failed to generate salary for user ${userId}:`, error);
+        log.error({ err: error, userId }, 'Failed to generate salary');
       }
     }
     return count;
@@ -257,245 +259,267 @@ export class SalaryModel {
     // Calculate Full Salary = Local Salary + OXO International Salary
     const calculatedFullSalary = excelData.localSalary + excelData.oxoInternationalSalary;
     // Use provided fullSalary if it matches calculation, otherwise use calculated value
-    const fullSalary = excelData.fullSalary > 0 && Math.abs(excelData.fullSalary - calculatedFullSalary) < 0.01 
-      ? excelData.fullSalary 
+    const fullSalary = excelData.fullSalary > 0 && Math.abs(excelData.fullSalary - calculatedFullSalary) < 0.01
+      ? excelData.fullSalary
       : calculatedFullSalary;
-    
+
     // Calculate basic salary (use Full Salary as basic)
     const basicSalary = fullSalary;
-    
+
     // Get allowances and salary advance/deductions (default to 0 if not provided)
     const allowances = excelData.allowances || 0;
     const salaryAdvanceDeductions = excelData.salaryAdvanceDeductions || 0;
-    
+
     // Calculate earnings (Full Salary + Allowances)
     const totalEarnings = fullSalary + allowances;
-    
+
     // Calculate EPF deduction (8% of Local Salary) - use provided value or calculate if not provided
     let epfDeduction = excelData.epfDeduction;
     if (epfDeduction === 0 && excelData.localSalary > 0) {
       epfDeduction = excelData.localSalary * 0.08; // 8% of Local Salary
     }
-    
+
     // Calculate deductions (EPF + Salary Advance/Deductions)
     const totalDeductions = epfDeduction + salaryAdvanceDeductions;
-    
+
     const netSalary = totalEarnings - totalDeductions;
 
     // Ensure columns exist (for backward compatibility with existing databases)
     try {
-      const [columns]: any = await pool.execute(`
-        SELECT COLUMN_NAME 
-        FROM INFORMATION_SCHEMA.COLUMNS 
-        WHERE TABLE_SCHEMA = DATABASE() 
-        AND TABLE_NAME = 'monthly_salaries' 
-        AND COLUMN_NAME IN ('local_salary', 'oxo_international_salary')
+      const columnsResult = await pool.query(`
+        SELECT column_name
+        FROM information_schema.columns
+        WHERE table_schema = current_schema()
+        AND table_name = 'monthly_salaries'
+        AND column_name IN ('local_salary', 'oxo_international_salary')
       `);
-      
-      const existingColumns = columns.map((c: any) => c.COLUMN_NAME);
-      
+
+      const existingColumns = (columnsResult.rows as any[]).map(c => c.column_name);
+
       if (!existingColumns.includes('local_salary')) {
-        await pool.execute(`
-          ALTER TABLE monthly_salaries 
-          ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0 AFTER basic_salary
+        await pool.query(`
+          ALTER TABLE monthly_salaries
+          ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0
         `);
-        console.log('  ✓ Added local_salary column');
+        log.info('Added local_salary column');
       }
-      
+
       if (!existingColumns.includes('oxo_international_salary')) {
-        await pool.execute(`
-          ALTER TABLE monthly_salaries 
-          ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0 AFTER local_salary
+        await pool.query(`
+          ALTER TABLE monthly_salaries
+          ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0
         `);
-        console.log('  ✓ Added oxo_international_salary column');
+        log.info('Added oxo_international_salary column');
       }
     } catch (error: any) {
       // Columns might already exist or other error, log but continue
-      console.warn('  ⚠ Column check/add warning:', error.message);
+      log.warn({ err: error }, 'Column check/add warning');
     }
 
     // Ensure values are numbers
     const localSalaryValue = Number(excelData.localSalary) || 0;
     const oxoInternationalSalaryValue = Number(excelData.oxoInternationalSalary) || 0;
-    
+
     // Insert monthly salary
-    console.log(`Inserting salary for user ${userId}: Local=${localSalaryValue}, OXO=${oxoInternationalSalaryValue}, Full=${fullSalary}`);
-    console.log(`  - Type check: Local is ${typeof localSalaryValue}, OXO is ${typeof oxoInternationalSalaryValue}`);
-    console.log(`  - Raw values: Local=${excelData.localSalary}, OXO=${excelData.oxoInternationalSalary}`);
-    
-    const [result] = await pool.execute(
+    log.debug(
+      {
+        userId,
+        localSalaryValue,
+        oxoInternationalSalaryValue,
+        fullSalary,
+        rawLocal: excelData.localSalary,
+        rawOxo: excelData.oxoInternationalSalary,
+      },
+      'Inserting salary',
+    );
+
+    const upsertResult = await pool.query(
       `INSERT INTO monthly_salaries (user_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'generated', ?)
-       ON DUPLICATE KEY UPDATE
-       basic_salary = VALUES(basic_salary),
-       local_salary = VALUES(local_salary),
-       oxo_international_salary = VALUES(oxo_international_salary),
-       total_earnings = VALUES(total_earnings),
-       total_deductions = VALUES(total_deductions),
-       net_salary = VALUES(net_salary),
-       status = 'generated',
-       generated_by = VALUES(generated_by)`,
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'generated', $9)
+       ON CONFLICT (user_id, month_year) DO UPDATE SET
+         basic_salary = EXCLUDED.basic_salary,
+         local_salary = EXCLUDED.local_salary,
+         oxo_international_salary = EXCLUDED.oxo_international_salary,
+         total_earnings = EXCLUDED.total_earnings,
+         total_deductions = EXCLUDED.total_deductions,
+         net_salary = EXCLUDED.net_salary,
+         status = 'generated',
+         generated_by = EXCLUDED.generated_by
+       RETURNING id`,
       [userId, monthYear, basicSalary, localSalaryValue, oxoInternationalSalaryValue, totalEarnings, totalDeductions, netSalary, generatedBy]
     );
-    
+
     // Verify the insert immediately after
-    const [verify] = await pool.execute(
-      'SELECT id, local_salary, oxo_international_salary, basic_salary FROM monthly_salaries WHERE user_id = ? AND month_year = ?',
+    const verifyResult = await pool.query(
+      'SELECT id, local_salary, oxo_international_salary, basic_salary FROM monthly_salaries WHERE user_id = $1 AND month_year = $2',
       [userId, monthYear]
     );
-    const verifyRows = verify as any[];
+    const verifyRows = verifyResult.rows as any[];
     if (verifyRows.length > 0) {
       const saved = verifyRows[0];
-      console.log(`✓ Verified salary record ID ${saved.id}:`);
-      console.log(`  - Local Salary: ${saved.local_salary} (expected: ${localSalaryValue})`);
-      console.log(`  - OXO International Salary: ${saved.oxo_international_salary} (expected: ${oxoInternationalSalaryValue})`);
-      console.log(`  - Basic Salary: ${saved.basic_salary}`);
-      
+      log.debug(
+        {
+          id: saved.id,
+          localSalary: saved.local_salary,
+          oxoInternationalSalary: saved.oxo_international_salary,
+          basicSalary: saved.basic_salary,
+          expectedLocal: localSalaryValue,
+          expectedOxo: oxoInternationalSalaryValue,
+        },
+        'Verified salary record',
+      );
+
       if (Number(saved.oxo_international_salary) !== oxoInternationalSalaryValue) {
-        console.error(`  ✗ MISMATCH: OXO International Salary not saved correctly!`);
-        console.error(`    Expected: ${oxoInternationalSalaryValue}, Got: ${saved.oxo_international_salary}`);
+        log.error(
+          {
+            expected: oxoInternationalSalaryValue,
+            actual: saved.oxo_international_salary,
+          },
+          'MISMATCH: OXO International Salary not saved correctly',
+        );
       } else {
-        console.log(`  ✓ OXO International Salary saved correctly!`);
+        log.debug('OXO International Salary saved correctly');
       }
     } else {
-      console.error(`✗ Failed to verify salary record for user ${userId}`);
+      log.error({ userId }, 'Failed to verify salary record');
     }
 
-    const insertResult = result as any;
-    let salaryId = insertResult.insertId;
+    let salaryId = (upsertResult.rows[0] as any)?.id;
 
-    // If salary already exists, get the existing ID
-    if (!salaryId || salaryId === 0) {
-      const [existing] = await pool.execute(
-        'SELECT id FROM monthly_salaries WHERE user_id = ? AND month_year = ?',
+    // If we got an ID from the upsert, delete any existing slip details so we can re-insert
+    if (salaryId) {
+      await pool.query('DELETE FROM salary_slip_details WHERE salary_id = $1', [salaryId]);
+    } else {
+      // Fallback: look up the existing row id
+      const existingResult = await pool.query(
+        'SELECT id FROM monthly_salaries WHERE user_id = $1 AND month_year = $2',
         [userId, monthYear]
       );
-      const existingRows = existing as any[];
+      const existingRows = existingResult.rows as any[];
       if (existingRows.length > 0) {
         salaryId = existingRows[0].id;
-        // Delete existing slip details
-        await pool.execute('DELETE FROM salary_slip_details WHERE salary_id = ?', [salaryId]);
+        await pool.query('DELETE FROM salary_slip_details WHERE salary_id = $1', [salaryId]);
       }
     }
 
     // Get or create salary components
-    const [fullSalaryComponent] = await pool.execute(
+    const fullSalaryComponent = await pool.query(
       "SELECT id FROM salary_components WHERE name = 'Full Salary'"
     );
-    const [localSalaryComponent] = await pool.execute(
+    const localSalaryComponent = await pool.query(
       "SELECT id FROM salary_components WHERE name = 'Local Salary'"
     );
-    const [oxoSalaryComponent] = await pool.execute(
+    const oxoSalaryComponent = await pool.query(
       "SELECT id FROM salary_components WHERE name = 'OXO International Salary'"
     );
-    const [epfComponent] = await pool.execute(
+    const epfComponent = await pool.query(
       "SELECT id FROM salary_components WHERE name = 'Provident Fund'"
     );
 
-    const fullSalaryId = (fullSalaryComponent as any[])[0]?.id;
-    const localSalaryId = (localSalaryComponent as any[])[0]?.id;
-    let oxoSalaryId = (oxoSalaryComponent as any[])[0]?.id;
-    const epfId = (epfComponent as any[])[0]?.id;
+    const fullSalaryId = (fullSalaryComponent.rows as any[])[0]?.id;
+    const localSalaryId = (localSalaryComponent.rows as any[])[0]?.id;
+    let oxoSalaryId = (oxoSalaryComponent.rows as any[])[0]?.id;
+    const epfId = (epfComponent.rows as any[])[0]?.id;
 
     // Create OXO International Salary component if it doesn't exist
     if (!oxoSalaryId) {
-      const [insertResult] = await pool.execute(
-        "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('OXO International Salary', 'earning', false, true)"
+      const insertResult = await pool.query(
+        "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('OXO International Salary', 'earning', false, true) RETURNING id"
       );
-      oxoSalaryId = (insertResult as any).insertId;
-      console.log('Created OXO International Salary component with ID:', oxoSalaryId);
+      oxoSalaryId = (insertResult.rows[0] as any).id;
+      log.info({ oxoSalaryId }, 'Created OXO International Salary component');
     }
 
     // Insert slip details for earnings
     // Insert Local Salary
     if (localSalaryId && excelData.localSalary > 0) {
-      await pool.execute(
-        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+      await pool.query(
+        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
         [salaryId, localSalaryId, excelData.localSalary, 'earning']
       );
-      console.log(`Inserted Local Salary: ${excelData.localSalary} for salary ID: ${salaryId}`);
+      log.debug({ amount: excelData.localSalary, salaryId }, 'Inserted Local Salary slip detail');
     } else {
-      console.warn(`Local Salary not inserted - localSalaryId: ${localSalaryId}, amount: ${excelData.localSalary}`);
+      log.warn({ localSalaryId, amount: excelData.localSalary }, 'Local Salary not inserted');
     }
-    
+
     // Insert OXO International Salary (ALWAYS insert if amount > 0, even if component doesn't exist we create it above)
     if (excelData.oxoInternationalSalary > 0) {
       if (oxoSalaryId) {
-        await pool.execute(
-          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+        await pool.query(
+          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, oxoSalaryId, excelData.oxoInternationalSalary, 'earning']
         );
-        console.log(`Inserted OXO International Salary: ${excelData.oxoInternationalSalary} for salary ID: ${salaryId}`);
+        log.debug({ amount: excelData.oxoInternationalSalary, salaryId }, 'Inserted OXO International Salary slip detail');
       } else {
-        console.error(`OXO International Salary component ID is null for salary ID: ${salaryId}, amount: ${excelData.oxoInternationalSalary}`);
+        log.error({ salaryId, amount: excelData.oxoInternationalSalary }, 'OXO International Salary component ID is null');
       }
     } else {
-      console.warn(`OXO International Salary not inserted - amount is 0 or negative: ${excelData.oxoInternationalSalary}`);
+      log.warn({ amount: excelData.oxoInternationalSalary }, 'OXO International Salary not inserted (amount <= 0)');
     }
-    
+
     // Insert Full Salary as calculated (Local + OXO) - optional, for display purposes
     if (fullSalaryId && fullSalary > 0) {
-      await pool.execute(
-        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+      await pool.query(
+        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
         [salaryId, fullSalaryId, fullSalary, 'earning']
       );
     }
 
     // Insert slip details for deductions
     if (epfId && epfDeduction > 0) {
-      await pool.execute(
-        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+      await pool.query(
+        'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
         [salaryId, epfId, epfDeduction, 'deduction']
       );
     }
-    
+
     // Insert Allowances (if provided and > 0)
     if (excelData.allowances && excelData.allowances > 0) {
       // Get or create Allowances component
-      let [allowancesComponent] = await pool.execute(
+      const allowancesComponent = await pool.query(
         "SELECT id FROM salary_components WHERE name = 'Allowances'"
       );
-      let allowancesId = (allowancesComponent as any[])[0]?.id;
-      
+      let allowancesId = (allowancesComponent.rows as any[])[0]?.id;
+
       if (!allowancesId) {
-        const [insertResult] = await pool.execute(
-          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Allowances', 'earning', false, true)"
+        const insertResult = await pool.query(
+          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Allowances', 'earning', false, true) RETURNING id"
         );
-        allowancesId = (insertResult as any).insertId;
-        console.log('Created Allowances component with ID:', allowancesId);
+        allowancesId = (insertResult.rows[0] as any).id;
+        log.info({ allowancesId }, 'Created Allowances component');
       }
-      
+
       if (allowancesId) {
-        await pool.execute(
-          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+        await pool.query(
+          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, allowancesId, excelData.allowances, 'earning']
         );
-        console.log(`Inserted Allowances: ${excelData.allowances} for salary ID: ${salaryId}`);
+        log.debug({ amount: excelData.allowances, salaryId }, 'Inserted Allowances slip detail');
       }
     }
-    
+
     // Insert Salary Advance/Deductions (if provided and > 0)
     if (excelData.salaryAdvanceDeductions && excelData.salaryAdvanceDeductions > 0) {
       // Get or create Salary Advance/Deductions component
-      let [deductionsComponent] = await pool.execute(
+      const deductionsComponent = await pool.query(
         "SELECT id FROM salary_components WHERE name = 'Salary Advance/Deductions'"
       );
-      let deductionsId = (deductionsComponent as any[])[0]?.id;
-      
+      let deductionsId = (deductionsComponent.rows as any[])[0]?.id;
+
       if (!deductionsId) {
-        const [insertResult] = await pool.execute(
-          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Salary Advance/Deductions', 'deduction', false, true)"
+        const insertResult = await pool.query(
+          "INSERT INTO salary_components (name, type, is_default, is_active) VALUES ('Salary Advance/Deductions', 'deduction', false, true) RETURNING id"
         );
-        deductionsId = (insertResult as any).insertId;
-        console.log('Created Salary Advance/Deductions component with ID:', deductionsId);
+        deductionsId = (insertResult.rows[0] as any).id;
+        log.info({ deductionsId }, 'Created Salary Advance/Deductions component');
       }
-      
+
       if (deductionsId) {
-        await pool.execute(
-          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES (?, ?, ?, ?)',
+        await pool.query(
+          'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, deductionsId, excelData.salaryAdvanceDeductions, 'deduction']
         );
-        console.log(`Inserted Salary Advance/Deductions: ${excelData.salaryAdvanceDeductions} for salary ID: ${salaryId}`);
+        log.debug({ amount: excelData.salaryAdvanceDeductions, salaryId }, 'Inserted Salary Advance/Deductions slip detail');
       }
     }
 

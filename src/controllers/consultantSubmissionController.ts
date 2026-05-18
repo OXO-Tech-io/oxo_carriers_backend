@@ -1,6 +1,9 @@
 import { Request, Response } from 'express';
 import { ConsultantWorkSubmissionModel } from '../models/ConsultantWorkSubmission';
 import { ConsultantSubmissionStatus, UserRole } from '../types';
+import { logger } from '../lib/logger';
+
+const log = (req: Request) => req.log ?? logger;
 
 export const submit = async (req: Request, res: Response) => {
   try {
@@ -33,7 +36,7 @@ export const submit = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Work submission created', submission });
   } catch (error: any) {
-    console.error('Consultant submit error:', error);
+    log(req).error({ err: error }, 'Consultant submit failed');
     res.status(500).json({ success: false, message: 'Failed to submit work', error: error.message });
   }
 };
@@ -46,7 +49,7 @@ export const getMySubmissions = async (req: Request, res: Response) => {
     const submissions = await ConsultantWorkSubmissionModel.findByUserId(userId, { status });
     res.json({ success: true, submissions });
   } catch (error: any) {
-    console.error('Get my consultant submissions error:', error);
+    log(req).error({ err: error }, 'Get my consultant submissions failed');
     res.status(500).json({ success: false, message: 'Failed to fetch submissions', error: error.message });
   }
 };
@@ -57,7 +60,7 @@ export const getAll = async (req: Request, res: Response) => {
     const submissions = await ConsultantWorkSubmissionModel.getAll({ status });
     res.json({ success: true, submissions });
   } catch (error: any) {
-    console.error('Get all consultant submissions error:', error);
+    log(req).error({ err: error }, 'Get all consultant submissions failed');
     res.status(500).json({ success: false, message: 'Failed to fetch submissions', error: error.message });
   }
 };
@@ -85,7 +88,7 @@ export const getById = async (req: Request, res: Response) => {
 
     res.json({ success: true, submission });
   } catch (error: any) {
-    console.error('Get consultant submission error:', error);
+    log(req).error({ err: error }, 'Get consultant submission failed');
     res.status(500).json({ success: false, message: 'Failed to fetch submission', error: error.message });
   }
 };
@@ -109,7 +112,7 @@ export const approve = async (req: Request, res: Response) => {
     const updated = await ConsultantWorkSubmissionModel.updateStatus(id, ConsultantSubmissionStatus.APPROVED, userId!, null);
     res.json({ success: true, message: 'Submission approved', submission: updated });
   } catch (error: any) {
-    console.error('Approve consultant submission error:', error);
+    log(req).error({ err: error }, 'Approve consultant submission failed');
     res.status(500).json({ success: false, message: 'Failed to approve', error: error.message });
   }
 };
@@ -138,7 +141,7 @@ export const reject = async (req: Request, res: Response) => {
     const updated = await ConsultantWorkSubmissionModel.updateStatus(id, ConsultantSubmissionStatus.REJECTED, userId!, admin_comment.trim());
     res.json({ success: true, message: 'Submission rejected', submission: updated });
   } catch (error: any) {
-    console.error('Reject consultant submission error:', error);
+    log(req).error({ err: error }, 'Reject consultant submission failed');
     res.status(500).json({ success: false, message: 'Failed to reject', error: error.message });
   }
 };
@@ -182,7 +185,7 @@ export const resubmit = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Work resubmitted', submission });
   } catch (error: any) {
-    console.error('Consultant resubmit error:', error);
+    log(req).error({ err: error }, 'Consultant resubmit failed');
     res.status(500).json({ success: false, message: 'Failed to resubmit', error: error.message });
   }
 };

@@ -1,4 +1,4 @@
- export enum UserRole {
+export enum UserRole {
   SUPER_ADMIN = "super_admin",
   HR_MANAGER = "hr_manager",
   HR_EXECUTIVE = "hr_executive",
@@ -74,29 +74,29 @@ export enum ComponentType {
 
 export interface User {
   id: number;
-  employee_id: string;
+  employeeId: string | null;
   email: string;
-  password?: string;
-  keycloak_sub?: string | null;
-  first_name: string;
-  last_name: string;
-  role: UserRole;
-  department?: string;
-  position?: string;
-  hire_date?: Date;
-  manager_id?: number;
-  hourly_rate?: number | null;
-  bank_name?: string | null;
-  account_holder_name?: string | null;
-  account_number?: string | null;
-  bank_branch?: string | null;
-  company_name?: string | null;
-  contact_number?: string | null;
-  must_change_password: boolean;
-  email_verified?: boolean;
-  email_verification_token?: string;
-  created_at: Date;
-  updated_at: Date;
+  password?: string | null;
+  keycloakSub?: string | null;
+  firstName: string;
+  lastName: string;
+  role: 'super_admin' | 'hr_manager' | 'hr_executive' | 'finance_manager' | 'finance_executive' | 'employee' | 'consultant' | 'service_provider';
+  department?: string | null;
+  position?: string | null;
+  hireDate?: Date | null;
+  managerId?: number | null;
+  hourlyRate?: string | null; // decimal from DB comes as string
+  bankName?: string | null;
+  accountHolderName?: string | null;
+  accountNumber?: string | null;
+  bankBranch?: string | null;
+  companyName?: string | null;
+  contactNumber?: string | null;
+  mustChangePassword: boolean | null;
+  emailVerified?: boolean | null;
+  emailVerificationToken?: string | null;
+  createdAt: Date | null;
+  updatedAt: Date | null;
 }
 
 export interface LeaveType {

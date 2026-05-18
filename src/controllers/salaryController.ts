@@ -6,13 +6,17 @@ import pool from '../config/database';
 import { generateSalarySlipPDF as generatePDF } from '../utils/pdfGenerator';
 import path from 'path';
 import fs from 'fs';
+import { env } from '../config/env';
+import { logger } from '../lib/logger';
+
+const log = (req: Request) => req.log ?? logger;
 
 export const getSalaryComponents = async (req: Request, res: Response) => {
   try {
     const components = await SalaryModel.getComponents();
     res.json({ success: true, components });
   } catch (error: any) {
-    console.error('Get salary components error:', error);
+    log(req).error({ err: error }, 'Get salary components failed');
     res.status(500).json({ success: false, message: 'Failed to fetch salary components', error: error.message });
   }
 };
@@ -32,7 +36,7 @@ export const getEmployeeSalaryStructure = async (req: Request, res: Response) =>
     const structure = await SalaryModel.getEmployeeSalaryStructure(parseInt(userId as string));
     res.json({ success: true, structure });
   } catch (error: any) {
-    console.error('Get salary structure error:', error);
+    log(req).error({ err: error }, 'Get salary structure failed');
     res.status(500).json({ success: false, message: 'Failed to fetch salary structure', error: error.message });
   }
 };
@@ -56,7 +60,7 @@ export const updateSalaryStructure = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Salary structure updated successfully' });
   } catch (error: any) {
-    console.error('Update salary structure error:', error);
+    log(req).error({ err: error }, 'Update salary structure failed');
     res.status(500).json({ success: false, message: 'Failed to update salary structure', error: error.message });
   }
 };
@@ -88,7 +92,7 @@ export const generateSalary = async (req: Request, res: Response) => {
 
     res.status(201).json({ success: true, message: 'Salary generated successfully', salary });
   } catch (error: any) {
-    console.error('Generate salary error:', error);
+    log(req).error({ err: error }, 'Generate salary failed');
     res.status(500).json({ success: false, message: 'Failed to generate salary', error: error.message });
   }
 };
@@ -124,7 +128,7 @@ export const getSalaries = async (req: Request, res: Response) => {
 
     res.json({ success: true, salaries });
   } catch (error: any) {
-    console.error('Get salaries error:', error);
+    log(req).error({ err: error }, 'Get salaries failed');
     res.status(500).json({ success: false, message: 'Failed to fetch salaries', error: error.message });
   }
 };
@@ -150,7 +154,7 @@ export const getSalaryById = async (req: Request, res: Response) => {
 
     res.json({ success: true, salary, details });
   } catch (error: any) {
-    console.error('Get salary error:', error);
+    log(req).error({ err: error }, 'Get salary failed');
     res.status(500).json({ success: false, message: 'Failed to fetch salary', error: error.message });
   }
 };
@@ -162,32 +166,32 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     const userId = (req as any).user?.userId;
     const role = (req as any).user?.role;
 
-    console.log(`[SalaryController] 📄 Generating PDF for salary ID: ${id}`);
+    log(req).info({ salaryId: id }, 'Generating salary slip PDF');
 
     const salary = await SalaryModel.findById(parseInt(id));
     if (!salary) {
-      console.warn(`[SalaryController] ❌ Salary not found: ${id}`);
+      log(req).warn({ salaryId: id }, 'Salary not found');
       return res.status(404).json({ success: false, message: 'Salary not found' });
     }
 
     // Employees can only view their own salary
     if (role === UserRole.EMPLOYEE && salary.user_id !== userId) {
-      console.warn(`[SalaryController] 🚫 Access denied for user ${userId} to salary ${id}`);
+      log(req).warn({ userId, salaryId: id }, 'Access denied for salary slip');
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     const details = await SalaryModel.getSlipDetails(parseInt(id as string));
-    const [userRows] = await pool.execute('SELECT * FROM users WHERE id = ?', [salary.user_id]);
-    const users = userRows as any[];
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [salary.user_id]);
+    const users = userResult.rows as any[];
     const user = users[0];
 
     if (!user) {
-      console.warn(`[SalaryController] ❌ User not found for salary: ${salary.user_id}`);
+      log(req).warn({ userId: salary.user_id }, 'User not found for salary');
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
     // Generate PDF
-    console.log(`[SalaryController] ⚙️ Calling pdfGenerator for ${user.first_name}...`);
+    log(req).debug({ firstName: user.first_name }, 'Calling pdfGenerator');
     let pdfBuffer: Buffer;
     try {
       pdfBuffer = await generatePDF({
@@ -195,14 +199,13 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
         details,
         user
       });
-      console.log(`[SalaryController] ✅ PDF buffer generated (${pdfBuffer.length} bytes)`);
+      log(req).info({ bytes: pdfBuffer.length }, 'PDF buffer generated');
     } catch (error: any) {
-      console.error(`[SalaryController] ❌ PDF generation failed:`, error);
-      console.error(`[SalaryController] Error stack:`, error.stack);
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to generate PDF', 
-        error: error.message 
+      log(req).error({ err: error }, 'PDF generation failed');
+      return res.status(500).json({
+        success: false,
+        message: 'Failed to generate PDF',
+        error: error.message
       });
     }
 
@@ -211,18 +214,18 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
       const pdfDir = path.join(process.cwd(), 'uploads', 'salary-slips');
       try {
         if (!fs.existsSync(pdfDir)) {
-          console.log(`[SalaryController] 📁 Creating directory: ${pdfDir}`);
+          log(req).debug({ pdfDir }, 'Creating PDF directory');
           fs.mkdirSync(pdfDir, { recursive: true });
         }
         const pdfFilename = `salary-slip-${salary.id}-${Date.now()}.pdf`;
         const pdfPath = path.join(pdfDir, pdfFilename);
         fs.writeFileSync(pdfPath, pdfBuffer);
-        
+
         const pdfUrl = `/uploads/salary-slips/${pdfFilename}`;
         await SalaryModel.updatePdfUrl(parseInt(id as string), pdfUrl);
-        console.log(`[SalaryController] 💾 Saved and updated PDF URL: ${pdfUrl}`);
+        log(req).info({ pdfUrl }, 'Saved PDF and updated URL');
       } catch (saveError: any) {
-        console.error(`[SalaryController] ⚠️ Failed to save PDF file:`, saveError.message);
+        log(req).error({ err: saveError }, 'Failed to save PDF file');
         // Continue to send the buffer even if saving fails
       }
     }
@@ -230,14 +233,14 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename="salary-slip-${id as string}.pdf"`);
     res.send(pdfBuffer);
-    console.log(`[SalaryController] 🚀 PDF sent successfully`);
+    log(req).debug('PDF sent');
   } catch (error: any) {
-    console.error('[SalaryController] ❌ Generate PDF error:', error);
-    res.status(500).json({ 
-      success: false, 
-      message: 'Failed to generate PDF', 
+    log(req).error({ err: error }, 'Generate PDF failed');
+    res.status(500).json({
+      success: false,
+      message: 'Failed to generate PDF',
       error: error.message,
-      stack: process.env.NODE_ENV !== 'production' ? error.stack : undefined
+      stack: !env.IS_PRODUCTION ? error.stack : undefined
     });
   }
 };
@@ -311,7 +314,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
                   cellValue === 'oxo international salary') && oxoSalaryCol === 0) {
           oxoSalaryCol = colNumber;
           foundHeaders++;
-          console.log(`  ✓ Found OXO International Salary column at index ${colNumber}, header value: "${cell.value?.toString()}"`);
+          log(req).debug({ colNumber, header: cell.value?.toString() }, 'Found OXO International Salary column');
         }
         // Working Days column
         else if ((cellValue.includes('working days') || cellValue.includes('working_days') || 
@@ -331,14 +334,14 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
                   cellValue.includes('bonus')) && allowancesCol === 0) {
           allowancesCol = colNumber;
           foundHeaders++;
-          console.log(`  ✓ Found Allowances column at index ${colNumber}, header value: "${cell.value?.toString()}"`);
+          log(req).debug({ colNumber, header: cell.value?.toString() }, 'Found Allowances column');
         }
         // Salary Advance/Deductions column
         else if ((cellValue.includes('salary advance') || cellValue.includes('deductions') || 
                   cellValue.includes('salary deduction') || cellValue.includes('advance')) && deductionsCol === 0) {
           deductionsCol = colNumber;
           foundHeaders++;
-          console.log(`  ✓ Found Salary Advance/Deductions column at index ${colNumber}, header value: "${cell.value?.toString()}"`);
+          log(req).debug({ colNumber, header: cell.value?.toString() }, 'Found Salary Advance/Deductions column');
         }
       });
       
@@ -349,7 +352,10 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     }
 
     // Validate required columns (Local Salary and OXO International are required, Full Salary is optional)
-    console.log(`Column detection results: ID=${idCol}, Local=${localSalaryCol}, OXO=${oxoSalaryCol}, WorkingDays=${workingDaysCol}, EPF=${epfCol}, Allowances=${allowancesCol}, Deductions=${deductionsCol}`);
+    log(req).debug(
+      { idCol, localSalaryCol, oxoSalaryCol, workingDaysCol, epfCol, allowancesCol, deductionsCol },
+      'Column detection results',
+    );
     
     const missingColumns: string[] = [];
     if (idCol === 0) missingColumns.push('id');
@@ -357,7 +363,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     if (oxoSalaryCol === 0) missingColumns.push('OXO International Salary');
     
     if (missingColumns.length > 0) {
-      console.error(`Missing required columns: ${missingColumns.join(', ')}`);
+      log(req).error({ missingColumns }, 'Missing required columns in Excel upload');
       return res.status(400).json({ 
         success: false, 
         message: `Invalid Excel format. Missing required columns: ${missingColumns.join(', ')}. Found columns: ${idCol > 0 ? 'id' : ''} ${fullSalaryCol > 0 ? 'Full Salary' : ''} ${localSalaryCol > 0 ? 'Local Salary' : ''} ${oxoSalaryCol > 0 ? 'OXO International Salary' : ''} ${workingDaysCol > 0 ? 'Working Days' : ''} ${epfCol > 0 ? 'EPF' : ''}`,
@@ -396,8 +402,8 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
           userId = parsedId;
         } else {
           // Try to find by employee_id
-          const [empRows] = await pool.execute('SELECT id FROM users WHERE employee_id = ?', [idValue]);
-          const empUsers = empRows as any[];
+          const empResult = await pool.query('SELECT id FROM users WHERE employee_id = $1', [idValue]);
+          const empUsers = empResult.rows as any[];
           if (empUsers.length > 0) {
             userId = empUsers[0].id;
           }
@@ -410,8 +416,8 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         }
 
         // Verify user exists
-        const [userRows] = await pool.execute('SELECT id, first_name, last_name FROM users WHERE id = ?', [userId]);
-        const users = userRows as any[];
+        const userResult2 = await pool.query('SELECT id, first_name, last_name FROM users WHERE id = $1', [userId]);
+        const users = userResult2.rows as any[];
         if (users.length === 0) {
           results.failed++;
           results.errors.push(`Row ${rowNum}: User with ID ${userId} not found`);
@@ -435,10 +441,16 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         const localSalary = parseNumericValue(row.getCell(localSalaryCol));
         const oxoSalary = parseNumericValue(row.getCell(oxoSalaryCol));
         
-        // Debug logging
-        console.log(`Row ${rowNum} - Parsed values: Local=${localSalary}, OXO=${oxoSalary}`);
-        console.log(`  - Local cell value: ${row.getCell(localSalaryCol)?.value}, type: ${typeof row.getCell(localSalaryCol)?.value}`);
-        console.log(`  - OXO cell value: ${row.getCell(oxoSalaryCol)?.value}, type: ${typeof row.getCell(oxoSalaryCol)?.value}`);
+        log(req).debug(
+          {
+            rowNum,
+            localSalary,
+            oxoSalary,
+            localCellValue: row.getCell(localSalaryCol)?.value,
+            oxoCellValue: row.getCell(oxoSalaryCol)?.value,
+          },
+          'Parsed salary row',
+        );
         
         // Calculate Full Salary = Local Salary + OXO International Salary (ignore Full Salary column if present)
         const fullSalary = localSalary + oxoSalary;
@@ -475,7 +487,10 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         const salaryAdvanceDeductions = deductionsCol > 0 ? parseNumericValue(row.getCell(deductionsCol)) : 0;
 
         // Create salary from Excel data
-        console.log(`Creating salary for user ${userId}: Local=${localSalary}, OXO=${oxoSalary}, EPF=${epfDeduction}, Allowances=${allowances}, Deductions=${salaryAdvanceDeductions}`);
+        log(req).info(
+          { userId, localSalary, oxoSalary, epfDeduction, allowances, salaryAdvanceDeductions },
+          'Creating salary from Excel row',
+        );
         await SalaryModel.createSalaryFromExcel(
           userId,
           monthYear,
@@ -492,13 +507,13 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
           },
           generatedBy
         );
-        console.log(`Successfully created salary for user ${userId}`);
+        log(req).info({ userId }, 'Successfully created salary');
 
         results.success++;
       } catch (error: any) {
         results.failed++;
         results.errors.push(`Row ${rowNum}: ${error.message}`);
-        console.error(`Error processing row ${rowNum}:`, error);
+        log(req).error({ err: error, rowNum }, 'Error processing row');
       }
     }
 
@@ -506,7 +521,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     try {
       fs.unlinkSync((req as any).file.path as string);
     } catch (error) {
-      console.error('Error deleting uploaded file:', error);
+      log(req).error({ err: error }, 'Error deleting uploaded file');
     }
 
     res.json({ 
@@ -519,7 +534,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
       }
     });
   } catch (error: any) {
-    console.error('Upload bulk salaries error:', error);
+    log(req).error({ err: error }, 'Upload bulk salaries failed');
     res.status(500).json({ success: false, message: 'Failed to process bulk salaries', error: error.message });
   }
 };
@@ -549,7 +564,7 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'Salary status updated', salary: updated });
   } catch (error: any) {
-    console.error('Update salary status error:', error);
+    log(req).error({ err: error }, 'Update salary status failed');
     res.status(500).json({ success: false, message: 'Failed to update salary status', error: error.message });
   }
 };
@@ -576,7 +591,7 @@ export const getYearToDateEarnings = async (req: Request, res: Response) => {
       salaryCount: salaries.length
     });
   } catch (error: any) {
-    console.error('Get YTD earnings error:', error);
+    log(req).error({ err: error }, 'Get YTD earnings failed');
     res.status(500).json({ success: false, message: 'Failed to fetch YTD earnings', error: error.message });
   }
 };

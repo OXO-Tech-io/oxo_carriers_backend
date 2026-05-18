@@ -3,6 +3,7 @@ import { authenticate, requireHR } from '../middleware/auth';
 import pool from '../config/database';
 import ExcelJS from 'exceljs';
 import { Response } from 'express';
+import { logger } from '../lib/logger';
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.get('/leaves', async (req, res: Response) => {
     const { department, year, month, status, format } = req.query;
 
     let query = `
-      SELECT 
+      SELECT
         lr.*,
         u.employee_id,
         u.first_name,
@@ -30,29 +31,29 @@ router.get('/leaves', async (req, res: Response) => {
     const params: any[] = [];
 
     if (department) {
-      query += ' AND u.department = ?';
       params.push(department);
+      query += ` AND u.department = $${params.length}`;
     }
 
     if (year) {
-      query += ' AND YEAR(lr.start_date) = ?';
       params.push(year);
+      query += ` AND EXTRACT(YEAR FROM lr.start_date) = $${params.length}`;
     }
 
     if (month) {
-      query += ' AND MONTH(lr.start_date) = ?';
       params.push(month);
+      query += ` AND EXTRACT(MONTH FROM lr.start_date) = $${params.length}`;
     }
 
     if (status) {
-      query += ' AND lr.status = ?';
       params.push(status);
+      query += ` AND lr.status = $${params.length}`;
     }
 
     query += ' ORDER BY lr.created_at DESC';
 
-    const [rows] = await pool.execute(query, params);
-    const data = rows as any[];
+    const result = await pool.query(query, params);
+    const data = result.rows as any[];
 
     if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
@@ -96,7 +97,7 @@ router.get('/leaves', async (req, res: Response) => {
       res.json({ success: true, data, count: data.length });
     }
   } catch (error: any) {
-    console.error('Leave report error:', error);
+    (req.log ?? logger).error({ err: error }, 'Leave report failed');
     res.status(500).json({ success: false, message: 'Failed to generate report', error: error.message });
   }
 });
@@ -107,7 +108,7 @@ router.get('/salaries', async (req, res: Response) => {
     const { department, year, month, format } = req.query;
 
     let query = `
-      SELECT 
+      SELECT
         ms.*,
         u.employee_id,
         u.first_name,
@@ -120,24 +121,24 @@ router.get('/salaries', async (req, res: Response) => {
     const params: any[] = [];
 
     if (department) {
-      query += ' AND u.department = ?';
       params.push(department);
+      query += ` AND u.department = $${params.length}`;
     }
 
     if (year) {
-      query += ' AND YEAR(ms.month_year) = ?';
       params.push(year);
+      query += ` AND EXTRACT(YEAR FROM ms.month_year) = $${params.length}`;
     }
 
     if (month) {
-      query += ' AND MONTH(ms.month_year) = ?';
       params.push(month);
+      query += ` AND EXTRACT(MONTH FROM ms.month_year) = $${params.length}`;
     }
 
     query += ' ORDER BY ms.month_year DESC, u.first_name';
 
-    const [rows] = await pool.execute(query, params);
-    const data = rows as any[];
+    const result = await pool.query(query, params);
+    const data = result.rows as any[];
 
     if (format === 'excel') {
       const workbook = new ExcelJS.Workbook();
@@ -179,7 +180,7 @@ router.get('/salaries', async (req, res: Response) => {
       res.json({ success: true, data, count: data.length });
     }
   } catch (error: any) {
-    console.error('Salary report error:', error);
+    (req.log ?? logger).error({ err: error }, 'Salary report failed');
     res.status(500).json({ success: false, message: 'Failed to generate report', error: error.message });
   }
 });
@@ -191,39 +192,42 @@ router.get('/dashboard', async (req, res: Response) => {
     const currentMonth = new Date().getMonth() + 1;
 
     // Total employees
-    const [employeeCount] = await pool.execute('SELECT COUNT(*) as count FROM users WHERE role = "employee"');
-    const totalEmployees = (employeeCount as any[])[0].count;
+    const employeeCountResult = await pool.query(
+      `SELECT COUNT(*) as count FROM users WHERE role = 'employee'`
+    );
+    const totalEmployees = Number((employeeCountResult.rows as any[])[0].count);
 
     // Pending leave requests
-    const [pendingLeaves] = await pool.execute(
-      'SELECT COUNT(*) as count FROM leave_requests WHERE status = "pending"'
+    const pendingLeavesResult = await pool.query(
+      `SELECT COUNT(*) as count FROM leave_requests WHERE status = 'pending'`
     );
-    const pendingLeaveRequests = (pendingLeaves as any[])[0].count;
+    const pendingLeaveRequests = Number((pendingLeavesResult.rows as any[])[0].count);
 
     // Leave requests this month
-    const [monthLeaves] = await pool.execute(
-      'SELECT COUNT(*) as count FROM leave_requests WHERE MONTH(created_at) = ? AND YEAR(created_at) = ?',
+    const monthLeavesResult = await pool.query(
+      `SELECT COUNT(*) as count FROM leave_requests
+       WHERE EXTRACT(MONTH FROM created_at) = $1 AND EXTRACT(YEAR FROM created_at) = $2`,
       [currentMonth, currentYear]
     );
-    const leaveRequestsThisMonth = (monthLeaves as any[])[0].count;
+    const leaveRequestsThisMonth = Number((monthLeavesResult.rows as any[])[0].count);
 
     // Total salaries paid this month
-    const [monthSalaries] = await pool.execute(
-      `SELECT COUNT(*) as count, SUM(net_salary) as total 
-       FROM monthly_salaries 
-       WHERE MONTH(month_year) = ? AND YEAR(month_year) = ? AND status = "paid"`,
+    const monthSalariesResult = await pool.query(
+      `SELECT COUNT(*) as count, SUM(net_salary) as total
+       FROM monthly_salaries
+       WHERE EXTRACT(MONTH FROM month_year) = $1 AND EXTRACT(YEAR FROM month_year) = $2 AND status = 'paid'`,
       [currentMonth, currentYear]
     );
-    const salaryData = (monthSalaries as any[])[0];
-    const salariesPaidThisMonth = salaryData.count;
+    const salaryData = (monthSalariesResult.rows as any[])[0];
+    const salariesPaidThisMonth = Number(salaryData.count);
     const totalSalaryPaid = parseFloat(salaryData.total || 0);
 
     // Department-wise leave distribution
-    const [deptLeaves] = await pool.execute(
-      `SELECT u.department, COUNT(*) as count 
+    const deptLeavesResult = await pool.query(
+      `SELECT u.department, COUNT(*) as count
        FROM leave_requests lr
        JOIN users u ON lr.user_id = u.id
-       WHERE YEAR(lr.created_at) = ?
+       WHERE EXTRACT(YEAR FROM lr.created_at) = $1
        GROUP BY u.department`,
       [currentYear]
     );
@@ -236,11 +240,11 @@ router.get('/dashboard', async (req, res: Response) => {
         leaveRequestsThisMonth,
         salariesPaidThisMonth,
         totalSalaryPaid,
-        departmentLeaveDistribution: deptLeaves
+        departmentLeaveDistribution: deptLeavesResult.rows
       }
     });
   } catch (error: any) {
-    console.error('Dashboard metrics error:', error);
+    (req.log ?? logger).error({ err: error }, 'Dashboard metrics failed');
     res.status(500).json({ success: false, message: 'Failed to fetch metrics', error: error.message });
   }
 });

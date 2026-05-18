@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { VendorModel } from '../models/Vendor';
 import { UserRole } from '../types';
+import { logger } from '../lib/logger';
 
 const canCreateVendor = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE];
 
@@ -30,7 +31,7 @@ export const createVendor = async (req: Request, res: Response) => {
     });
     res.status(201).json({ success: true, message: 'Vendor created successfully.', vendor });
   } catch (error: any) {
-    console.error('Create vendor error:', error);
+    (req.log ?? logger).error({ err: error }, 'Create vendor failed');
     res.status(500).json({ success: false, message: 'Failed to create vendor', error: error.message });
   }
 };
@@ -42,7 +43,7 @@ export const getAllVendors = async (req: Request, res: Response) => {
     const vendors = await VendorModel.getAll({ search: search || undefined });
     res.json({ success: true, vendors });
   } catch (error: any) {
-    console.error('Get vendors error:', error);
+    (req.log ?? logger).error({ err: error }, 'Get vendors failed');
     res.status(500).json({ success: false, message: 'Failed to fetch vendors', error: error.message });
   }
 };
@@ -57,7 +58,7 @@ export const getVendorById = async (req: Request, res: Response) => {
     if (!vendor) return res.status(404).json({ success: false, message: 'Vendor not found' });
     res.json({ success: true, vendor });
   } catch (error: any) {
-    console.error('Get vendor error:', error);
+    (req.log ?? logger).error({ err: error }, 'Get vendor failed');
     res.status(500).json({ success: false, message: 'Failed to fetch vendor', error: error.message });
   }
 };

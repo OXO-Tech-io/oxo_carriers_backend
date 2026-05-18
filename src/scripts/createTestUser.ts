@@ -11,25 +11,25 @@ async function createTestUser() {
     const hashedPassword = await bcrypt.hash(password, 10);
 
     // Check if user already exists
-    const [existing] = await pool.execute(
-      'SELECT id FROM users WHERE email = ?',
+    const existing = await pool.query(
+      'SELECT id FROM users WHERE email = $1',
       [email]
     );
-    const existingUsers = existing as any[];
+    const existingUsers = existing.rows as any[];
 
     if (existingUsers.length > 0) {
       console.log('User already exists. Updating password...');
-      await pool.execute(
-        'UPDATE users SET password = ?, must_change_password = false WHERE email = ?',
+      await pool.query(
+        'UPDATE users SET password = $1, must_change_password = false WHERE email = $2',
         [hashedPassword, email]
       );
       console.log('✅ Password updated for test@gmail.com');
     } else {
       // Create new user
       const employeeId = `EMP${new Date().getFullYear()}0001`;
-      await pool.execute(
+      await pool.query(
         `INSERT INTO users (employee_id, email, password, first_name, last_name, role, must_change_password)
-         VALUES (?, ?, ?, ?, ?, 'hr_manager', false)`,
+         VALUES ($1, $2, $3, $4, $5, 'hr_manager', false)`,
         [employeeId, email, hashedPassword, 'Test', 'User']
       );
       console.log('✅ Test user created successfully!');

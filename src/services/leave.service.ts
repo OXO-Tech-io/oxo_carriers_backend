@@ -143,11 +143,11 @@ export const leaveService = {
     let newStatus: LeaveStatus;
 
     if (approvedBy === 'team_leader') {
-      const [rows] = await pool.execute(
-        'SELECT manager_id FROM users WHERE id = ?',
+      const result = await pool.query(
+        'SELECT manager_id FROM users WHERE id = $1',
         [request.user_id]
       );
-      const requester = (rows as Array<{ manager_id: number | null }>)[0];
+      const requester = (result.rows as Array<{ manager_id: number | null }>)[0];
       if (!requester || requester.manager_id !== actorUserId) {
         throw new ForbiddenError(
           'Only the team leader can approve this request'

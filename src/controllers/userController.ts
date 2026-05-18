@@ -7,8 +7,11 @@ import { sendPasswordSetupEmail, sendEmailVerificationEmail } from '../config/em
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { logger } from '../lib/logger';
 
 import { passwordResetTokens } from '../utils/tokenStore';
+
+const log = (req: Request) => req.log ?? logger;
 
 /** All valid role values accepted by the API */
 const VALID_ROLES: string[] = Object.values(UserRole);
@@ -25,7 +28,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
 
     res.json({ success: true, users });
   } catch (error: any) {
-    console.error('Get all users error:', error);
+    log(req).error({ err: error }, 'Get all users failed');
     res.status(500).json({ success: false, message: 'Failed to fetch users', error: error.message });
   }
 };
@@ -49,7 +52,7 @@ export const getUserById = async (req: Request, res: Response) => {
 
     res.json({ success: true, user });
   } catch (error: any) {
-    console.error('Get user error:', error);
+    log(req).error({ err: error }, 'Get user failed');
     res.status(500).json({ success: false, message: 'Failed to fetch user', error: error.message });
   }
 };
@@ -163,7 +166,7 @@ export const createUser = async (req: Request, res: Response) => {
       });
       await UserModel.linkKeycloakSub(user.id, kcSub);
     } catch (kcError) {
-      console.error('[UserController] ⚠️  Keycloak provisioning failed:', kcError);
+      log(req).error({ err: kcError }, 'Keycloak provisioning failed');
       // Surface to HR — they need to know the user can't log in yet. The DB row
       // remains so they can retry by manually creating the KC user later.
       return res.status(502).json({
@@ -179,18 +182,18 @@ export const createUser = async (req: Request, res: Response) => {
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
       const currentYear = new Date().getFullYear();
-      const [leaveTypes] = await pool.execute('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
-      const types = leaveTypes as any[];
+      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
+      const types = leaveTypesResult.rows as any[];
 
-      const hireDate = user.hire_date ? new Date(user.hire_date) : new Date();
+      const hireDate = user.hireDate ? new Date(user.hireDate) : new Date();
 
       for (const type of types) {
         let totalDays = type.max_days;
         if (type.name.toLowerCase() === 'annual' || type.name.toLowerCase() === 'annual/paid leave') {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
-        await pool.execute(
-          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES (?, ?, ?, 0, ?, ?)',
+        await pool.query(
+          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
           [user.id, type.id, totalDays, totalDays, currentYear]
         );
       }
@@ -202,20 +205,20 @@ export const createUser = async (req: Request, res: Response) => {
     passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
 
     try {
-      console.log(`[UserController] 📨 New User Created. Sending verification email to ${email}...`);
+      log(req).info({ email }, 'New user created; sending verification email');
       const verificationEmailResult = await sendEmailVerificationEmail(email, verificationToken, effectiveFirst);
       if (!verificationEmailResult) {
-        console.error(`⚠️  Failed to send email verification email to ${email}`);
+        log(req).error({ email }, 'Failed to send email verification email');
       }
-      console.log(`[UserController] 📨 Sending password setup email to ${email}...`);
+      log(req).info({ email }, 'Sending password setup email');
       const setupEmailResult = await sendPasswordSetupEmail(email, resetToken, effectiveFirst, employeeId);
       if (!setupEmailResult) {
-        console.error(`⚠️  Failed to send password setup email to ${email}`);
+        log(req).error({ email }, 'Failed to send password setup email');
       } else {
-        console.log(`✅ Password setup email sent successfully to ${email}`);
+        log(req).info({ email }, 'Password setup email sent');
       }
     } catch (emailError: any) {
-      console.error('❌ Error sending emails:', emailError);
+      log(req).error({ err: emailError }, 'Error sending emails');
     }
 
     const { password: _, ...userWithoutPassword } = user;
@@ -226,7 +229,7 @@ export const createUser = async (req: Request, res: Response) => {
       user: userWithoutPassword,
     });
   } catch (error: any) {
-    console.error('Create user error:', error);
+    log(req).error({ err: error }, 'Create user failed');
     res.status(500).json({ success: false, message: 'Failed to create user', error: error.message });
   }
 };
@@ -274,7 +277,7 @@ export const updateUser = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'User updated successfully', user });
   } catch (error: any) {
-    console.error('Update user error:', error);
+    log(req).error({ err: error }, 'Update user failed');
     res.status(500).json({ success: false, message: 'Failed to update user', error: error.message });
   }
 };
@@ -299,7 +302,7 @@ export const deleteUser = async (req: Request, res: Response) => {
 
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (error: any) {
-    console.error('Delete user error:', error);
+    log(req).error({ err: error }, 'Delete user failed');
     res.status(500).json({ success: false, message: 'Failed to delete user', error: error.message });
   }
 };
@@ -319,13 +322,13 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
-    console.log(`[UserController] 🔄 Admin initiating password reset for user ID: ${userId}`);
+    log(req).info({ userId }, 'Admin initiating password reset');
     const user = await UserModel.findById(userId);
     if (!user) {
-      console.warn(`[UserController] ❌ User not found for ID: ${userId}`);
+      log(req).warn({ userId }, 'User not found for password reset');
       return res.status(404).json({ success: false, message: 'User not found' });
     }
-    console.log(`[UserController] 👤 Found user: ${user.email} (${user.first_name})`);
+    log(req).debug({ email: user.email, firstName: user.firstName }, 'Found user');
 
     // Generate password reset token
     const resetToken = crypto.randomBytes(32).toString('hex');
@@ -333,44 +336,42 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
 
     try {
-      console.log(`[UserController] 📨 Calling sendPasswordSetupEmail...`);
-      const emailResult = await sendPasswordSetupEmail(user.email, resetToken, user.first_name, user.employee_id);
-      
+      const emailResult = await sendPasswordSetupEmail(user.email, resetToken, user.firstName, user.employeeId ?? '');
+
       if (!emailResult) {
-        console.error(`[UserController] ❌ Email service returned null/false for ${user.email}`);
-        console.error(`⚠️  Failed to send password reset email to ${user.email}`);
-        console.error('   Please check SMTP configuration in .env file');
-        console.error('   Run "npm run test:email" to verify email configuration');
-        return res.status(500).json({ 
-          success: false, 
-          message: 'Failed to send reset email. Please check SMTP configuration.' 
+        log(req).error(
+          { email: user.email },
+          'Email service returned null sending password reset; check EMAILJS_* in .env',
+        );
+        return res.status(500).json({
+          success: false,
+          message: 'Failed to send reset email. Please check SMTP configuration.',
         });
       }
-      console.log(`✅ Password reset email sent successfully to ${user.email}`);
-      res.json({ 
-        success: true, 
-        message: 'Password reset email has been sent to the user' 
+      log(req).info({ email: user.email }, 'Password reset email sent');
+      res.json({
+        success: true,
+        message: 'Password reset email has been sent to the user',
       });
     } catch (emailError: any) {
-      console.error('❌ Error sending password reset email:', emailError);
-      console.error('   Error details:', emailError.message);
+      log(req).error({ err: emailError }, 'Error sending password reset email');
       res.status(500).json({ success: false, message: 'Failed to send reset email' });
     }
   } catch (error: any) {
-    console.error('Reset user password error:', error);
+    log(req).error({ err: error }, 'Reset user password failed');
     res.status(500).json({ success: false, message: 'Failed to reset password', error: error.message });
   }
 };
 
 export const getDepartments = async (req: Request, res: Response) => {
   try {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       'SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department'
     );
-    const departments = (rows as any[]).map(row => row.department);
+    const departments = (result.rows as any[]).map(row => row.department);
     res.json({ success: true, departments });
   } catch (error: any) {
-    console.error('Get departments error:', error);
+    log(req).error({ err: error }, 'Get departments failed');
     res.status(500).json({ success: false, message: 'Failed to fetch departments', error: error.message });
   }
 };
@@ -418,8 +419,9 @@ export const updateUserRole = async (req: Request, res: Response) => {
       return res.status(500).json({ success: false, message: 'Failed to update role' });
     }
 
-    console.log(
-      `[Permissions] 🔑 Super Admin (userId=${req.user?.userId}) changed user ${userId} role: ${previousRole} → ${role}`
+    log(req).info(
+      { actorId: req.user?.userId, targetUserId: userId, previousRole, newRole: role },
+      'Super Admin changed user role',
     );
 
     res.json({
@@ -428,7 +430,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
       user: { id: userId, previous_role: previousRole, new_role: role },
     });
   } catch (error: any) {
-    console.error('Update user role error:', error);
+    log(req).error({ err: error }, 'Update user role failed');
     res.status(500).json({ success: false, message: 'Failed to update role', error: error.message });
   }
 };

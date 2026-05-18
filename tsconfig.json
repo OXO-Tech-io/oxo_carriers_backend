@@ -13,6 +13,9 @@
         "src/**/*"
     ],
     "exclude": [
-        "node_modules"
+        "node_modules",
+        "src/config/initDatabase.ts",
+        "src/scripts/addSuperAdminRole.ts",
+        "src/scripts/init-db.ts"
     ]
 }

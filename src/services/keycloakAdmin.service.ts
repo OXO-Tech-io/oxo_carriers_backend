@@ -7,11 +7,12 @@
  */
 import { UserRole } from '../types';
 import { AppError } from '../utils/AppError';
+import { env } from '../config/env';
 
-const KC_URL = (process.env.KC_URL || 'http://localhost:5400').replace(/\/$/, '');
-const REALM = process.env.KC_REALM || 'hris';
-const CLIENT_ID = process.env.KC_BACKEND_CLIENT_ID || 'oxo-hris-backend';
-const CLIENT_SECRET = process.env.KC_BACKEND_CLIENT_SECRET;
+const KC_URL = env.KC_URL.replace(/\/$/, '');
+const REALM = env.KC_REALM;
+const CLIENT_ID = env.KC_BACKEND_CLIENT_ID;
+const CLIENT_SECRET = env.KC_BACKEND_CLIENT_SECRET;
 
 interface CachedToken {
   accessToken: string;

@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { JwtPayload, UserRole } from "../types";
 import { UserModel } from "../models/User";
 import { verifyKeycloakToken } from "./keycloakAuth";
+import { logger as baseLogger } from "../lib/logger";
 
 declare global {
   namespace Express {
@@ -80,15 +81,13 @@ export const authenticate = async (
     req.user = {
       userId: user.id,
       email: user.email,
-      role: user.role,
+      role: user.role as UserRole,
       sub: claims.sub,
     };
     next();
   } catch (err) {
-    console.warn(
-      "[Auth] ❌ Token verification failed:",
-      (err as Error).message,
-    );
+    const log = (req as Request & { log?: typeof baseLogger }).log ?? baseLogger;
+    log.warn({ err: (err as Error).message }, "Token verification failed");
     res
       .status(401)
       .json({ success: false, message: "Invalid or expired token" });

@@ -10,7 +10,7 @@ export class FacilityBookingModel {
     end_date?: string;
   }): Promise<any[]> {
     let query = `
-      SELECT fb.*, f.name as facility_name, f.type as facility_type, 
+      SELECT fb.*, f.name as facility_name, f.type as facility_type,
              u.first_name, u.last_name
       FROM facility_bookings fb
       JOIN facilities f ON fb.facility_id = f.id
@@ -20,49 +20,49 @@ export class FacilityBookingModel {
     const params: any[] = [];
 
     if (filters?.user_id) {
-      query += " AND fb.user_id = ?";
       params.push(filters.user_id);
+      query += ` AND fb.user_id = $${params.length}`;
     }
 
     if (filters?.facility_id) {
-      query += " AND fb.facility_id = ?";
       params.push(filters.facility_id);
+      query += ` AND fb.facility_id = $${params.length}`;
     }
 
     if (filters?.status) {
-      query += " AND fb.status = ?";
       params.push(filters.status);
+      query += ` AND fb.status = $${params.length}`;
     }
 
     if (filters?.start_date) {
-      query += " AND fb.start_time >= ?";
       params.push(filters.start_date);
+      query += ` AND fb.start_time >= $${params.length}`;
     }
 
     if (filters?.end_date) {
-      query += " AND fb.end_time <= ?";
       params.push(filters.end_date);
+      query += ` AND fb.end_time <= $${params.length}`;
     }
 
     query += " ORDER BY fb.start_time DESC";
 
-    const [rows] = await pool.execute(query, params);
-    return rows as any[];
+    const result = await pool.query(query, params);
+    return result.rows as any[];
   }
 
   static async findById(id: number): Promise<any | null> {
-    const [rows] = await pool.execute(
+    const result = await pool.query(
       `
       SELECT fb.*, f.name as facility_name, f.type as facility_type,
              u.first_name, u.last_name
       FROM facility_bookings fb
       JOIN facilities f ON fb.facility_id = f.id
       JOIN users u ON fb.user_id = u.id
-      WHERE fb.id = ?
+      WHERE fb.id = $1
     `,
       [id],
     );
-    const bookings = rows as any[];
+    const bookings = result.rows as any[];
     return bookings[0] || null;
   }
 
@@ -73,21 +73,22 @@ export class FacilityBookingModel {
     excludeBookingId?: number,
   ): Promise<boolean> {
     let query = `
-      SELECT COUNT(*) as count 
-      FROM facility_bookings 
-      WHERE facility_id = ? 
+      SELECT COUNT(*) as count
+      FROM facility_bookings
+      WHERE facility_id = $1
       AND status NOT IN ('cancelled')
-      AND (start_time < ? AND end_time > ?)
+      AND (start_time < $2 AND end_time > $3)
     `;
     const params: any[] = [facility_id, end_time, start_time];
 
     if (excludeBookingId) {
-      query += " AND id != ?";
       params.push(excludeBookingId);
+      query += ` AND id != $${params.length}`;
     }
 
-    const [rows]: any = await pool.execute(query, params);
-    return rows[0].count === 0;
+    const result = await pool.query(query, params);
+    const rows = result.rows as any[];
+    return Number(rows[0].count) === 0;
   }
 
   static async create(
@@ -111,13 +112,13 @@ export class FacilityBookingModel {
       bookingData.status || BookingStatus.CONFIRMED,
     ];
 
-    const [result] = await pool.execute(
-      "INSERT INTO facility_bookings (facility_id, user_id, start_time, end_time, purpose, status) VALUES (?, ?, ?, ?, ?, ?)",
+    const result = await pool.query(
+      "INSERT INTO facility_bookings (facility_id, user_id, start_time, end_time, purpose, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
       params,
     );
 
-    const insertResult = result as any;
-    const booking = await this.findById(insertResult.insertId);
+    const newId = (result.rows[0] as any).id;
+    const booking = await this.findById(newId);
     if (!booking) {
       throw new Error("Failed to create booking");
     }
@@ -125,13 +126,13 @@ export class FacilityBookingModel {
   }
 
   static async updateStatus(id: number, status: BookingStatus): Promise<void> {
-    await pool.execute("UPDATE facility_bookings SET status = ? WHERE id = ?", [
+    await pool.query("UPDATE facility_bookings SET status = $1 WHERE id = $2", [
       status,
       id,
     ]);
   }
 
   static async delete(id: number): Promise<void> {
-    await pool.execute("DELETE FROM facility_bookings WHERE id = ?", [id]);
+    await pool.query("DELETE FROM facility_bookings WHERE id = $1", [id]);
   }
 }
