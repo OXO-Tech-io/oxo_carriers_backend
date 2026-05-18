@@ -2,6 +2,7 @@ import mysql from "mysql2/promise";
 import dotenv from "dotenv";
 import bcrypt from "bcryptjs";
 import { calculateProRatedAnnualLeave } from "../utils/leaveCalculation";
+import { logger } from "../lib/logger";
 
 dotenv.config();
 
@@ -10,7 +11,7 @@ export const initializeDatabase = async (): Promise<void> => {
   let dbConnection: mysql.Connection | null = null;
 
   try {
-    console.log("🔄 Initializing database...");
+    logger.info("🔄 Initializing database...");
 
     const dbName = process.env.DB_NAME || "hris_payroll";
     const dbHost = process.env.DB_HOST || "localhost";
@@ -20,7 +21,7 @@ export const initializeDatabase = async (): Promise<void> => {
 
     // Step 1: Connect to MySQL server (without specifying database)
     // This is optional - on some servers, we only have access to a specific database
-    console.log(`📡 Connecting to MySQL server at ${dbHost}:${dbPort}...`);
+    logger.info(`📡 Connecting to MySQL server at ${dbHost}:${dbPort}...`);
     try {
       connection = await mysql.createConnection({
         host: dbHost,
@@ -29,25 +30,25 @@ export const initializeDatabase = async (): Promise<void> => {
         port: dbPort,
         multipleStatements: true,
       });
-      console.log("✅ Connected to MySQL server");
+      logger.info("✅ Connected to MySQL server");
 
       // Step 2: Create database if it doesn't exist
-      console.log(`📦 Creating database '${dbName}' if it doesn't exist...`);
+      logger.info(`📦 Creating database '${dbName}' if it doesn't exist...`);
       await connection.query(
         `CREATE DATABASE IF NOT EXISTS \`${dbName}\` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`,
       );
-      console.log(`✅ Database '${dbName}' is ready`);
+      logger.info(`✅ Database '${dbName}' is ready`);
     } catch (error: any) {
-      console.warn(
+      logger.warn(
         `⚠️  Notice: Optional database creation skipped/failed: ${error.message}`,
       );
-      console.log(
+      logger.info(
         "   Continuing to step 3 to connect to pre-existing database...",
       );
     }
 
     // Step 3: Connect to the specific database
-    console.log(`🔌 Connecting to database '${dbName}'...`);
+    logger.info(`🔌 Connecting to database '${dbName}'...`);
     dbConnection = await mysql.createConnection({
       host: dbHost,
       user: dbUser,
@@ -56,7 +57,7 @@ export const initializeDatabase = async (): Promise<void> => {
       port: dbPort,
       multipleStatements: true,
     });
-    console.log(`✅ Connected to database '${dbName}'`);
+    logger.info(`✅ Connected to database '${dbName}'`);
 
     // Step 4: Create all tables
     await createTablesManually(dbConnection);
@@ -67,14 +68,14 @@ export const initializeDatabase = async (): Promise<void> => {
     // Step 6: Verify tables were created
     await verifyTables(dbConnection);
 
-    console.log("✅ Database initialization completed successfully!");
+    logger.info("✅ Database initialization completed successfully!");
   } catch (error: any) {
-    console.error("❌ Database initialization failed:", error.message);
+    logger.error("❌ Database initialization failed:", error.message);
     if (error.code) {
-      console.error(`   Error code: ${error.code}`);
+      logger.error(`   Error code: ${error.code}`);
     }
     if (error.sqlMessage) {
-      console.error(`   SQL Error: ${error.sqlMessage}`);
+      logger.error(`   SQL Error: ${error.sqlMessage}`);
     }
 
     // Check if it's a connection error
@@ -82,10 +83,10 @@ export const initializeDatabase = async (): Promise<void> => {
       error.code === "ECONNREFUSED" ||
       error.code === "ER_ACCESS_DENIED_ERROR"
     ) {
-      console.error("\n💡 Troubleshooting tips:");
-      console.error("   1. Make sure MySQL server is running");
-      console.error("   2. Check your database credentials in .env file");
-      console.error("   3. Verify MySQL user has CREATE DATABASE privileges");
+      logger.error("\n💡 Troubleshooting tips:");
+      logger.error("   1. Make sure MySQL server is running");
+      logger.error("   2. Check your database credentials in .env file");
+      logger.error("   3. Verify MySQL user has CREATE DATABASE privileges");
     }
 
     throw error; // Re-throw to prevent server from starting with broken DB
@@ -133,19 +134,19 @@ const verifyTables = async (connection: mysql.Connection): Promise<void> => {
     );
 
     if (missingTables.length > 0) {
-      console.warn(`⚠️  Missing tables: ${missingTables.join(", ")}`);
+      logger.warn(`⚠️  Missing tables: ${missingTables.join(", ")}`);
     } else {
-      console.log(`✅ Verified: All ${expectedTables.length} tables exist`);
+      logger.info(`✅ Verified: All ${expectedTables.length} tables exist`);
     }
   } catch (error: any) {
-    console.warn("⚠️  Could not verify tables:", error.message);
+    logger.warn("⚠️  Could not verify tables:", error.message);
   }
 };
 
 const createTablesManually = async (
   connection: mysql.Connection,
 ): Promise<void> => {
-  console.log("📋 Creating tables...");
+  logger.info("📋 Creating tables...");
 
   // Disable foreign key checks temporarily
   await connection.query("SET FOREIGN_KEY_CHECKS = 0");
@@ -172,9 +173,9 @@ const createTablesManually = async (
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ users table");
+    logger.info("  ✓ users table");
   } catch (error: any) {
-    console.error("  ✗ Error creating users table:", error.message);
+    logger.error("  ✗ Error creating users table:", error.message);
     throw error;
   }
 
@@ -194,9 +195,9 @@ const createTablesManually = async (
         FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ user_permissions table");
+    logger.info("  ✓ user_permissions table");
   } catch (error: any) {
-    console.error("  ✗ Error creating user_permissions table:", error.message);
+    logger.error("  ✗ Error creating user_permissions table:", error.message);
     throw error;
   }
 
@@ -212,9 +213,9 @@ const createTablesManually = async (
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ leave_types table");
+    logger.info("  ✓ leave_types table");
   } catch (error: any) {
-    console.error("  ✗ Error creating leave_types table:", error.message);
+    logger.error("  ✗ Error creating leave_types table:", error.message);
     throw error;
   }
 
@@ -230,9 +231,9 @@ const createTablesManually = async (
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ salary_components table");
+    logger.info("  ✓ salary_components table");
   } catch (error: any) {
-    console.error("  ✗ Error creating salary_components table:", error.message);
+    logger.error("  ✗ Error creating salary_components table:", error.message);
     throw error;
   }
 
@@ -254,9 +255,9 @@ const createTablesManually = async (
         UNIQUE KEY unique_user_leave_year (user_id, leave_type_id, year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ employee_leave_balance table");
+    logger.info("  ✓ employee_leave_balance table");
   } catch (error: any) {
-    console.error(
+    logger.error(
       "  ✗ Error creating employee_leave_balance table:",
       error.message,
     );
@@ -287,9 +288,9 @@ const createTablesManually = async (
         FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ leave_requests table");
+    logger.info("  ✓ leave_requests table");
   } catch (error: any) {
-    console.error("  ✗ Error creating leave_requests table:", error.message);
+    logger.error("  ✗ Error creating leave_requests table:", error.message);
     throw error;
   }
 
@@ -311,9 +312,9 @@ const createTablesManually = async (
         INDEX idx_year (year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ leave_calendar table");
+    logger.info("  ✓ leave_calendar table");
   } catch (error: any) {
-    console.error("  ✗ Error creating leave_calendar table:", error.message);
+    logger.error("  ✗ Error creating leave_calendar table:", error.message);
     throw error;
   }
 
@@ -334,9 +335,9 @@ const createTablesManually = async (
         FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ employee_salary_structure table");
+    logger.info("  ✓ employee_salary_structure table");
   } catch (error: any) {
-    console.error(
+    logger.error(
       "  ✗ Error creating employee_salary_structure table:",
       error.message,
     );
@@ -366,9 +367,9 @@ const createTablesManually = async (
         UNIQUE KEY unique_user_month (user_id, month_year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ monthly_salaries table");
+    logger.info("  ✓ monthly_salaries table");
   } catch (error: any) {
-    console.error("  ✗ Error creating monthly_salaries table:", error.message);
+    logger.error("  ✗ Error creating monthly_salaries table:", error.message);
     throw error;
   }
 
@@ -385,9 +386,9 @@ const createTablesManually = async (
         FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ salary_slip_details table");
+    logger.info("  ✓ salary_slip_details table");
   } catch (error: any) {
-    console.error(
+    logger.error(
       "  ✗ Error creating salary_slip_details table:",
       error.message,
     );
@@ -411,9 +412,9 @@ const createTablesManually = async (
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ audit_logs table");
+    logger.info("  ✓ audit_logs table");
   } catch (error: any) {
-    console.error("  ✗ Error creating audit_logs table:", error.message);
+    logger.error("  ✗ Error creating audit_logs table:", error.message);
     throw error;
   }
 
@@ -432,9 +433,9 @@ const createTablesManually = async (
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ facilities table");
+    logger.info("  ✓ facilities table");
   } catch (error: any) {
-    console.error("  ✗ Error creating facilities table:", error.message);
+    logger.error("  ✗ Error creating facilities table:", error.message);
     throw error;
   }
 
@@ -455,9 +456,9 @@ const createTablesManually = async (
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ facility_bookings table");
+    logger.info("  ✓ facility_bookings table");
   } catch (error: any) {
-    console.error("  ✗ Error creating facility_bookings table:", error.message);
+    logger.error("  ✗ Error creating facility_bookings table:", error.message);
     throw error;
   }
 
@@ -487,9 +488,9 @@ const createTablesManually = async (
         INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ medical_insurance_claims table");
+    logger.info("  ✓ medical_insurance_claims table");
   } catch (error: any) {
-    console.error(
+    logger.error(
       "  ✗ Error creating medical_insurance_claims table:",
       error.message,
     );
@@ -501,9 +502,9 @@ const createTablesManually = async (
     await connection.query(`
       UPDATE users SET role = 'finance_executive' WHERE role = 'payment_approver'
     `);
-    console.log("  ✓ migrated payment_approver users to finance_executive");
+    logger.info("  ✓ migrated payment_approver users to finance_executive");
   } catch (error: any) {
-    console.warn("  ⚠ users.role data migration:", error.message);
+    logger.warn("  ⚠ users.role data migration:", error.message);
   }
 
   // Migration: Add consultant/service_provider roles and hourly_rate to users
@@ -512,13 +513,13 @@ const createTablesManually = async (
       ALTER TABLE users
       MODIFY COLUMN role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'employee', 'consultant', 'service_provider') NOT NULL
     `);
-    console.log("  ✓ users.role ENUM updated");
+    logger.info("  ✓ users.role ENUM updated");
   } catch (error: any) {
     if (
       error.code !== "ER_INVALID_USE_OF_NULL" &&
       !error.message?.includes("Duplicate")
     ) {
-      console.warn("  ⚠ users.role migration:", error.message);
+      logger.warn("  ⚠ users.role migration:", error.message);
     }
   }
 
@@ -538,9 +539,9 @@ const createTablesManually = async (
         FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ user_permissions table verified");
+    logger.info("  ✓ user_permissions table verified");
   } catch (error: any) {
-    console.warn("  ⚠ user_permissions migration:", error.message);
+    logger.warn("  ⚠ user_permissions migration:", error.message);
   }
 
   // Migration: upgrade user_permissions from allowed boolean to access_level read/write
@@ -557,7 +558,7 @@ const createTablesManually = async (
         ALTER TABLE user_permissions
         ADD COLUMN access_level ENUM('read', 'write') NOT NULL DEFAULT 'read' AFTER permission_key
       `);
-      console.log("  ✓ user_permissions.access_level column added");
+      logger.info("  ✓ user_permissions.access_level column added");
     }
 
     const [allowedCol]: any = await connection.query(`
@@ -572,7 +573,7 @@ const createTablesManually = async (
         UPDATE user_permissions
         SET access_level = CASE WHEN allowed = 1 THEN 'write' ELSE 'read' END
       `);
-      console.log(
+      logger.info(
         "  ✓ user_permissions existing rows migrated to access_level",
       );
 
@@ -580,13 +581,13 @@ const createTablesManually = async (
         await connection.query(
           `ALTER TABLE user_permissions DROP COLUMN allowed`,
         );
-        console.log("  ✓ user_permissions.allowed column removed");
+        logger.info("  ✓ user_permissions.allowed column removed");
       } catch (dropError: any) {
-        console.warn("  ⚠ user_permissions.allowed drop:", dropError.message);
+        logger.warn("  ⚠ user_permissions.allowed drop:", dropError.message);
       }
     }
   } catch (error: any) {
-    console.warn("  ⚠ user_permissions access_level migration:", error.message);
+    logger.warn("  ⚠ user_permissions access_level migration:", error.message);
   }
   try {
     const [cols]: any = await connection.query(`
@@ -597,10 +598,10 @@ const createTablesManually = async (
       await connection.query(`
         ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(10,2) NULL AFTER position
       `);
-      console.log("  ✓ users.hourly_rate column added");
+      logger.info("  ✓ users.hourly_rate column added");
     }
   } catch (error: any) {
-    console.warn("  ⚠ users.hourly_rate migration:", error.message);
+    logger.warn("  ⚠ users.hourly_rate migration:", error.message);
   }
 
   // Migration: Add bank details and service provider fields to users
@@ -633,10 +634,10 @@ const createTablesManually = async (
         await connection.query(`
           ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.def} AFTER \`${col.after}\`
         `);
-        console.log(`  ✓ users.${col.name} column added`);
+        logger.info(`  ✓ users.${col.name} column added`);
       }
     } catch (error: any) {
-      console.warn(`  ⚠ users.${col.name} migration:`, error.message);
+      logger.warn(`  ⚠ users.${col.name} migration:`, error.message);
     }
   }
 
@@ -665,9 +666,9 @@ const createTablesManually = async (
         INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ consultant_work_submissions table");
+    logger.info("  ✓ consultant_work_submissions table");
   } catch (error: any) {
-    console.error(
+    logger.error(
       "  ✗ Error creating consultant_work_submissions table:",
       error.message,
     );
@@ -691,9 +692,9 @@ const createTablesManually = async (
         UNIQUE KEY vendors_email_unique (email)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
-    console.log("  ✓ vendors table");
+    logger.info("  ✓ vendors table");
   } catch (error: any) {
-    console.error("  ✗ Error creating vendors table:", error.message);
+    logger.error("  ✗ Error creating vendors table:", error.message);
     throw error;
   }
 
@@ -733,10 +734,10 @@ const createTablesManually = async (
           INDEX idx_created_by (created_by)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
       `);
-      console.log("  ✓ payment_vouchers table (vendor_id)");
+      logger.info("  ✓ payment_vouchers table (vendor_id)");
     }
   } catch (error: any) {
-    console.error("  ✗ Error creating payment_vouchers table:", error.message);
+    logger.error("  ✗ Error creating payment_vouchers table:", error.message);
     throw error;
   }
 
@@ -786,12 +787,11 @@ const createTablesManually = async (
           `ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`,
         );
       }
-      console.log("  ✓ payment_vouchers migrated to vendor_id");
+      logger.info("  ✓ payment_vouchers migrated to vendor_id");
     }
   } catch (error: any) {
-    console.warn(
-      "  ⚠ payment_vouchers vendor_id migration:",
-      (error as Error).message,
+    logger.warn(
+      `  ⚠ payment_vouchers vendor_id migration: ${(error as Error).message}`,
     );
   }
 
@@ -805,10 +805,10 @@ const createTablesManually = async (
       await connection.query(`
         ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description
       `);
-      console.log("  ✓ payment_vouchers.invoice_url column added");
+      logger.info("  ✓ payment_vouchers.invoice_url column added");
     }
   } catch (error: any) {
-    console.warn("  ⚠ payment_vouchers.invoice_url migration:", error.message);
+    logger.warn("  ⚠ payment_vouchers.invoice_url migration:", error.message);
   }
 
   // Add manager foreign key constraint after users table exists
@@ -828,9 +828,9 @@ const createTablesManually = async (
         ADD CONSTRAINT fk_manager 
         FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL
       `);
-      console.log("  ✓ manager foreign key constraint");
+      logger.info("  ✓ manager foreign key constraint");
     } else {
-      console.log("  ✓ manager foreign key constraint (already exists)");
+      logger.info("  ✓ manager foreign key constraint (already exists)");
     }
   } catch (error: any) {
     // Ignore if constraint already exists or other non-critical errors
@@ -839,7 +839,7 @@ const createTablesManually = async (
       error.code !== "ER_CANT_CREATE_TABLE" &&
       !error.message.includes("Duplicate key")
     ) {
-      console.warn("  ⚠ Warning adding manager FK:", error.message);
+      logger.warn("  ⚠ Warning adding manager FK:", error.message);
     }
   }
 
@@ -863,7 +863,7 @@ const createTablesManually = async (
         ALTER TABLE monthly_salaries 
         ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0 AFTER basic_salary
       `);
-      console.log("  ✓ Added local_salary column to monthly_salaries");
+      logger.info("  ✓ Added local_salary column to monthly_salaries");
     }
 
     if (!existingColumns.includes("oxo_international_salary")) {
@@ -871,25 +871,25 @@ const createTablesManually = async (
         ALTER TABLE monthly_salaries 
         ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0 AFTER local_salary
       `);
-      console.log(
+      logger.info(
         "  ✓ Added oxo_international_salary column to monthly_salaries",
       );
     }
   } catch (error: any) {
-    console.warn(
+    logger.warn(
       "  ⚠ Warning adding columns to monthly_salaries:",
       error.message,
     );
   }
 
-  console.log("✅ All tables created successfully");
+  logger.info("✅ All tables created successfully");
 };
 
 const insertDefaultData = async (
   connection: mysql.Connection,
 ): Promise<void> => {
   try {
-    console.log("📊 Inserting default data...");
+    logger.info("📊 Inserting default data...");
 
     // Insert leave types
     const [leaveTypesResult]: any = await connection.query(`
@@ -903,9 +903,9 @@ const insertDefaultData = async (
         ('Casual', 'Casual Leave', 7, true),
         ('Maternity', 'Maternity Leave', 84, true)
       `);
-      console.log("  ✓ Leave types inserted");
+      logger.info("  ✓ Leave types inserted");
     } else {
-      console.log("  ✓ Leave types already exist");
+      logger.info("  ✓ Leave types already exist");
     }
 
     // Insert salary components
@@ -927,9 +927,9 @@ const insertDefaultData = async (
         ('Tax Deduction', 'deduction', true, true),
         ('Late Attendance', 'deduction', false, true)
       `);
-      console.log("  ✓ Salary components inserted");
+      logger.info("  ✓ Salary components inserted");
     } else {
-      console.log("  ✓ Salary components already exist");
+      logger.info("  ✓ Salary components already exist");
     }
 
     // Insert default facilities
@@ -945,9 +945,9 @@ const insertDefaultData = async (
         ('Meeting Room Small', 'meeting_room', 'Small meeting room for quick gatherings', 'Whiteboard, AC', 4, true),
         ('Guest Room 101', 'accommodation', 'Comfortable accommodation for visitors', 'Bed, TV, AC, Attached Bathroom', 2, true)
       `);
-      console.log("  ✓ Default facilities inserted");
+      logger.info("  ✓ Default facilities inserted");
     } else {
-      console.log("  ✓ Facilities already exist");
+      logger.info("  ✓ Facilities already exist");
     }
 
     // Insert default super admin user
@@ -974,11 +974,11 @@ const insertDefaultData = async (
           new Date(),
         ],
       );
-      console.log(
+      logger.info(
         "  ✓ Default super admin created: superadmin@oxocareers.com (password: Admin@123)",
       );
     } else {
-      console.log("  ✓ Super admin already exists");
+      logger.info("  ✓ Super admin already exists");
     }
 
     // Insert dummy user
@@ -1013,7 +1013,7 @@ const insertDefaultData = async (
       );
 
       const userId = userResult.insertId;
-      console.log(`  ✓ Dummy user created: nimshan@gmail.com (ID: ${userId})`);
+      logger.info(`  ✓ Dummy user created: nimshan@gmail.com (ID: ${userId})`);
 
       // Initialize leave balances for the dummy user
       const currentYear = new Date().getFullYear();
@@ -1041,14 +1041,14 @@ const insertDefaultData = async (
         );
       }
 
-      console.log("  ✓ Leave balances initialized for dummy user");
+      logger.info("  ✓ Leave balances initialized for dummy user");
     } else {
-      console.log("  ✓ Dummy user already exists");
+      logger.info("  ✓ Dummy user already exists");
     }
 
-    console.log("✅ Default data ready");
+    logger.info("✅ Default data ready");
   } catch (error: any) {
-    console.error("⚠️  Warning inserting default data:", error.message);
+    logger.error("⚠️  Warning inserting default data:", error.message);
     // Don't throw - default data is not critical for startup
   }
 };
