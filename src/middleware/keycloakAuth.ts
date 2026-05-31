@@ -9,7 +9,7 @@ const issuerUrl = (() => {
 const jwksUri = `${issuerUrl}/protocol/openid-connect/certs`;
 
 const parseAudience = (): string[] | undefined => {
-  const fromEnv = (env.KC_AUDIENCE ?? "")
+  const fromEnv = (env.KC_AUDIENCE ?? "kc_backend_client_id")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
