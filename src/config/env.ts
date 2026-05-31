@@ -48,7 +48,16 @@ const Schema = z.object({
   DB_USER: z.string().min(1).default('postgres'),
   DB_PASSWORD: z.string().default(''),
   DB_NAME: z.string().min(1).default('oxo_carriers'),
+  DB_SCHEMA: z.string().min(1).default('public'),
   DB_SSL: boolish.default(false),
+
+  // ─── Cloud SQL (GCP) ────────────────────────────────────────────────────
+  /** When true, use Cloud SQL proxy socket connection (e.g., /cloudsql/PROJECT:REGION:INSTANCE) */
+  CLOUD_SQL_CONNECTION_NAME: z.string().optional(),
+  /** Path to the Cloud SQL proxy socket (computed if CLOUD_SQL_CONNECTION_NAME is set) */
+  DB_SOCKET_PATH: z.string().optional(),
+  /** Port where Cloud SQL proxy listens (only used when running proxy separately) */
+  CLOUD_SQL_PROXY_PORT: z.coerce.number().int().positive().default(5433),
 
   // ─── Legacy JWT ─────────────────────────────────────────────────────────
   // No longer used for sign-in (Keycloak owns identity). Kept for any

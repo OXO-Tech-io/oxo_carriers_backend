@@ -1,18 +1,22 @@
 name: Deploy OXO Carriers Backend to Cloud Run
 
 on:
-  pull_request:
-    branches: [ develop ]
-    types: [closed]
+  push:
+    branches: [ task/ci-cd-integration ]
     paths-ignore:
       - '.github/workflows/**'
+  # pull_request:
+  #   branches: [ develop ]
+  #   types: [closed]
+  #   paths-ignore:
+  #     - '.github/workflows/**'
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
   SERVICE_NAME: oxo-carriers-backend
   REGION: us-central1
   AR_HOSTNAME: us-central1-docker.pkg.dev
-  REPOSITORY: oxo-carriers-repo
+  REPOSITORY: cgp-repo
 
 jobs:
   build-and-test:
@@ -111,7 +115,9 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          # Deploy the service
+          # Deploy the service with Cloud SQL configuration
+          # The service account has access to Cloud SQL, so we use CLOUD_SQL_CONNECTION_NAME
+          # instead of individual DB_HOST/DB_PORT/DB_PASSWORD variables
           gcloud run deploy $SERVICE_NAME \
             --image=$AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
             --region=$REGION \
@@ -120,23 +126,25 @@ jobs:
             --memory=1Gi \
             --cpu=1 \
             --port=5000 \
+            --service-account=${{ secrets.GCP_SA_EMAIL }} \
             --set-env-vars="NODE_ENV=production" \
             --set-env-vars="PORT=${{ secrets.PORT }}" \
-            --set-env-vars="DB_HOST=${{ secrets.DB_HOST }}" \
+            --set-env-vars="CLOUD_SQL_CONNECTION_NAME=${{ secrets.CLOUD_SQL_CONNECTION_NAME }}" \
             --set-env-vars="DB_USER=${{ secrets.DB_USER }}" \
-            --set-env-vars="DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
             --set-env-vars="DB_NAME=${{ secrets.DB_NAME }}" \
-            --set-env-vars="DB_PORT=${{ secrets.DB_PORT }}" \
+            --set-env-vars="DB_SCHEMA=${{ secrets.DB_SCHEMA }}" \
             --set-env-vars="JWT_SECRET=${{ secrets.JWT_SECRET }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.FRONTEND_URL }}" \
             --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.EMAILJS_SERVICE_ID }}" \
             --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.EMAILJS_TEMPLATE_ID }}" \
             --set-env-vars="EMAILJS_PUBLIC_KEY=${{ secrets.EMAILJS_PUBLIC_KEY }}" \
             --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.EMAILJS_PRIVATE_KEY }}" \
+            --set-env-vars="KC_URL=${{ secrets.KC_URL }}" \
+            --set-env-vars="KC_REALM=${{ secrets.KC_REALM }}" \
+            --set-env-vars="KC_AUDIENCE=${{ secrets.KC_AUDIENCE }}" \
+            --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.KC_BACKEND_CLIENT_ID }}" \
+            --set-env-vars="KC_BACKEND_CLIENT_SECRET=${{ secrets.KC_BACKEND_CLIENT_SECRET }}" \
             --revision-suffix=${{ github.sha }} \
-            --network=default \
-            --subnet=default \
-            --vpc-egress=all-traffic \
             --labels="commit=${{ github.sha }},branch=develop,app=oxo-carriers-backend" \
             --quiet
 

@@ -105,6 +105,36 @@ pnpm db:push
 pnpm db:seed
 ```
 
+## Google Cloud SQL Setup (Production Deployment)
+
+This backend supports Google Cloud SQL for production deployments on Cloud Run.
+
+### Quick Start
+- **For a quick start**: Read [CLOUD_SQL_QUICKSTART.md](./docs/CLOUD_SQL_QUICKSTART.md)
+- **For detailed setup**: Read [CLOUD_SQL_SETUP.md](./docs/CLOUD_SQL_SETUP.md)
+- **For step-by-step checklist**: Read [CLOUD_SQL_SETUP_CHECKLIST.md](./docs/CLOUD_SQL_SETUP_CHECKLIST.md)
+
+### Key Features
+✅ Automatic Unix socket connection via Cloud SQL Proxy  
+✅ Secure service account authentication  
+✅ No passwords exposed in environment variables  
+✅ Works with Drizzle ORM migrations  
+✅ GitHub Actions CI/CD integration  
+
+### Environment Variables for Cloud SQL
+```env
+# Google Cloud SQL (use this for production)
+CLOUD_SQL_CONNECTION_NAME=PROJECT_ID:REGION:INSTANCE_NAME
+
+# Or with local proxy
+DB_SOCKET_PATH=/cloudsql/PROJECT_ID:REGION:INSTANCE_NAME
+
+# Database credentials
+DB_USER=oxo_app
+DB_NAME=oxo_carriersDB_SCHEMA=hris1
+# Standard DB config is ignored when Cloud SQL is configured
+```
+
 ## Development
 
 ### Start Development Server

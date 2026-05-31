@@ -146,7 +146,9 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
-          # Deploy the service
+          # Deploy the service with Cloud SQL configuration
+          # The service account has access to Cloud SQL, so we use CLOUD_SQL_CONNECTION_NAME
+          # instead of individual DB_HOST/DB_PORT/DB_PASSWORD variables
           gcloud run deploy $SERVICE_NAME \
             --image=$AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
             --region=$REGION \
@@ -155,19 +157,24 @@ jobs:
             --memory=1Gi \
             --cpu=1 \
             --port=5000 \
+            --service-account=${{ secrets.QA_GCP_SA_EMAIL }} \
             --set-env-vars="NODE_ENV=production" \
             --set-env-vars="PORT=${{ secrets.QA_PORT }}" \
-            --set-env-vars="DB_HOST=${{ secrets.QA_DB_HOST }}" \
+            --set-env-vars="CLOUD_SQL_CONNECTION_NAME=${{ secrets.QA_CLOUD_SQL_CONNECTION_NAME }}" \
             --set-env-vars="DB_USER=${{ secrets.QA_DB_USER }}" \
-            --set-env-vars="DB_PASSWORD=${{ secrets.QA_DB_PASSWORD }}" \
             --set-env-vars="DB_NAME=${{ secrets.QA_DB_NAME }}" \
-            --set-env-vars="DB_PORT=${{ secrets.QA_DB_PORT }}" \
+            --set-env-vars="DB_SCHEMA=${{ secrets.QA_DB_SCHEMA }}" \
             --set-env-vars="JWT_SECRET=${{ secrets.QA_JWT_SECRET }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.QA_FRONTEND_URL }}" \
             --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.QA_EMAILJS_SERVICE_ID }}" \
             --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.QA_EMAILJS_TEMPLATE_ID }}" \
             --set-env-vars="EMAILJS_PUBLIC_KEY=${{ secrets.QA_EMAILJS_PUBLIC_KEY }}" \
             --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.QA_EMAILJS_PRIVATE_KEY }}" \
+            --set-env-vars="KC_URL=${{ secrets.QA_KC_URL }}" \
+            --set-env-vars="KC_REALM=${{ secrets.QA_KC_REALM }}" \
+            --set-env-vars="KC_AUDIENCE=${{ secrets.QA_KC_AUDIENCE }}" \
+            --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.QA_KC_BACKEND_CLIENT_ID }}" \
+            --set-env-vars="KC_BACKEND_CLIENT_SECRET=${{ secrets.QA_KC_BACKEND_CLIENT_SECRET }}" \
             --revision-suffix=${{ github.sha }} \
             --labels="commit=${{ github.sha }},branch=qa,app=oxo-carriers-backend" \
             --quiet

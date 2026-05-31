@@ -4,6 +4,7 @@
 // All other imports below see a fully populated, typed `env`.
 import { env, ENV_LOADED_FROM } from './config/env';
 import { logger } from './lib/logger';
+import { logCloudSqlInfo } from './lib/cloudSql';
 
 import express from 'express';
 import path from 'path';
@@ -30,6 +31,9 @@ if (ENV_LOADED_FROM) {
 } else {
   logger.info('No .env file found; using process.env values');
 }
+
+// Log Cloud SQL configuration
+logCloudSqlInfo(logger);
 
 const app = express();
 const PORT = env.PORT;
