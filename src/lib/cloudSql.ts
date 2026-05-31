@@ -60,9 +60,9 @@ export function getCloudSqlConnectionInfo(): CloudSqlConnectionInfo {
     };
   }
 
-  const parsed =
-    env.CLOUD_SQL_CONNECTION_NAME &&
-    parseCloudSqlConnectionName(env.CLOUD_SQL_CONNECTION_NAME);
+  const parsed = env.CLOUD_SQL_CONNECTION_NAME
+    ? parseCloudSqlConnectionName(env.CLOUD_SQL_CONNECTION_NAME)
+    : null;
 
   return {
     isCloudSql: true,
