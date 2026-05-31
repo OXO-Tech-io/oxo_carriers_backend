@@ -15,8 +15,7 @@ const parseAudience = (): string[] | undefined => {
     .filter(Boolean);
 
   const fallbackClients = [
-    env.KC_BACKEND_CLIENT_ID,
-    env.KC_FRONTEND_CLIENT_ID,
+    "kc_backend_client_id",
   ].filter(Boolean) as string[];
 
   const audiences = Array.from(new Set([...fromEnv, ...fallbackClients]));
