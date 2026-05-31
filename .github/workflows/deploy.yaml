@@ -116,6 +116,7 @@ jobs:
       - name: Deploy to Cloud Run
         id: deploy
         run: |
+          # --service-account=${{ secrets.GCP_SA_EMAIL }} \
           # Deploy the service with Cloud SQL configuration
           # The service account has access to Cloud SQL, so we use CLOUD_SQL_CONNECTION_NAME
           # instead of individual DB_HOST/DB_PORT/DB_PASSWORD variables
@@ -127,7 +128,6 @@ jobs:
             --memory=1Gi \
             --cpu=1 \
             --port=5000 \
-            --service-account=${{ secrets.GCP_SA_EMAIL }} \
             --set-env-vars="NODE_ENV=production" \
             --set-env-vars="PORT=${{ secrets.PORT }}" \
             --set-env-vars="CLOUD_SQL_CONNECTION_NAME=${{ secrets.CLOUD_SQL_CONNECTION_NAME }}" \
