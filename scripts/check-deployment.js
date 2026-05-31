@@ -50,14 +50,13 @@ for (const [name, check] of Object.entries(checks)) {
       const hasDbUser = envContent.includes('DB_USER');
       const hasDbPassword = envContent.includes('DB_PASSWORD');
       const hasDbName = envContent.includes('DB_NAME');
-      const hasJwtSecret = envContent.includes('JWT_SECRET');
+  
       const hasFrontendUrl = envContent.includes('FRONTEND_URL');
       
       console.log(`   - DB_HOST: ${hasDbHost ? '✅' : '❌'}`);
       console.log(`   - DB_USER: ${hasDbUser ? '✅' : '❌'}`);
       console.log(`   - DB_PASSWORD: ${hasDbPassword ? '✅' : '❌'}`);
       console.log(`   - DB_NAME: ${hasDbName ? '✅' : '❌'}`);
-      console.log(`   - JWT_SECRET: ${hasJwtSecret ? '✅' : '❌'}`);
       console.log(`   - FRONTEND_URL: ${hasFrontendUrl ? '✅' : '❌'}`);
     } catch (e) {
       console.log('   ⚠️  Could not read .env file');

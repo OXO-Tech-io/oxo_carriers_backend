@@ -133,7 +133,6 @@ jobs:
             --set-env-vars="DB_USER=${{ secrets.DB_USER }}" \
             --set-env-vars="DB_NAME=${{ secrets.DB_NAME }}" \
             --set-env-vars="DB_SCHEMA=${{ secrets.DB_SCHEMA }}" \
-            --set-env-vars="JWT_SECRET=${{ secrets.JWT_SECRET }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.FRONTEND_URL }}" \
             --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.EMAILJS_SERVICE_ID }}" \
             --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.EMAILJS_TEMPLATE_ID }}" \

@@ -75,7 +75,6 @@ DB_NAME=oxo_carriers
 # Application
 PORT=5000
 NODE_ENV=development
-JWT_SECRET=your-secret-key
 
 # Email
 SENDGRID_API_KEY=your_sendgrid_key
@@ -263,7 +262,6 @@ pnpm build
 ### Environment Variables
 
 Ensure production `.env` has:
-- Secure `JWT_SECRET`
 - Production database credentials
 - Email service API keys
 - `NODE_ENV=production`

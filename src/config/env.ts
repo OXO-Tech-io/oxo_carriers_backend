@@ -59,11 +59,6 @@ const Schema = z.object({
   /** Port where Cloud SQL proxy listens (only used when running proxy separately) */
   CLOUD_SQL_PROXY_PORT: z.coerce.number().int().positive().default(5433),
 
-  // ─── Legacy JWT ─────────────────────────────────────────────────────────
-  // No longer used for sign-in (Keycloak owns identity). Kept for any
-  // straggler code path that still reads it.
-  JWT_SECRET: z.string().min(8).default('change-me-in-prod'),
-
   // ─── Keycloak ───────────────────────────────────────────────────────────
   KC_URL: z.string().url().default('http://localhost:5400'),
   KC_REALM: z.string().min(1).default('hris'),
