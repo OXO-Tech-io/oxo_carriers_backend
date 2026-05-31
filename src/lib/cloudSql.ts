@@ -4,6 +4,7 @@
  */
 
 import { env } from '../config/env';
+import logger from './logger';
 
 /**
  * Cloud SQL connection information
@@ -26,6 +27,7 @@ function parseCloudSqlConnectionName(connectionName: string): {
   region: string;
   instanceName: string;
 } | null {
+  logger.info(`Parsing Cloud SQL connection name: ${connectionName}`);
   const parts = connectionName.split(':');
   if (parts.length !== 3) {
     console.warn(
