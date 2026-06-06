@@ -149,6 +149,12 @@ jobs:
           # Deploy the service with Cloud SQL configuration
           # The service account has access to Cloud SQL, so we use CLOUD_SQL_CONNECTION_NAME
           # instead of individual DB_HOST/DB_PORT/DB_PASSWORD variables
+          #
+          # NOTE: KC_AUDIENCE is intentionally NOT passed. Audience validation is
+          # disabled because Keycloak tokens don't include the backend client id in
+          # `aud` unless an audience mapper is configured, which otherwise 401s every
+          # valid token. To re-enable, set the QA_KC_AUDIENCE secret and re-add:
+          #   --set-env-vars="KC_AUDIENCE=${{ secrets.QA_KC_AUDIENCE }}" \
           gcloud run deploy $SERVICE_NAME \
             --image=$AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
             --region=$REGION \
@@ -169,7 +175,6 @@ jobs:
             --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.QA_EMAILJS_PRIVATE_KEY }}" \
             --set-env-vars="KC_URL=${{ secrets.QA_KC_URL }}" \
             --set-env-vars="KC_REALM=${{ secrets.QA_KC_REALM }}" \
-            --set-env-vars="KC_AUDIENCE=${{ secrets.QA_KC_AUDIENCE }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.QA_KC_BACKEND_CLIENT_ID }}" \
             --set-env-vars="KC_BACKEND_CLIENT_SECRET=${{ secrets.QA_KC_BACKEND_CLIENT_SECRET }}" \
             --revision-suffix=${{ github.sha }} \

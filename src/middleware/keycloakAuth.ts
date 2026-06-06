@@ -9,16 +9,15 @@ const issuerUrl = (() => {
 const jwksUri = `${issuerUrl}/protocol/openid-connect/certs`;
 
 const parseAudience = (): string[] | undefined => {
-  const fromEnv = (env.KC_AUDIENCE ?? "kc_backend_client_id")
+  // Audience is enforced ONLY when KC_AUDIENCE is explicitly set to a
+  // non-empty value. Keycloak does not put the resource-server client id in a
+  // token's `aud` unless an audience mapper is configured on the issuing
+  // client, so enforcing a default audience here would 401 every valid token.
+  const audiences = (env.KC_AUDIENCE ?? "")
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
 
-  const fallbackClients = [
-    "kc_backend_client_id",
-  ].filter(Boolean) as string[];
-
-  const audiences = Array.from(new Set([...fromEnv, ...fallbackClients]));
   return audiences.length > 0 ? audiences : undefined;
 };
 
