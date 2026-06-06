@@ -1,4 +1,7 @@
-FROM node:20-alpine AS builder
+# Base images are pulled via Google's Docker Hub mirror (mirror.gcr.io) instead
+# of docker.io directly. The GCP CI runners hit Docker Hub rate-limits / network
+# timeouts on registry-1.docker.io; the mirror is a reliable pull-through cache.
+FROM mirror.gcr.io/library/node:20-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
 COPY package.json pnpm-lock.yaml* ./
@@ -7,7 +10,7 @@ RUN pnpm install --frozen-lockfile
 COPY . .
 RUN pnpm run build
 
-FROM node:20-alpine
+FROM mirror.gcr.io/library/node:20-alpine
 RUN apk add --no-cache postgresql-client curl
 RUN npm install -g pnpm
 
