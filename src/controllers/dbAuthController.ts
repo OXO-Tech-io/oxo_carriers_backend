@@ -114,7 +114,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         };
 
         const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
-        const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '24h';
+        const JWT_EXPIRES_IN = (process.env.JWT_EXPIRES_IN || '24h') as `${number}${'s' | 'm' | 'h' | 'd' | 'w' | 'y'}`;
 
         const token = jwt.sign(tokenPayload, JWT_SECRET, {
             expiresIn: JWT_EXPIRES_IN,
