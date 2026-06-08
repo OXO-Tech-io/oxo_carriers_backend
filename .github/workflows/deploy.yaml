@@ -130,6 +130,7 @@ jobs:
             --image=$AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }} \
             --region=$REGION \
             --platform=managed \
+            --add-cloudsql-instances=${{ secrets.CLOUD_SQL_CONNECTION_NAME }} \
             --allow-unauthenticated \
             --memory=1Gi \
             --cpu=1 \
@@ -137,6 +138,7 @@ jobs:
             --set-env-vars="NODE_ENV=production" \
             --set-env-vars="CLOUD_SQL_CONNECTION_NAME=${{ secrets.CLOUD_SQL_CONNECTION_NAME }}" \
             --set-env-vars="DB_USER=${{ secrets.DB_USER }}" \
+            --set-env-vars="DB_PASSWORD=${{ secrets.DB_PASSWORD }}" \
             --set-env-vars="DB_NAME=${{ secrets.DB_NAME }}" \
             --set-env-vars="DB_SCHEMA=${{ secrets.DB_SCHEMA }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.FRONTEND_URL }}" \
