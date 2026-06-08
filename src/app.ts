@@ -5,7 +5,7 @@
 import { env, ENV_LOADED_FROM } from './config/env';
 import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
-import { pool, isCloudSqlMode } from './config/database';
+import { pool } from './config/database';
 
 import express from 'express';
 import path from 'path';
@@ -391,33 +391,23 @@ app.use(errorHandler);
 
 // ─── Start ───────────────────────────────────────────────────────────────
 const startServer = async () => {
-  // Fail fast on a missing DB password before binding the port. An empty
-  // password silently deploys a broken service (Cloud SQL always requires
-  // SCRAM auth), surfacing only as a cryptic
-  // "SCRAM-SERVER-FIRST-MESSAGE: client password must be a string" at query
-  // time. Exiting here turns that into a single, actionable boot log.
-  const dbPasswordMissing = !String(env.DB_PASSWORD ?? '').trim();
-  if (dbPasswordMissing && (env.IS_PRODUCTION || isCloudSqlMode())) {
-    logger.fatal(
-      {
-        cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
-        dbUser: env.DB_USER,
-        dbName: env.DB_NAME,
-      },
-      'DB_PASSWORD is empty but the database requires authentication. ' +
-        'Set the DB_PASSWORD secret on the Cloud Run service ' +
-        '(gcloud run services update <service> --update-env-vars=DB_PASSWORD=...) ' +
-        'and the GitHub Actions DB_PASSWORD secret so deploys carry it. Refusing to start.',
-    );
-    process.exit(1);
-  }
-
   try {
     app.listen(PORT, async () => {
       logger.info({ port: PORT, database: env.DB_NAME }, 'Server started');
       logger.info(
         'Email endpoints: GET/POST /api/test-email, GET /api/email-config-check',
       );
+
+      if (env.IS_PRODUCTION && !String(env.DB_PASSWORD ?? '').trim()) {
+        logger.error(
+          {
+            cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
+            dbUser: env.DB_USER,
+            dbName: env.DB_NAME,
+          },
+          'DB_PASSWORD is empty in production. Service started, but database authentication will fail until DB_PASSWORD is set.',
+        );
+      }
 
       try {
         const ping = await pool.query('SELECT now() AS server_time, current_schema() AS schema_name');

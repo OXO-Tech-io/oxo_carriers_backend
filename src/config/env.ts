@@ -32,6 +32,16 @@ const boolish = z
   .union([z.literal('true'), z.literal('false'), z.literal('1'), z.literal('0')])
   .transform((v) => v === 'true' || v === '1');
 
+const optionalString = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().optional(),
+);
+
+const optionalUrl = z.preprocess(
+  (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+  z.string().url().optional(),
+);
+
 const Schema = z.object({
   // ─── Runtime ────────────────────────────────────────────────────────────
   NODE_ENV: z
@@ -53,34 +63,37 @@ const Schema = z.object({
 
   // ─── Cloud SQL (GCP) ────────────────────────────────────────────────────
   /** When true, use Cloud SQL proxy socket connection (e.g., /cloudsql/PROJECT:REGION:INSTANCE) */
-  CLOUD_SQL_CONNECTION_NAME: z.string().optional(),
+  CLOUD_SQL_CONNECTION_NAME: optionalString,
   /** Path to the Cloud SQL proxy socket (computed if CLOUD_SQL_CONNECTION_NAME is set) */
-  DB_SOCKET_PATH: z.string().optional(),
+  DB_SOCKET_PATH: optionalString,
   /** Port where Cloud SQL proxy listens (only used when running proxy separately) */
   CLOUD_SQL_PROXY_PORT: z.coerce.number().int().positive().default(5433),
 
   // ─── Keycloak ───────────────────────────────────────────────────────────
-  KC_URL: z.string().url().default('http://localhost:5400'),
+  KC_URL: z.preprocess(
+    (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
+    z.string().url().default('http://localhost:5400'),
+  ),
   KC_REALM: z.string().min(1).default('hris'),
   /** Comma-separated list of accepted audiences. Empty disables aud check. */
-  KC_AUDIENCE: z.string().optional(),
+  KC_AUDIENCE: optionalString,
   KC_BACKEND_CLIENT_ID: z.string().default('oxo-hris-backend'),
   /** Required only when the backend calls Keycloak's admin API. */
-  KC_BACKEND_CLIENT_SECRET: z.string().optional(),
-  KC_FRONTEND_CLIENT_ID: z.string().optional(),
+  KC_BACKEND_CLIENT_SECRET: optionalString,
+  KC_FRONTEND_CLIENT_ID: optionalString,
 
   // ─── CORS ───────────────────────────────────────────────────────────────
-  FRONTEND_URL: z.string().url().optional(),
-  ALLOWED_ORIGINS: z.string().optional(),
+  FRONTEND_URL: optionalUrl,
+  ALLOWED_ORIGINS: optionalString,
 
   // ─── EmailJS ────────────────────────────────────────────────────────────
-  EMAILJS_SERVICE_ID: z.string().optional(),
-  EMAILJS_TEMPLATE_ID: z.string().optional(),
-  EMAILJS_WELCOME_TEMPLATE_ID: z.string().optional(),
-  EMAILJS_RESET_TEMPLATE_ID: z.string().optional(),
-  EMAILJS_VERIFY_TEMPLATE_ID: z.string().optional(),
-  EMAILJS_PUBLIC_KEY: z.string().optional(),
-  EMAILJS_PRIVATE_KEY: z.string().optional(),
+  EMAILJS_SERVICE_ID: optionalString,
+  EMAILJS_TEMPLATE_ID: optionalString,
+  EMAILJS_WELCOME_TEMPLATE_ID: optionalString,
+  EMAILJS_RESET_TEMPLATE_ID: optionalString,
+  EMAILJS_VERIFY_TEMPLATE_ID: optionalString,
+  EMAILJS_PUBLIC_KEY: optionalString,
+  EMAILJS_PRIVATE_KEY: optionalString,
 });
 
 export type Env = z.infer<typeof Schema>;
