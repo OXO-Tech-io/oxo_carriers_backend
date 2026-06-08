@@ -104,14 +104,9 @@ if (!parsed.success) {
   process.exit(1);
 }
 
-if (parsed.data.NODE_ENV === 'production' && !parsed.data.DB_PASSWORD) {
-  // eslint-disable-next-line no-console
-  console.error(
-    '\n❌ Missing DB_PASSWORD in production environment.\n' +
-    'Set DB_PASSWORD in Cloud Run environment variables or deployment secrets.\n',
-  );
-  process.exit(1);
-}
+// NOTE: DB_PASSWORD absence is warned at server startup in app.ts, not here.
+// Exiting here would kill the container before it binds to PORT, causing
+// Cloud Run "container failed to start" errors.
 
 export const env: Env & {
   IS_PRODUCTION: boolean;
