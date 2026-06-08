@@ -10,7 +10,7 @@ import * as schema from '../db/schema';
  * - If DB_SOCKET_PATH is set, use that Unix socket directly
  * Otherwise use regular TCP connection
  */
-const isCloudSqlMode = () => {
+export const isCloudSqlMode = () => {
   return !!(env.CLOUD_SQL_CONNECTION_NAME || env.DB_SOCKET_PATH);
 };
 

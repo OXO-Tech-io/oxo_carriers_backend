@@ -113,6 +113,15 @@ jobs:
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }}
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:latest
 
+      # ──────────────────────────────────────────────────────────────────────
+      # REQUIRED GitHub Actions secrets (Settings → Secrets → Actions).
+      # The service refuses to boot if DB_PASSWORD is empty (see src/app.ts),
+      # so these MUST be set to non-empty values or the deploy will crash-loop:
+      #   GCP_PROJECT_ID, GCP_SA_KEY, CLOUD_SQL_CONNECTION_NAME,
+      #   DB_USER, DB_PASSWORD, DB_NAME, DB_SCHEMA,
+      #   KC_URL, KC_REALM, KC_BACKEND_CLIENT_ID, KC_BACKEND_CLIENT_SECRET
+      # DB_PASSWORD must match the Cloud SQL user's password (SCRAM auth).
+      # ──────────────────────────────────────────────────────────────────────
       - name: Deploy to Cloud Run
         id: deploy
         run: |
