@@ -398,6 +398,13 @@ const startServer = async () => {
         'Email endpoints: GET/POST /api/test-email, GET /api/email-config-check',
       );
 
+      if (env.IS_PRODUCTION && !env.DB_PASSWORD) {
+        logger.error(
+          'DB_PASSWORD is not set in production. Database authentication will fail. ' +
+          'Set DB_PASSWORD in Cloud Run environment variables or GitHub Secrets.',
+        );
+      }
+
       try {
         const ping = await pool.query('SELECT now() AS server_time, current_schema() AS schema_name');
         logger.info(
