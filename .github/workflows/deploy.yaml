@@ -113,10 +113,49 @@ jobs:
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }}
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:latest
 
+      - name: Validate required secrets
+        env:
+          CLOUD_SQL_CONNECTION_NAME: ${{ secrets.CLOUD_SQL_CONNECTION_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_SCHEMA: ${{ secrets.DB_SCHEMA }}
+          KC_URL: ${{ secrets.KC_URL }}
+          KC_REALM: ${{ secrets.KC_REALM }}
+          KC_BACKEND_CLIENT_ID: ${{ secrets.KC_BACKEND_CLIENT_ID }}
+          KC_BACKEND_CLIENT_SECRET: ${{ secrets.KC_BACKEND_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            CLOUD_SQL_CONNECTION_NAME
+            DB_USER
+            DB_PASSWORD
+            DB_NAME
+            DB_SCHEMA
+            KC_URL
+            KC_REALM
+            KC_BACKEND_CLIENT_ID
+            KC_BACKEND_CLIENT_SECRET
+          )
+
+          missing=0
+          for var in "${required_vars[@]}"; do
+            value="${!var:-}"
+            if [ -z "$(echo "$value" | tr -d '[:space:]')" ]; then
+              echo "::error::Required secret/env '$var' is missing or empty"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required secrets are empty. Fix repo secrets and re-run workflow."
+            exit 1
+          fi
+
       # ──────────────────────────────────────────────────────────────────────
       # REQUIRED GitHub Actions secrets (Settings → Secrets → Actions).
-      # The service refuses to boot if DB_PASSWORD is empty (see src/app.ts),
-      # so these MUST be set to non-empty values or the deploy will crash-loop:
+      # These MUST be set to non-empty values before deployment:
       #   GCP_PROJECT_ID, GCP_SA_KEY, CLOUD_SQL_CONNECTION_NAME,
       #   DB_USER, DB_PASSWORD, DB_NAME, DB_SCHEMA,
       #   KC_URL, KC_REALM, KC_BACKEND_CLIENT_ID, KC_BACKEND_CLIENT_SECRET

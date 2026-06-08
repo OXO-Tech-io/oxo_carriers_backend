@@ -143,6 +143,46 @@ jobs:
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:${{ steps.application-version.outputs.version }}
           docker push $AR_HOSTNAME/$PROJECT_ID/$REPOSITORY/$SERVICE_NAME:latest
 
+      - name: Validate required QA secrets
+        env:
+          QA_CLOUD_SQL_CONNECTION_NAME: ${{ secrets.QA_CLOUD_SQL_CONNECTION_NAME }}
+          QA_DB_USER: ${{ secrets.QA_DB_USER }}
+          QA_DB_PASSWORD: ${{ secrets.QA_DB_PASSWORD }}
+          QA_DB_NAME: ${{ secrets.QA_DB_NAME }}
+          QA_DB_SCHEMA: ${{ secrets.QA_DB_SCHEMA }}
+          QA_KC_URL: ${{ secrets.QA_KC_URL }}
+          QA_KC_REALM: ${{ secrets.QA_KC_REALM }}
+          QA_KC_BACKEND_CLIENT_ID: ${{ secrets.QA_KC_BACKEND_CLIENT_ID }}
+          QA_KC_BACKEND_CLIENT_SECRET: ${{ secrets.QA_KC_BACKEND_CLIENT_SECRET }}
+        run: |
+          set -euo pipefail
+
+          required_vars=(
+            QA_CLOUD_SQL_CONNECTION_NAME
+            QA_DB_USER
+            QA_DB_PASSWORD
+            QA_DB_NAME
+            QA_DB_SCHEMA
+            QA_KC_URL
+            QA_KC_REALM
+            QA_KC_BACKEND_CLIENT_ID
+            QA_KC_BACKEND_CLIENT_SECRET
+          )
+
+          missing=0
+          for var in "${required_vars[@]}"; do
+            value="${!var:-}"
+            if [ -z "$(echo "$value" | tr -d '[:space:]')" ]; then
+              echo "::error::Required secret/env '$var' is missing or empty"
+              missing=1
+            fi
+          done
+
+          if [ "$missing" -ne 0 ]; then
+            echo "One or more required QA secrets are empty. Fix repo secrets and re-run workflow."
+            exit 1
+          fi
+
       - name: Deploy to Cloud Run
         id: deploy
         run: |
