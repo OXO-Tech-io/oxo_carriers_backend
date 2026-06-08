@@ -31,7 +31,8 @@ const getCloudSqlSocketPath = () => {
 
 const poolConfig: any = {
   user: env.DB_USER,
-  password: env.DB_PASSWORD,
+  // Force password to string to avoid pg SCRAM type errors when env injection is malformed.
+  password: String(env.DB_PASSWORD ?? ''),
   database: env.DB_NAME,
   max: 20,
   idleTimeoutMillis: 30000,
@@ -40,13 +41,19 @@ const poolConfig: any = {
   statement_timeout: 30000,
 };
 
+if (!poolConfig.password) {
+  console.warn(
+    '[DB] DB_PASSWORD is empty. Authentication to PostgreSQL will fail unless the user has no password.',
+  );
+}
+
 if (isCloudSqlMode()) {
   // Cloud SQL via Unix socket
   const socketPath = getCloudSqlSocketPath();
   if (!socketPath) {
     throw new Error(
       'Cloud SQL mode enabled but no socket path found. ' +
-        'Set CLOUD_SQL_CONNECTION_NAME or DB_SOCKET_PATH.',
+      'Set CLOUD_SQL_CONNECTION_NAME or DB_SOCKET_PATH.',
     );
   }
   poolConfig.host = socketPath;

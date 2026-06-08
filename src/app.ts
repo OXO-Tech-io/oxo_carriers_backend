@@ -248,6 +248,8 @@ app.get(['/api/db-health', '/db-health'], async (_req, res) => {
         mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
         configuredSchema: env.DB_SCHEMA,
         cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
+        dbPasswordConfigured: Boolean(process.env.DB_PASSWORD),
+        dbPasswordType: typeof process.env.DB_PASSWORD,
       },
       database: dbCheck.rows[0],
     });
@@ -260,6 +262,8 @@ app.get(['/api/db-health', '/db-health'], async (_req, res) => {
       connection: {
         mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
         configuredSchema: env.DB_SCHEMA,
+        dbPasswordConfigured: Boolean(process.env.DB_PASSWORD),
+        dbPasswordType: typeof process.env.DB_PASSWORD,
       },
     });
   }
