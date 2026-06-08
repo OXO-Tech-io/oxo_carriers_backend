@@ -5,6 +5,7 @@
 import { env, ENV_LOADED_FROM } from './config/env';
 import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
+import { pool } from './config/database';
 
 import express from 'express';
 import path from 'path';
@@ -221,6 +222,49 @@ app.get('/health', (_req, res) => {
   res.status(200).json({ status: 'OK', timestamp: new Date().toISOString() });
 });
 
+// Database connectivity check
+app.get(['/api/db-health', '/db-health'], async (_req, res) => {
+  try {
+    const dbCheck = await pool.query(
+      `
+      SELECT
+        current_database() AS database_name,
+        current_schema() AS schema_name,
+        current_user AS db_user,
+        now() AS server_time,
+        EXISTS (
+          SELECT 1
+          FROM information_schema.tables
+          WHERE table_schema = $1
+        ) AS has_tables_in_schema
+      `,
+      [env.DB_SCHEMA],
+    );
+
+    res.status(200).json({
+      success: true,
+      message: 'Database connectivity is healthy',
+      connection: {
+        mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
+        configuredSchema: env.DB_SCHEMA,
+        cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
+      },
+      database: dbCheck.rows[0],
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Database health check failed');
+    res.status(500).json({
+      success: false,
+      message: 'Database connectivity failed',
+      error: error.message,
+      connection: {
+        mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
+        configuredSchema: env.DB_SCHEMA,
+      },
+    });
+  }
+});
+
 // CORS diagnostic
 app.get(['/api/cors-check', '/cors-check'], (req, res) => {
   const origin = req.headers.origin;
@@ -349,6 +393,22 @@ const startServer = async () => {
       logger.info(
         'Email endpoints: GET/POST /api/test-email, GET /api/email-config-check',
       );
+
+      try {
+        const ping = await pool.query('SELECT now() AS server_time, current_schema() AS schema_name');
+        logger.info(
+          {
+            db: env.DB_NAME,
+            schema: env.DB_SCHEMA,
+            serverTime: ping.rows[0]?.server_time,
+            currentSchema: ping.rows[0]?.schema_name,
+            cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
+          },
+          'Database connection check passed on startup',
+        );
+      } catch (error) {
+        logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');
+      }
 
       try {
         const { getEmailServiceStatus } = await import('./config/email');
