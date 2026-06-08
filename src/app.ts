@@ -15,6 +15,7 @@ import pinoHttp from 'pino-http';
 import { randomUUID } from 'crypto';
 import { errorHandler } from './middleware/errorHandler';
 import authRoutes from './routes/authRoutes';
+import dbAuthRoutes from './routes/dbAuthRoutes';
 import userRoutes from './routes/userRoutes';
 import leaveRoutes from './routes/leaveRoutes';
 import leaveCalendarRoutes from './routes/leaveCalendarRoutes';
@@ -191,6 +192,7 @@ app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // ─── Routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
+app.use('/api/db-auth', dbAuthRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/leaves', leaveRoutes);
 app.use('/api/leave-calendar', leaveCalendarRoutes);

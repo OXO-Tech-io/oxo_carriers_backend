@@ -94,6 +94,10 @@ const Schema = z.object({
   EMAILJS_VERIFY_TEMPLATE_ID: optionalString,
   EMAILJS_PUBLIC_KEY: optionalString,
   EMAILJS_PRIVATE_KEY: optionalString,
+
+  // ─── JWT Authentication ─────────────────────────────────────────────────
+  JWT_SECRET: z.string().min(32).default('your-super-secret-key-min-32-chars-required'),
+  JWT_EXPIRES_IN: z.string().default('24h'),
 });
 
 export type Env = z.infer<typeof Schema>;
