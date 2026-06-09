@@ -195,6 +195,8 @@ jobs:
 
       - name: Deploy to Cloud Run
         id: deploy
+        env:
+          SMTP_FROM_VAL: ${{ secrets.QA_SMTP_FROM }}
         run: |
           # Deploy the service with Cloud SQL configuration
           # The service account has access to Cloud SQL, so we use CLOUD_SQL_CONNECTION_NAME
@@ -226,7 +228,7 @@ jobs:
             --set-env-vars="SMTP_SECURE=${{ secrets.QA_SMTP_SECURE }}" \
             --set-env-vars="SMTP_USER=${{ secrets.QA_SMTP_USER }}" \
             --set-env-vars="SMTP_PASS=${{ secrets.QA_SMTP_PASS }}" \
-            --set-env-vars="SMTP_FROM=${{ secrets.QA_SMTP_FROM }}" \
+            --set-env-vars="SMTP_FROM=${SMTP_FROM_VAL}" \
             --set-env-vars="KC_URL=${{ secrets.QA_KC_URL }}" \
             --set-env-vars="KC_REALM=${{ secrets.QA_KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.QA_KC_BACKEND_CLIENT_ID }}" \
