@@ -150,26 +150,6 @@ export const createUser = async (req: Request, res: Response) => {
       email_verification_token: verificationToken,
     });
 
-    // Provision the user in Keycloak so they can sign in via the OXO login form.
-    // Keycloak owns the password from this point forward; the bcrypt hash in the
-    // `users` table is dead weight kept only for backwards compatibility.
-    let kcSub: string | null = null;
-    let keycloakProvisioned = false;
-    try {
-      kcSub = await keycloakAdminService.createUser({
-        email,
-        firstName: effectiveFirst,
-        lastName: effectiveLast,
-        password: tempPassword,
-        temporaryPassword: true,
-        role: userRole,
-      });
-      await UserModel.linkKeycloakSub(user.id, kcSub);
-      keycloakProvisioned = true;
-    } catch (kcError) {
-      log(req).error({ err: kcError }, 'Keycloak provisioning failed during user creation');
-    }
-
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
@@ -191,27 +171,12 @@ export const createUser = async (req: Request, res: Response) => {
       }
     }
 
-
-    // Send onboarding/password setup email using EmailJS
-    let onboardingEmailSent = true;
-    try {
-      log(req).info({ email }, 'Sending EmailJS password setup email');
-      await sendPasswordSetupEmail(email, verificationToken, effectiveFirst, employeeId);
-      log(req).info({ email }, 'EmailJS password setup email sent');
-    } catch (emailError: any) {
-      onboardingEmailSent = false;
-      log(req).error({ err: emailError }, 'Failed to send EmailJS password setup email');
-    }
-
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({
       success: true,
-      message: onboardingEmailSent
-        ? 'User created successfully. A password setup email has been sent.'
-        : 'User created successfully, but the password setup email could not be sent.',
+      message: 'User created successfully in database.',
       user: userWithoutPassword,
-      keycloakProvisioned,
     });
   } catch (error: any) {
     log(req).error({ err: error }, 'Create user failed');
@@ -417,5 +382,134 @@ export const updateUserRole = async (req: Request, res: Response) => {
   } catch (error: any) {
     log(req).error({ err: error }, 'Update user role failed');
     res.status(500).json({ success: false, message: 'Failed to update role', error: error.message });
+  }
+};
+
+/** Generates a password satisfying standard Keycloak security policies:
+ * - Minimum 12 characters
+ * - At least one uppercase letter
+ * - At least one lowercase letter
+ * - At least one digit
+ * - At least one special character
+ */
+const generateSecureTemporaryPassword = (): string => {
+  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
+  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+  const numbers = '0123456789';
+  const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
+
+  const getRandomChar = (charset: string) => charset[crypto.randomInt(0, charset.length)];
+
+  const passwordChars = [
+    getRandomChar(lowercase),
+    getRandomChar(uppercase),
+    getRandomChar(numbers),
+    getRandomChar(special),
+  ];
+
+  const allChars = lowercase + uppercase + numbers + special;
+  for (let i = 4; i < 12; i++) {
+    passwordChars.push(getRandomChar(allChars));
+  }
+
+  // Shuffle the array using Fisher-Yates algorithm
+  for (let i = passwordChars.length - 1; i > 0; i--) {
+    const j = crypto.randomInt(0, i + 1);
+    const temp = passwordChars[i];
+    passwordChars[i] = passwordChars[j];
+    passwordChars[j] = temp;
+  }
+
+  return passwordChars.join('');
+};
+
+/**
+ * POST /users/:id/keycloak
+ * 
+ * Provisions user in Keycloak and sends password setup email.
+ */
+export const provisionKeycloakUser = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id: idParam } = req.params;
+    const userId = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
+
+    if (isNaN(userId)) {
+      res.status(400).json({ success: false, message: 'Invalid user ID' });
+      return;
+    }
+
+    const user = await UserModel.findById(userId);
+    if (!user) {
+      res.status(404).json({ success: false, message: 'User not found' });
+      return;
+    }
+
+    if (user.keycloakSub) {
+      res.status(200).json({
+        success: true,
+        message: 'User is already provisioned in Keycloak.',
+        keycloakSub: user.keycloakSub,
+      });
+      return;
+    }
+
+    const tempPassword = generateSecureTemporaryPassword();
+    const verificationToken = crypto.randomBytes(32).toString('hex');
+
+    // Save the verification token in local DB if it doesn't exist
+    let emailVerificationToken = user.emailVerificationToken;
+    if (!emailVerificationToken) {
+      emailVerificationToken = verificationToken;
+      await pool.query(
+        'UPDATE hris.users SET email_verification_token = $1 WHERE id = $2',
+        [emailVerificationToken, user.id]
+      );
+    }
+
+    log(req).info({ userId, email: user.email }, 'Provisioning user in Keycloak...');
+
+    const kcSub = await keycloakAdminService.createUser({
+      email: user.email,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      password: tempPassword,
+      temporaryPassword: true,
+      role: user.role as UserRole,
+    });
+
+    await UserModel.linkKeycloakSub(user.id, kcSub);
+    log(req).info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
+
+    // Send onboarding/password setup email using EmailJS now that Keycloak is configured
+    let onboardingEmailSent = true;
+    try {
+      log(req).info({ email: user.email }, 'Sending EmailJS password setup email');
+      await sendPasswordSetupEmail(
+        user.email,
+        emailVerificationToken,
+        user.firstName,
+        user.employeeId || ''
+      );
+      log(req).info({ email: user.email }, 'EmailJS password setup email sent');
+    } catch (emailError: any) {
+      onboardingEmailSent = false;
+      log(req).error({ err: emailError }, 'Failed to send EmailJS password setup email');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: onboardingEmailSent
+        ? 'User provisioned in Keycloak successfully. A password setup email has been sent.'
+        : 'User provisioned in Keycloak successfully, but the password setup email could not be sent.',
+      keycloakSub: kcSub,
+      onboardingEmailSent,
+    });
+  } catch (error: any) {
+    log(req).error({ err: error }, 'Keycloak provisioning failed');
+    res.status(500).json({
+      success: false,
+      message: 'Failed to provision user in Keycloak',
+      error: error.message,
+    });
   }
 };
