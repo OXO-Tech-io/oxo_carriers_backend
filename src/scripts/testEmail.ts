@@ -6,25 +6,25 @@ import { sendTestEmail } from '../config/email';
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 
 async function testEmail() {
-  console.log('📧 Testing EmailJS Configuration...\n');
+  console.log('📧 Testing SMTP Configuration...\n');
 
-  const serviceId = process.env.EMAILJS_SERVICE_ID;
-  const publicKey = process.env.EMAILJS_PUBLIC_KEY;
-  const privateKey = process.env.EMAILJS_PRIVATE_KEY;
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
   const recipientEmail = process.argv[2] || 'info@oxocareers.com';
 
-  if (!serviceId || !publicKey || !privateKey) {
-    console.error('❌ Error: EMAILJS configuration incomplete in .env!');
+  if (!host || !port || !user || !pass) {
+    console.error('❌ Error: SMTP configuration incomplete in .env!');
     console.log('Ensure you have:');
-    console.log(`- EMAILJS_SERVICE_ID: ${serviceId ? '✅' : '❌'}`);
-    console.log(`- EMAILJS_PUBLIC_KEY: ${publicKey ? '✅' : '❌'}`);
-    console.log(`- EMAILJS_PRIVATE_KEY: ${privateKey ? '✅' : '❌'}`);
+    console.log(`- SMTP_HOST: ${host ? '✅' : '❌'}`);
+    console.log(`- SMTP_PORT: ${port ? '✅' : '❌'}`);
+    console.log(`- SMTP_USER: ${user ? '✅' : '❌'}`);
+    console.log(`- SMTP_PASS: ${pass ? '✅' : '❌'}`);
     process.exit(1);
   }
 
-  console.log(`📬 Sending test email to: ${recipientEmail}`);
-  console.log(`💡 The backend is sending these variables: to_email, to, email, recipient, user_email`);
-  console.log(`   Ensure one of these is used in your EmailJS dashboard "To Email" field as {{variable_name}}\n`);
+  console.log(`📬 Sending test email to: ${recipientEmail} via SMTP...`);
 
   try {
     const result = await sendTestEmail(recipientEmail);
@@ -34,16 +34,6 @@ async function testEmail() {
       process.exit(0);
     } else {
       console.error(`\n❌ Failed to send test email: ${result.message}`);
-      
-      if (result.message.includes('API calls are disabled for non-browser applications')) {
-        console.log('\n💡 FIX REQUIRED IN EMAILJS DASHBOARD:');
-        console.log('1. Log in to https://dashboard.emailjs.com/');
-        console.log('2. Go to "Account" (bottom left icon)');
-        console.log('3. Select the "Security" tab');
-        console.log('4. Enable "Allow API calls from non-browser applications"');
-        console.log('5. Click "Apply Changes" and try again.');
-      }
-      
       process.exit(1);
     }
   } catch (error: any) {

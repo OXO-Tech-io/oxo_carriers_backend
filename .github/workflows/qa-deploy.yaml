@@ -154,6 +154,11 @@ jobs:
           QA_KC_REALM: ${{ secrets.QA_KC_REALM }}
           QA_KC_BACKEND_CLIENT_ID: ${{ secrets.QA_KC_BACKEND_CLIENT_ID }}
           QA_KC_BACKEND_CLIENT_SECRET: ${{ secrets.QA_KC_BACKEND_CLIENT_SECRET }}
+          QA_SMTP_HOST: ${{ secrets.QA_SMTP_HOST }}
+          QA_SMTP_PORT: ${{ secrets.QA_SMTP_PORT }}
+          QA_SMTP_SECURE: ${{ secrets.QA_SMTP_SECURE }}
+          QA_SMTP_USER: ${{ secrets.QA_SMTP_USER }}
+          QA_SMTP_PASS: ${{ secrets.QA_SMTP_PASS }}
         run: |
           set -euo pipefail
 
@@ -167,6 +172,11 @@ jobs:
             QA_KC_REALM
             QA_KC_BACKEND_CLIENT_ID
             QA_KC_BACKEND_CLIENT_SECRET
+            QA_SMTP_HOST
+            QA_SMTP_PORT
+            QA_SMTP_SECURE
+            QA_SMTP_USER
+            QA_SMTP_PASS
           )
 
           missing=0
@@ -211,10 +221,12 @@ jobs:
             --set-env-vars="DB_NAME=${{ secrets.QA_DB_NAME }}" \
             --set-env-vars="DB_SCHEMA=${{ secrets.QA_DB_SCHEMA }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.QA_FRONTEND_URL }}" \
-            --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.QA_EMAILJS_SERVICE_ID }}" \
-            --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.QA_EMAILJS_TEMPLATE_ID }}" \
-            --set-env-vars="EMAILJS_PUBLIC_KEY=${{ secrets.QA_EMAILJS_PUBLIC_KEY }}" \
-            --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.QA_EMAILJS_PRIVATE_KEY }}" \
+            --set-env-vars="SMTP_HOST=${{ secrets.QA_SMTP_HOST }}" \
+            --set-env-vars="SMTP_PORT=${{ secrets.QA_SMTP_PORT }}" \
+            --set-env-vars="SMTP_SECURE=${{ secrets.QA_SMTP_SECURE }}" \
+            --set-env-vars="SMTP_USER=${{ secrets.QA_SMTP_USER }}" \
+            --set-env-vars="SMTP_PASS=${{ secrets.QA_SMTP_PASS }}" \
+            --set-env-vars="SMTP_FROM=${{ secrets.QA_SMTP_FROM }}" \
             --set-env-vars="KC_URL=${{ secrets.QA_KC_URL }}" \
             --set-env-vars="KC_REALM=${{ secrets.QA_KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.QA_KC_BACKEND_CLIENT_ID }}" \

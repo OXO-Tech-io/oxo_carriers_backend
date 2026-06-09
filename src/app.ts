@@ -306,18 +306,20 @@ app.get(['/api/cors-check', '/cors-check'], (req, res) => {
 app.get(['/api/email-config-check', '/email-config-check'], (_req, res) => {
   res.json({
     success: true,
-    message: 'EmailJS Diagnostic Endpoint',
+    message: 'SMTP Email Diagnostic Endpoint',
     config: {
-      serviceId: env.EMAILJS_SERVICE_ID ?? 'not set',
-      templateId: env.EMAILJS_TEMPLATE_ID ?? 'not set',
-      publicKey: env.EMAILJS_PUBLIC_KEY ?? 'not set',
-      privateKeyStatus: env.EMAILJS_PRIVATE_KEY ? '✓ SET (masked)' : '✗ MISSING',
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      secure: env.SMTP_SECURE,
+      user: env.SMTP_USER ?? 'not set',
+      from: env.SMTP_FROM ?? 'not set',
       nodeEnv: env.NODE_ENV,
     },
     troubleshooting: [
-      'Ensure EMAILJS_SERVICE_ID is correct from your dashboard',
-      'Ensure EMAILJS_PUBLIC_KEY and EMAILJS_PRIVATE_KEY are correctly set',
-      'Check EmailJS dashboard logs if emails are not arriving',
+      'Ensure SMTP_HOST is correct (e.g. your outgoing mail server)',
+      'Ensure SMTP_PORT is correct (e.g. 465 for SSL/TLS, 587 for STARTTLS)',
+      'Verify SMTP_USER and SMTP_PASS are correctly configured in .env',
+      'Check mail server SMTP logs if emails are not arriving',
     ],
   });
 });
@@ -447,12 +449,12 @@ const startServer = async () => {
         const status = getEmailServiceStatus();
         if (status.overall) {
           logger.info(
-            { serviceId: status.emailJS.serviceId },
-            'Email (EmailJS) configuration ready',
+            { host: status.smtp.host, user: status.smtp.user },
+            'Email (SMTP) configuration ready',
           );
         } else {
           logger.error(
-            'Email (EmailJS) not configured — set EMAILJS_SERVICE_ID, PUBLIC_KEY, PRIVATE_KEY in .env',
+            'Email (SMTP) not configured — set SMTP_HOST, SMTP_USER, SMTP_PASS in .env',
           );
         }
       } catch (error: any) {

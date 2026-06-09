@@ -1,155 +1,161 @@
-import emailjs from '@emailjs/nodejs';
+import nodemailer from 'nodemailer';
 import { env } from './env';
 import { logger as baseLogger } from '../lib/logger';
 
 const log = baseLogger.child({ module: 'email' });
 
-/**
- * EMAILJS TEMPLATE CONFIGURATION GUIDE
- * ------------------------------------
- * To use these templates, log in to your EmailJS Dashboard and create
- * templates with the following:
- *
- * 1. GENERAL SETTINGS (Required for all templates):
- *    - To Email: {{to_email}}
- *    - Subject: {{subject}}
- *
- * 2. WELCOME / CREDENTIALS TEMPLATE (EMAILJS_WELCOME_TEMPLATE_ID):
- *    Variables: {{firstName}}, {{employeeId}}, {{email}}, {{password}}, {{loginUrl}}
- *
- * 3. PASSWORD RESET / SETUP TEMPLATE (EMAILJS_RESET_TEMPLATE_ID):
- *    Variables: {{firstName}}, {{setupLink}}, {{resetLink}}, {{expiry}}, {{employeeId}}
- *
- * 4. EMAIL VERIFICATION TEMPLATE (EMAILJS_VERIFY_TEMPLATE_ID):
- *    Variables: {{firstName}}, {{verificationLink}}, {{expiry}}
- *
- * 5. TEST TEMPLATE (EMAILJS_TEMPLATE_ID):
- *    Variables: {{message}}, {{timestamp}}
- */
-
 const FRONTEND_FALLBACK = 'https://app.oxocareers.com';
 
-const isPlaceholderTemplate = (id: string | undefined): boolean =>
-  !id ||
-  id.includes('xxxxxx') ||
-  id.includes('yyyyyy') ||
-  id.includes('zzzzzz') ||
-  id === 'template_id_here';
+const getTransporter = () => {
+  const host = env.SMTP_HOST;
+  const port = env.SMTP_PORT;
+  const secure = env.SMTP_SECURE;
+  const user = env.SMTP_USER;
+  const pass = env.SMTP_PASS;
 
-// Main email sending function using EmailJS
+  if (!user || !pass) {
+    log.error('SMTP credentials missing');
+    return null;
+  }
+
+  return nodemailer.createTransport({
+    host,
+    port,
+    secure, // true for port 465, false for 587
+    auth: {
+      user,
+      pass,
+    },
+    tls: {
+      rejectUnauthorized: false, // helps with self-signed certs common in hosting environments
+    },
+  });
+};
+
+// Main email sending function using SMTP (nodemailer)
 export const sendEmail = async (
   to: string,
   subject: string,
   templateParams: any,
   templateId?: string,
 ): Promise<any> => {
-  const serviceId = env.EMAILJS_SERVICE_ID ?? '';
-
-  // Decide which template ID to use
-  let finalTemplateId = templateId;
-  if (isPlaceholderTemplate(finalTemplateId)) {
-    finalTemplateId =
-      env.EMAILJS_TEMPLATE_ID ??
-      env.EMAILJS_WELCOME_TEMPLATE_ID ??
-      env.EMAILJS_RESET_TEMPLATE_ID ??
-      env.EMAILJS_VERIFY_TEMPLATE_ID ??
-      '';
-  }
-
-  const publicKey = env.EMAILJS_PUBLIC_KEY;
-  const privateKey = env.EMAILJS_PRIVATE_KEY;
-
-  if (!publicKey || !privateKey || !serviceId || !finalTemplateId) {
+  const transporter = getTransporter();
+  if (!transporter) {
     log.error(
-      {
-        hasPublicKey: !!publicKey,
-        hasPrivateKey: !!privateKey,
-        hasServiceId: !!serviceId,
-        hasTemplateId: !!finalTemplateId,
-      },
-      'EmailJS missing credentials',
+      'Email configuration incomplete — SMTP transporter could not be initialized',
     );
     return null;
   }
 
-  // Re-init each call so late-loaded env vars are picked up
-  emailjs.init({ publicKey, privateKey });
+  const from = env.SMTP_FROM || `"OXO Careers" <${env.SMTP_USER}>`;
 
-  log.info(
-    { to, subject, templateId: finalTemplateId },
-    'Sending email via EmailJS',
-  );
+  // Construct clean HTML layout depending on the context of parameters provided
+  let html = '';
+  const name = templateParams.firstName || templateParams.name || 'User';
+
+  if (templateParams.setupLink) {
+    // Onboarding / Setup Password template
+    html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e7ec; border-radius: 8px;">
+        <h2 style="color: #101828;">Set Up Your Password</h2>
+        <p>Hello ${name},</p>
+        <p>${templateParams.message_body || 'We are excited to have you on board! To get started, please use the button below to set up your secure account password.'}</p>
+        <p><strong>Employee ID:</strong> ${templateParams.employeeId || ''}</p>
+        <br>
+        <p style="text-align: center;">
+          <a href="${templateParams.setupLink}" style="background-color: #465FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            ${templateParams.button_text || 'Complete Password Setup'}
+          </a>
+        </p>
+        <br>
+        <p style="color: #667085; font-size: 12px;">Note: This link expires in ${templateParams.expiry || '7 days'}.</p>
+      </div>
+    `;
+  } else if (templateParams.resetLink) {
+    // Password Reset template
+    html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e7ec; border-radius: 8px;">
+        <h2 style="color: #101828;">Password Reset Request</h2>
+        <p>Hello ${name},</p>
+        <p>${templateParams.message_body || 'We received a request to reset your password. If you did not make this request, you can safely ignore this email.'}</p>
+        <br>
+        <p style="text-align: center;">
+          <a href="${templateParams.resetLink}" style="background-color: #465FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            ${templateParams.button_text || 'Reset My Password'}
+          </a>
+        </p>
+        <br>
+        <p style="color: #667085; font-size: 12px;">Note: This link expires in ${templateParams.expiry || '1 hour'}.</p>
+      </div>
+    `;
+  } else if (templateParams.verificationLink) {
+    // Email Verification template
+    html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e7ec; border-radius: 8px;">
+        <h2 style="color: #101828;">Verify Your Email Address</h2>
+        <p>Hello ${name},</p>
+        <p>To verify your email address and activate your account, please click the button below:</p>
+        <br>
+        <p style="text-align: center;">
+          <a href="${templateParams.verificationLink}" style="background-color: #465FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            Verify Email
+          </a>
+        </p>
+        <br>
+        <p style="color: #667085; font-size: 12px;">Note: This link expires in ${templateParams.expiry || '24 hours'}.</p>
+      </div>
+    `;
+  } else if (templateParams.password) {
+    // Welcome / Credentials template
+    html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e7ec; border-radius: 8px;">
+        <h2 style="color: #101828;">Welcome to HRIS Portal</h2>
+        <p>Hello ${name},</p>
+        <p>${templateParams.message_body || 'Your account has been successfully created. Please use the credentials below to log in:'}</p>
+        <p><strong>Employee ID:</strong> ${templateParams.employeeId || ''}</p>
+        <p><strong>Email/Username:</strong> ${to || ''}</p>
+        <p><strong>Temporary Password:</strong> ${templateParams.password}</p>
+        <br>
+        <p style="text-align: center;">
+          <a href="${templateParams.loginUrl || '#'}" style="background-color: #465FFF; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">
+            ${templateParams.button_text || 'Go to Login Portal'}
+          </a>
+        </p>
+      </div>
+    `;
+  } else {
+    // Generic text/html template fallback
+    html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #e4e7ec; border-radius: 8px;">
+        <h2 style="color: #101828;">Notification</h2>
+        <p>Hello ${name},</p>
+        <p>${templateParams.message || templateParams.message_body || 'Notification from HRIS Payroll System'}</p>
+        <br>
+        <p style="color: #667085; font-size: 12px;">Sent: ${new Date().toLocaleString()}</p>
+      </div>
+    `;
+  }
+
+  const text = templateParams.message || templateParams.message_body || subject;
 
   try {
-    // Strip non-primitive values
-    const cleanTemplateParams = JSON.parse(JSON.stringify(templateParams));
-    const sanitizedParams: any = {};
-    for (const key in cleanTemplateParams) {
-      const val = cleanTemplateParams[key];
-      if (
-        typeof val === 'string' ||
-        typeof val === 'number' ||
-        typeof val === 'boolean'
-      ) {
-        sanitizedParams[key] = val;
-      }
-    }
+    const info = await transporter.sendMail({
+      from,
+      to,
+      subject,
+      text,
+      html,
+    });
 
-    const params: any = {
-      to_email: to,
-      recipient_email: to,
-      user_name: (
-        cleanTemplateParams.firstName ||
-        cleanTemplateParams.name ||
-        'User'
-      ).toString(),
-      user_id: (cleanTemplateParams.employeeId || '').toString(),
-      user_pass: (cleanTemplateParams.password
-        ? `Temporary Password: ${cleanTemplateParams.password}`
-        : ''
-      ).toString(),
-      message_body: (
-        cleanTemplateParams.message_body || 'Notification from HRIS System'
-      ).toString(),
-      button_text: (
-        cleanTemplateParams.button_text || 'Click Here'
-      ).toString(),
-      action_link: (
-        cleanTemplateParams.setupLink ||
-        cleanTemplateParams.resetLink ||
-        cleanTemplateParams.verificationLink ||
-        env.FRONTEND_URL ||
-        FRONTEND_FALLBACK
-      ).toString(),
-      email_subject: subject,
-      subject: subject,
-      expiry_info: (cleanTemplateParams.expiry
-        ? `Note: This link expires in ${cleanTemplateParams.expiry}`
-        : ''
-      ).toString(),
-      send_time: new Date().toLocaleString(),
-      ...sanitizedParams,
-    };
-
-    const options = { publicKey, privateKey };
-    const result = await emailjs.send(serviceId, finalTemplateId, params, options);
-
-    log.info({ to, status: result.status }, 'Email sent via EmailJS');
+    log.info({ to, messageId: info.messageId }, 'Email sent successfully via SMTP');
     return {
-      service: 'emailjs',
-      response: result,
-      status: result.status,
+      service: 'smtp',
+      response: info,
+      status: 200,
+      success: true,
     };
   } catch (error: any) {
-    const errorMsg = error.text || error.message || JSON.stringify(error);
-    log.error({ err: error, to, templateId: finalTemplateId }, 'EmailJS send failed');
-
-    if (errorMsg.includes('template') && errorMsg.includes('not found')) {
-      log.warn(
-        'Template ID may not match the one in your EmailJS dashboard',
-      );
-    }
-
+    log.error({ err: error, to }, 'SMTP send failed');
     return null;
   }
 };
@@ -163,8 +169,6 @@ export const sendEmployeeCredentials = async (
   firstName: string,
 ) => {
   const subject = 'Welcome to HRIS Payroll System - Your Login Credentials';
-  const templateId = env.EMAILJS_WELCOME_TEMPLATE_ID;
-
   const params = {
     firstName,
     employeeId,
@@ -176,7 +180,7 @@ export const sendEmployeeCredentials = async (
     loginUrl: env.FRONTEND_URL ?? FRONTEND_FALLBACK,
   };
 
-  return sendEmail(email, subject, params, templateId);
+  return sendEmail(email, subject, params);
 };
 
 export const sendPasswordSetupEmail = async (
@@ -187,7 +191,6 @@ export const sendPasswordSetupEmail = async (
 ) => {
   const subject = 'Set Up Your Password - HRIS Payroll System';
   const setupLink = `${env.FRONTEND_URL ?? FRONTEND_FALLBACK}/reset-password?token=${setupToken}`;
-  const templateId = env.EMAILJS_WELCOME_TEMPLATE_ID;
 
   const params = {
     firstName,
@@ -199,7 +202,7 @@ export const sendPasswordSetupEmail = async (
     button_text: 'Complete Password Setup',
   };
 
-  return sendEmail(email, subject, params, templateId);
+  return sendEmail(email, subject, params);
 };
 
 export const sendPasswordResetEmail = async (
@@ -209,7 +212,6 @@ export const sendPasswordResetEmail = async (
 ) => {
   const subject = 'Password Reset - HRIS Payroll System';
   const resetLink = `${env.FRONTEND_URL ?? FRONTEND_FALLBACK}/reset-password?token=${resetToken}`;
-  const templateId = env.EMAILJS_RESET_TEMPLATE_ID;
 
   const params = {
     firstName,
@@ -220,7 +222,7 @@ export const sendPasswordResetEmail = async (
     button_text: 'Reset My Password',
   };
 
-  return sendEmail(email, subject, params, templateId);
+  return sendEmail(email, subject, params);
 };
 
 export const sendEmailVerificationEmail = async (
@@ -231,7 +233,6 @@ export const sendEmailVerificationEmail = async (
   const subject = 'Verify Your Email Address - HRIS Payroll System';
   const frontendUrl = env.FRONTEND_URL ?? FRONTEND_FALLBACK;
   const verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}`;
-  const templateId = env.EMAILJS_VERIFY_TEMPLATE_ID;
 
   const params = {
     firstName,
@@ -239,17 +240,17 @@ export const sendEmailVerificationEmail = async (
     expiry: '24 hours',
   };
 
-  return sendEmail(email, subject, params, templateId);
+  return sendEmail(email, subject, params);
 };
 
 export const sendTestEmail = async (
   to: string = '',
 ): Promise<{ success: boolean; message: string; details?: any }> => {
   const testEmail = to || 'info@oxocareers.com';
-  const subject = 'Test Email from HRIS System (EmailJS)';
+  const subject = 'Test Email from HRIS System (SMTP)';
 
   const params = {
-    message: 'This is a test email to verify your EmailJS integration.',
+    message: 'This is a test email to verify your SMTP configuration.',
     timestamp: new Date().toISOString(),
   };
 
@@ -259,13 +260,13 @@ export const sendTestEmail = async (
     if (result) {
       return {
         success: true,
-        message: `Test email sent successfully via EmailJS`,
+        message: `Test email sent successfully via SMTP`,
         details: result,
       };
     }
     return {
       success: false,
-      message: 'Failed to send test email via EmailJS. Check logs.',
+      message: 'Failed to send test email via SMTP. Check logs.',
     };
   } catch (error: any) {
     return {
@@ -277,17 +278,18 @@ export const sendTestEmail = async (
 
 export const getEmailServiceStatus = () => {
   const ready = !!(
-    env.EMAILJS_PUBLIC_KEY &&
-    env.EMAILJS_PRIVATE_KEY &&
-    env.EMAILJS_SERVICE_ID
+    env.SMTP_HOST &&
+    env.SMTP_PORT &&
+    env.SMTP_USER &&
+    env.SMTP_PASS
   );
   return {
-    emailJS: {
+    smtp: {
       ready,
-      serviceId: env.EMAILJS_SERVICE_ID,
-      templateId: env.EMAILJS_TEMPLATE_ID,
-      publicKeySet: !!env.EMAILJS_PUBLIC_KEY,
-      privateKeySet: !!env.EMAILJS_PRIVATE_KEY,
+      host: env.SMTP_HOST,
+      port: env.SMTP_PORT,
+      user: env.SMTP_USER,
+      secure: env.SMTP_SECURE,
     },
     overall: ready,
   };
@@ -297,10 +299,10 @@ export const getEmailServiceStatus = () => {
 (async () => {
   const status = getEmailServiceStatus();
   log.info(
-    { ready: status.overall, serviceId: status.emailJS.serviceId ?? null },
+    { ready: status.overall, user: status.smtp.user ?? null },
     `Startup email status: ${status.overall ? 'ready' : 'not configured'}`,
   );
 })();
 
 export const verifyEmailConfigOnStartup = async () =>
-  !!(env.EMAILJS_PUBLIC_KEY && env.EMAILJS_PRIVATE_KEY);
+  !!(env.SMTP_USER && env.SMTP_PASS);

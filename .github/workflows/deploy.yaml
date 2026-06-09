@@ -124,6 +124,11 @@ jobs:
           KC_REALM: ${{ secrets.KC_REALM }}
           KC_BACKEND_CLIENT_ID: ${{ secrets.KC_BACKEND_CLIENT_ID }}
           KC_BACKEND_CLIENT_SECRET: ${{ secrets.KC_BACKEND_CLIENT_SECRET }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
         run: |
           set -euo pipefail
 
@@ -137,6 +142,11 @@ jobs:
             KC_REALM
             KC_BACKEND_CLIENT_ID
             KC_BACKEND_CLIENT_SECRET
+            SMTP_HOST
+            SMTP_PORT
+            SMTP_SECURE
+            SMTP_USER
+            SMTP_PASS
           )
 
           missing=0
@@ -190,10 +200,12 @@ jobs:
             --set-env-vars="DB_NAME=${{ secrets.DB_NAME }}" \
             --set-env-vars="DB_SCHEMA=${{ secrets.DB_SCHEMA }}" \
             --set-env-vars="FRONTEND_URL=${{ secrets.FRONTEND_URL }}" \
-            --set-env-vars="EMAILJS_SERVICE_ID=${{ secrets.EMAILJS_SERVICE_ID }}" \
-            --set-env-vars="EMAILJS_TEMPLATE_ID=${{ secrets.EMAILJS_TEMPLATE_ID }}" \
-            --set-env-vars="EMAILJS_PUBLIC_KEY=${{ secrets.EMAILJS_PUBLIC_KEY }}" \
-            --set-env-vars="EMAILJS_PRIVATE_KEY=${{ secrets.EMAILJS_PRIVATE_KEY }}" \
+            --set-env-vars="SMTP_HOST=${{ secrets.SMTP_HOST }}" \
+            --set-env-vars="SMTP_PORT=${{ secrets.SMTP_PORT }}" \
+            --set-env-vars="SMTP_SECURE=${{ secrets.SMTP_SECURE }}" \
+            --set-env-vars="SMTP_USER=${{ secrets.SMTP_USER }}" \
+            --set-env-vars="SMTP_PASS=${{ secrets.SMTP_PASS }}" \
+            --set-env-vars="SMTP_FROM=${{ secrets.SMTP_FROM }}" \
             --set-env-vars="KC_URL=${{ secrets.KC_URL }}" \
             --set-env-vars="KC_REALM=${{ secrets.KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.KC_BACKEND_CLIENT_ID }}" \
