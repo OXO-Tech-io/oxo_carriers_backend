@@ -173,6 +173,8 @@ jobs:
       # ──────────────────────────────────────────────────────────────────────
       - name: Deploy to Cloud Run
         id: deploy
+        env:
+          SMTP_FROM_VAL: ${{ secrets.SMTP_FROM }}
         run: |
           # --service-account=${{ secrets.GCP_SA_EMAIL }} \
           # Deploy the service with Cloud SQL configuration
@@ -205,7 +207,7 @@ jobs:
             --set-env-vars="SMTP_SECURE=${{ secrets.SMTP_SECURE }}" \
             --set-env-vars="SMTP_USER=${{ secrets.SMTP_USER }}" \
             --set-env-vars="SMTP_PASS=${{ secrets.SMTP_PASS }}" \
-            --set-env-vars="SMTP_FROM=${{ secrets.SMTP_FROM }}" \
+            --set-env-vars="SMTP_FROM=${SMTP_FROM_VAL}" \
             --set-env-vars="KC_URL=${{ secrets.KC_URL }}" \
             --set-env-vars="KC_REALM=${{ secrets.KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.KC_BACKEND_CLIENT_ID }}" \
