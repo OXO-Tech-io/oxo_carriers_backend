@@ -1,6 +1,6 @@
 /**
  * Thin client for the Keycloak Admin REST API. Authenticates as the
- * `oxo-hris-backend` confidential client via the client_credentials grant
+ * `oxo-carriers-backend` confidential client via the client_credentials grant
  * (the service account, which has the `manage-users` realm-management role).
  *
  * Used to provision Keycloak identities when HR creates a user record.
