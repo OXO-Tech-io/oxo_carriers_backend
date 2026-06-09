@@ -19,6 +19,7 @@
     "create-test-user": "ts-node src/scripts/createTestUser.ts",
     "test:email": "ts-node src/scripts/testEmail.ts",
     "check:email-config": "ts-node src/scripts/checkEmailConfig.ts",
+    "test:keycloak": "ts-node src/scripts/testKeycloak.ts",
     "create:superadmin": "ts-node src/scripts/createSuperAdmin.ts"
   },
   "keywords": [],

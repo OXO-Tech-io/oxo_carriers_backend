@@ -87,14 +87,22 @@ const findUserByEmail = async (email: string): Promise<KcUser | null> => {
 const findRealmRole = async (
   name: string
 ): Promise<{ id: string; name: string }> => {
-  const res = await adminFetch(`/roles/${encodeURIComponent(name)}`);
+  const res = await adminFetch(`/roles`);
   if (!res.ok) {
     throw new AppError(
       `Keycloak realm role '${name}' not found — create it in Keycloak first`,
       502
     );
   }
-  return (await res.json()) as { id: string; name: string };
+  const roles = (await res.json()) as Array<{ id: string; name: string }>;
+  const found = roles.find((r) => r.name.toLowerCase() === name.toLowerCase());
+  if (!found) {
+    throw new AppError(
+      `Keycloak realm role '${name}' not found — create it in Keycloak first`,
+      502
+    );
+  }
+  return found;
 };
 
 export interface CreateKeycloakUserInput {
