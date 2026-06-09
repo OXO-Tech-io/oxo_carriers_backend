@@ -13,6 +13,12 @@ const KC_URL = env.KC_URL.replace(/\/$/, '');
 const REALM = env.KC_REALM;
 const CLIENT_ID = env.KC_BACKEND_CLIENT_ID;
 const CLIENT_SECRET = env.KC_BACKEND_CLIENT_SECRET;
+// Optional: used to build the post-action redirect for onboarding emails.
+// Keycloak requires BOTH client_id and redirect_uri together; if either is
+// missing we omit both and the user lands on Keycloak's generic confirmation
+// page instead of being bounced back to the app.
+const FRONTEND_CLIENT_ID = env.KC_FRONTEND_CLIENT_ID;
+const FRONTEND_URL = env.FRONTEND_URL?.replace(/\/$/, '');
 
 interface CachedToken {
   accessToken: string;
@@ -120,7 +126,10 @@ export const keycloakAdminService = {
         firstName: input.firstName,
         lastName: input.lastName,
         enabled: true,
-        emailVerified: true,
+        // Left unverified on purpose: the onboarding email below carries the
+        // VERIFY_EMAIL action so the user verifies and sets their password in
+        // one Keycloak-hosted flow.
+        emailVerified: false,
         credentials: [
           {
             type: 'password',
@@ -164,5 +173,44 @@ export const keycloakAdminService = {
     }
 
     return kcUser.id;
+  },
+
+  /**
+   * Triggers Keycloak to email the user a secure link to complete the given
+   * required actions (e.g. set their password and verify their email). This
+   * is how onboarding/password-reset works now that Keycloak owns identity —
+   * the app no longer mints its own reset tokens.
+   *
+   * Requires the Keycloak realm to have SMTP configured (Realm Settings →
+   * Email). If SMTP is missing this returns a 502 with Keycloak's message.
+   *
+   * @param userId  Keycloak user id (the `sub`).
+   * @param actions Required actions, e.g. ['VERIFY_EMAIL', 'UPDATE_PASSWORD'].
+   * @param lifespanSeconds  How long the link stays valid. Defaults to 12h.
+   */
+  async sendRequiredActionsEmail(
+    userId: string,
+    actions: string[],
+    lifespanSeconds = 12 * 60 * 60
+  ): Promise<void> {
+    const params = new URLSearchParams({ lifespan: String(lifespanSeconds) });
+    // Only attach a redirect when we have both halves — Keycloak rejects a
+    // redirect_uri without a client_id, and the redirect_uri must be in the
+    // client's "Valid redirect URIs".
+    if (FRONTEND_CLIENT_ID && FRONTEND_URL) {
+      params.set('client_id', FRONTEND_CLIENT_ID);
+      params.set('redirect_uri', `${FRONTEND_URL}/login`);
+    }
+    const res = await adminFetch(
+      `/users/${userId}/execute-actions-email?${params.toString()}`,
+      { method: 'PUT', body: JSON.stringify(actions) }
+    );
+    if (!res.ok) {
+      const text = await res.text();
+      throw new AppError(
+        `Keycloak send actions email failed (${res.status}): ${text}`,
+        502
+      );
+    }
   },
 };

@@ -3,13 +3,10 @@ import { UserModel } from '../models/User';
 import { UserRole } from '../types';
 import pool from '../config/database';
 import crypto from 'crypto';
-import { sendPasswordSetupEmail, sendEmailVerificationEmail } from '../config/email';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
 import { logger } from '../lib/logger';
-
-import { passwordResetTokens } from '../utils/tokenStore';
 
 const log = (req: Request) => req.log ?? logger;
 
@@ -155,8 +152,9 @@ export const createUser = async (req: Request, res: Response) => {
     // Provision the user in Keycloak so they can sign in via the OXO login form.
     // Keycloak owns the password from this point forward; the bcrypt hash in the
     // `users` table is dead weight kept only for backwards compatibility.
+    let kcSub: string;
     try {
-      const kcSub = await keycloakAdminService.createUser({
+      kcSub = await keycloakAdminService.createUser({
         email,
         firstName: effectiveFirst,
         lastName: effectiveLast,
@@ -200,32 +198,30 @@ export const createUser = async (req: Request, res: Response) => {
     }
 
 
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 3600000); // 7 days
-    passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
-
+    // Keycloak owns identity now: instead of minting our own reset token, ask
+    // Keycloak to email the user a secure link to verify their email and set
+    // their password. If this fails (e.g. realm SMTP not configured), the
+    // account still exists — HR can re-send via the reset-password action.
+    let onboardingEmailSent = true;
     try {
-      log(req).info({ email }, 'New user created; sending verification email');
-      const verificationEmailResult = await sendEmailVerificationEmail(email, verificationToken, effectiveFirst);
-      if (!verificationEmailResult) {
-        log(req).error({ email }, 'Failed to send email verification email');
-      }
-      log(req).info({ email }, 'Sending password setup email');
-      const setupEmailResult = await sendPasswordSetupEmail(email, resetToken, effectiveFirst, employeeId);
-      if (!setupEmailResult) {
-        log(req).error({ email }, 'Failed to send password setup email');
-      } else {
-        log(req).info({ email }, 'Password setup email sent');
-      }
+      log(req).info({ email }, 'Sending Keycloak onboarding email');
+      await keycloakAdminService.sendRequiredActionsEmail(kcSub, [
+        'VERIFY_EMAIL',
+        'UPDATE_PASSWORD',
+      ]);
+      log(req).info({ email }, 'Keycloak onboarding email sent');
     } catch (emailError: any) {
-      log(req).error({ err: emailError }, 'Error sending emails');
+      onboardingEmailSent = false;
+      log(req).error({ err: emailError }, 'Failed to send Keycloak onboarding email');
     }
 
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({
       success: true,
-      message: 'User created successfully. Password setup email has been sent.',
+      message: onboardingEmailSent
+        ? 'User created successfully. A Keycloak email to verify and set up their password has been sent.'
+        : 'User created in Keycloak, but the onboarding email could not be sent. Use "Reset password" to re-send it.',
       user: userWithoutPassword,
     });
   } catch (error: any) {
@@ -330,32 +326,32 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     }
     log(req).debug({ email: user.email, firstName: user.firstName }, 'Found user');
 
-    // Generate password reset token
-    const resetToken = crypto.randomBytes(32).toString('hex');
-    const expiresAt = new Date(Date.now() + 7 * 24 * 3600000); // 7 days
-    passwordResetTokens.set(resetToken, { userId: user.id, expiresAt });
+    // Keycloak owns the password — it can't be reset from a DB token. If the
+    // user was never provisioned in Keycloak there is nothing to reset against.
+    if (!user.keycloakSub) {
+      log(req).warn({ userId }, 'User has no Keycloak identity; cannot reset password');
+      return res.status(409).json({
+        success: false,
+        message: 'User is not provisioned in Keycloak yet, so their password cannot be reset.',
+      });
+    }
 
     try {
-      const emailResult = await sendPasswordSetupEmail(user.email, resetToken, user.firstName, user.employeeId ?? '');
-
-      if (!emailResult) {
-        log(req).error(
-          { email: user.email },
-          'Email service returned null sending password reset; check EMAILJS_* in .env',
-        );
-        return res.status(500).json({
-          success: false,
-          message: 'Failed to send reset email. Please check SMTP configuration.',
-        });
-      }
-      log(req).info({ email: user.email }, 'Password reset email sent');
+      await keycloakAdminService.sendRequiredActionsEmail(user.keycloakSub, [
+        'UPDATE_PASSWORD',
+      ]);
+      log(req).info({ email: user.email }, 'Keycloak password reset email sent');
       res.json({
         success: true,
         message: 'Password reset email has been sent to the user',
       });
     } catch (emailError: any) {
-      log(req).error({ err: emailError }, 'Error sending password reset email');
-      res.status(500).json({ success: false, message: 'Failed to send reset email' });
+      log(req).error({ err: emailError }, 'Error sending Keycloak password reset email');
+      res.status(502).json({
+        success: false,
+        message:
+          'Failed to send reset email via Keycloak. Verify the realm SMTP settings are configured.',
+      });
     }
   } catch (error: any) {
     log(req).error({ err: error }, 'Reset user password failed');
