@@ -91,23 +91,22 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
 
     // 3. Update or Provision in Keycloak
     let keycloakSub = user.keycloakSub;
+    let keycloakSynced = false;
+    let keycloakError: string | null = null;
+
     if (keycloakSub) {
       try {
         // Update password in Keycloak
         await keycloakAdminService.updatePassword(keycloakSub, targetPassword);
         // Mark email verified in Keycloak
         await keycloakAdminService.verifyEmail(keycloakSub);
+        keycloakSynced = true;
       } catch (kcError: any) {
         req.log?.error({ err: kcError, userId: user.id }, 'Keycloak resetPassword sync failed');
-        res.status(502).json({
-          success: false,
-          message: 'Password updated in database, but Keycloak synchronization failed.',
-          error: kcError.message,
-        });
-        return;
+        keycloakError = kcError.message;
       }
     } else {
-      // User is not in Keycloak yet (provisioning failed during user creation)
+      // User is not in Keycloak yet (provisioning failed during user creation or was deferred)
       // Provision them now!
       try {
         keycloakSub = await keycloakAdminService.createUser({
@@ -120,18 +119,21 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
         });
         await UserModel.linkKeycloakSub(user.id, keycloakSub);
         await keycloakAdminService.verifyEmail(keycloakSub);
+        keycloakSynced = true;
       } catch (kcError: any) {
         req.log?.error({ err: kcError, userId: user.id }, 'Keycloak provisioning during password reset failed');
-        res.status(502).json({
-          success: false,
-          message: 'Password updated in database, but failed to provision user in Keycloak.',
-          error: kcError.message,
-        });
-        return;
+        keycloakError = kcError.message;
       }
     }
 
-    res.json({ success: true, message: 'Password has been set successfully!' });
+    res.json({
+      success: true,
+      message: keycloakSynced
+        ? 'Password has been set successfully!'
+        : 'Password has been set successfully in the database. Note: Keycloak synchronization was deferred.',
+      keycloakSynced,
+      keycloakError,
+    });
   } catch (error: any) {
     req.log?.error({ err: error }, 'Reset password endpoint failed');
     res.status(500).json({ success: false, message: 'Failed to reset password', error: error.message });
