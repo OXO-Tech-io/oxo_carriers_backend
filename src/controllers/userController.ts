@@ -7,6 +7,7 @@ import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
 import { logger } from '../lib/logger';
+import { sendEmailVerificationEmail } from '../config/email';
 
 const log = (req: Request) => req.log ?? logger;
 
@@ -152,7 +153,8 @@ export const createUser = async (req: Request, res: Response) => {
     // Provision the user in Keycloak so they can sign in via the OXO login form.
     // Keycloak owns the password from this point forward; the bcrypt hash in the
     // `users` table is dead weight kept only for backwards compatibility.
-    let kcSub: string;
+    let kcSub: string | null = null;
+    let keycloakProvisioned = false;
     try {
       kcSub = await keycloakAdminService.createUser({
         email,
@@ -163,17 +165,9 @@ export const createUser = async (req: Request, res: Response) => {
         role: userRole,
       });
       await UserModel.linkKeycloakSub(user.id, kcSub);
+      keycloakProvisioned = true;
     } catch (kcError) {
-      log(req).error({ err: kcError }, 'Keycloak provisioning failed');
-      // Surface to HR — they need to know the user can't log in yet. The DB row
-      // remains so they can retry by manually creating the KC user later.
-      return res.status(502).json({
-        success: false,
-        message:
-          'User saved but Keycloak provisioning failed. They will not be able to sign in until provisioned in Keycloak.',
-        error: (kcError as Error).message,
-        userId: user.id,
-      });
+      log(req).error({ err: kcError }, 'Keycloak provisioning failed during user creation');
     }
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
@@ -198,31 +192,38 @@ export const createUser = async (req: Request, res: Response) => {
     }
 
 
-    // Keycloak owns identity now: instead of minting our own reset token, ask
-    // Keycloak to email the user a secure link to verify their email and set
-    // their password. If this fails (e.g. realm SMTP not configured), the
-    // account still exists — HR can re-send via the reset-password action.
+    // Send onboarding/verification email using EmailJS
     let onboardingEmailSent = true;
     try {
-      log(req).info({ email }, 'Sending Keycloak onboarding email');
-      await keycloakAdminService.sendRequiredActionsEmail(kcSub, [
-        'VERIFY_EMAIL',
-        'UPDATE_PASSWORD',
-      ]);
-      log(req).info({ email }, 'Keycloak onboarding email sent');
+      log(req).info({ email }, 'Sending EmailJS verification email');
+      await sendEmailVerificationEmail(email, verificationToken, effectiveFirst);
+      log(req).info({ email }, 'EmailJS verification email sent');
     } catch (emailError: any) {
       onboardingEmailSent = false;
-      log(req).error({ err: emailError }, 'Failed to send Keycloak onboarding email');
+      log(req).error({ err: emailError }, 'Failed to send EmailJS verification email');
     }
 
     const { password: _, ...userWithoutPassword } = user;
 
+    let message = 'User created successfully.';
+    if (keycloakProvisioned) {
+      message += onboardingEmailSent
+        ? ' A verification email has been sent.'
+        : ' A verification email could not be sent.';
+    } else {
+      message += ' Note: Keycloak provisioning failed initially, but will be retried when they set their password.';
+      if (onboardingEmailSent) {
+        message += ' A verification email has been sent.';
+      } else {
+        message += ' A verification email could not be sent.';
+      }
+    }
+
     res.status(201).json({
       success: true,
-      message: onboardingEmailSent
-        ? 'User created successfully. A Keycloak email to verify and set up their password has been sent.'
-        : 'User created in Keycloak, but the onboarding email could not be sent. Use "Reset password" to re-send it.',
+      message,
       user: userWithoutPassword,
+      keycloakProvisioned,
     });
   } catch (error: any) {
     log(req).error({ err: error }, 'Create user failed');

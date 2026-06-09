@@ -9,4 +9,8 @@ const router = Router();
 // returns the DB profile linked to the verified Keycloak token.
 router.get('/me', authenticate, asyncHandler(authController.getMe));
 
+// Local database-backed verification & password setup flow (resilient Keycloak sync)
+router.get('/verify-email', asyncHandler(authController.verifyEmail));
+router.post('/reset-password', asyncHandler(authController.resetPassword));
+
 export default router;
