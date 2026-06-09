@@ -53,6 +53,7 @@ export const authenticate = async (
   next: NextFunction,
 ): Promise<void> => {
   try {
+    const log = (req as Request & { log?: typeof baseLogger }).log ?? baseLogger;
     const authHeader = req.headers.authorization;
     if (!authHeader?.startsWith("Bearer ")) {
       res.status(401).json({ success: false, message: "No token provided" });
@@ -70,6 +71,15 @@ export const authenticate = async (
     }
 
     const role = mapKeycloakRoles(extractAllKeycloakRoles(claims));
+
+    // Visibility for ops/debugging: confirm whether this Keycloak identity is
+    // already present in Cloud SQL (`users`) before we upsert/link.
+    const existingBySub = await UserModel.findByKeycloakSub(claims.sub);
+    let existingByEmail = null;
+    if (!existingBySub) {
+      existingByEmail = await UserModel.findByEmail(claims.email);
+    }
+
     const user = await UserModel.findOrCreateFromKeycloak({
       sub: claims.sub,
       email: claims.email,
@@ -77,6 +87,24 @@ export const authenticate = async (
       last_name: claims.family_name || "",
       role,
     });
+
+    let dbResolution = "created_new_user";
+    if (existingBySub) {
+      dbResolution = "existing_by_sub";
+    } else if (existingByEmail) {
+      dbResolution = "existing_by_email_linked_sub";
+    }
+
+    log.info(
+      {
+        keycloakSub: claims.sub,
+        email: claims.email,
+        dbResolution,
+        userId: user.id,
+        role: user.role,
+      },
+      "Keycloak token authenticated and resolved against users table",
+    );
 
     req.user = {
       userId: user.id,
