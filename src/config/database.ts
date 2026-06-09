@@ -31,8 +31,8 @@ const getCloudSqlSocketPath = () => {
 
 const poolConfig: any = {
   user: env.DB_USER,
-  // Force password to string to avoid pg SCRAM type errors when env injection is malformed.
-  password: String(env.DB_PASSWORD ?? ''),
+  // Password can come from DB_PASSWORD or DB_PASSWORD_FILE (resolved in env.ts).
+  password: String(env.DB_PASSWORD ?? '').trim(),
   database: env.DB_NAME,
   max: 20,
   idleTimeoutMillis: 30000,
