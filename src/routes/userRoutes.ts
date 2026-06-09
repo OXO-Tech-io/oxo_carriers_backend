@@ -11,6 +11,7 @@ router.get('/', requireHROrFinance, userController.getAllUsers);
 router.get('/departments', requireHROrFinance, userController.getDepartments);
 router.get('/:id', userController.getUserById);
 router.post('/', requireHROrFinance, userController.createUser);
+router.post('/:id/keycloak', requireHR, userController.provisionKeycloakUser);
 router.put('/:id', userController.updateUser);
 router.patch('/:id/role', requireSuperAdmin, userController.updateUserRole);
 router.post('/:id/reset-password', requireHR, userController.resetUserPassword);
