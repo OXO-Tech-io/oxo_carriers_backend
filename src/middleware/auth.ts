@@ -73,26 +73,25 @@ export const authenticate = async (
     const role = mapKeycloakRoles(extractAllKeycloakRoles(claims));
 
     // Visibility for ops/debugging: confirm whether this Keycloak identity is
-    // already present in Cloud SQL (`users`) before we upsert/link.
+    // already present in Cloud SQL (`users`) before we resolve.
     const existingBySub = await UserModel.findByKeycloakSub(claims.sub);
-    let existingByEmail = null;
-    if (!existingBySub) {
-      existingByEmail = await UserModel.findByEmail(claims.email);
+    let user = existingBySub;
+    let dbResolution = "existing_by_sub";
+
+    if (!user) {
+      const existingByEmail = await UserModel.findByEmail(claims.email);
+      if (existingByEmail) {
+        // Link Keycloak sub to DB user
+        await UserModel.linkKeycloakSub(existingByEmail.id, claims.sub);
+        user = { ...existingByEmail, keycloakSub: claims.sub };
+        dbResolution = "existing_by_email_linked_sub";
+      }
     }
 
-    const user = await UserModel.findOrCreateFromKeycloak({
-      sub: claims.sub,
-      email: claims.email,
-      first_name: claims.given_name || claims.preferred_username || "",
-      last_name: claims.family_name || "",
-      role,
-    });
-
-    let dbResolution = "created_new_user";
-    if (existingBySub) {
-      dbResolution = "existing_by_sub";
-    } else if (existingByEmail) {
-      dbResolution = "existing_by_email_linked_sub";
+    if (!user) {
+      log.warn({ keycloakSub: claims.sub, email: claims.email }, "User not found in system database");
+      res.status(401).json({ success: false, message: "User is authenticated at Keycloak but is not registered in this system." });
+      return;
     }
 
     log.info(
