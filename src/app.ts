@@ -226,6 +226,19 @@ app.get('/health', (_req, res) => {
 
 // Database connectivity check
 app.get(['/api/db-health', '/db-health'], async (_req, res) => {
+  const resolvedDbPassword = String(env.DB_PASSWORD ?? '');
+  const hasResolvedDbPassword = resolvedDbPassword.trim().length > 0;
+  const resolveDbPasswordSource = (): 'env-var' | 'file' | 'none' => {
+    if (process.env.DB_PASSWORD && process.env.DB_PASSWORD.trim().length > 0) {
+      return 'env-var';
+    }
+    if (process.env.DB_PASSWORD_FILE) {
+      return 'file';
+    }
+    return 'none';
+  };
+  const dbPasswordSource = resolveDbPasswordSource();
+
   try {
     const dbCheck = await pool.query(
       `
@@ -250,8 +263,9 @@ app.get(['/api/db-health', '/db-health'], async (_req, res) => {
         mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
         configuredSchema: env.DB_SCHEMA,
         cloudSqlConnectionName: env.CLOUD_SQL_CONNECTION_NAME ?? null,
-        dbPasswordConfigured: Boolean(process.env.DB_PASSWORD),
-        dbPasswordType: typeof process.env.DB_PASSWORD,
+        dbPasswordConfigured: hasResolvedDbPassword,
+        dbPasswordType: typeof env.DB_PASSWORD,
+        dbPasswordSource,
       },
       database: dbCheck.rows[0],
     });
@@ -264,8 +278,9 @@ app.get(['/api/db-health', '/db-health'], async (_req, res) => {
       connection: {
         mode: env.CLOUD_SQL_CONNECTION_NAME ? 'cloud-sql-socket' : 'tcp',
         configuredSchema: env.DB_SCHEMA,
-        dbPasswordConfigured: Boolean(process.env.DB_PASSWORD),
-        dbPasswordType: typeof process.env.DB_PASSWORD,
+        dbPasswordConfigured: hasResolvedDbPassword,
+        dbPasswordType: typeof env.DB_PASSWORD,
+        dbPasswordSource,
       },
     });
   }

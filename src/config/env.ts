@@ -57,6 +57,7 @@ const Schema = z.object({
   DB_PORT: z.coerce.number().int().positive().default(5432),
   DB_USER: z.string().min(1).default('postgres'),
   DB_PASSWORD: z.string().default(''),
+  DB_PASSWORD_FILE: optionalString,
   DB_NAME: z.string().min(1).default('oxo_carriers'),
   DB_SCHEMA: z.string().min(1).default('public'),
   DB_SSL: boolish.default(false),
@@ -130,6 +131,33 @@ export const env: Env & {
   IS_DEVELOPMENT: boolean;
   IS_TEST: boolean;
 } = Object.assign({}, parsed.data, {
+  DB_PASSWORD: (() => {
+    const inlinePassword = parsed.data.DB_PASSWORD;
+    if (typeof inlinePassword === 'string' && inlinePassword.trim().length > 0) {
+      return inlinePassword;
+    }
+
+    const filePath = parsed.data.DB_PASSWORD_FILE;
+    if (!filePath) {
+      return inlinePassword;
+    }
+
+    try {
+      const fromFile = fs.readFileSync(filePath, 'utf8').trim();
+      if (fromFile.length > 0) {
+        // eslint-disable-next-line no-console
+        console.info(`Loaded DB password from file: ${filePath}`);
+        return fromFile;
+      }
+      // eslint-disable-next-line no-console
+      console.warn(`DB_PASSWORD_FILE is set but empty: ${filePath}`);
+      return inlinePassword;
+    } catch (error) {
+      // eslint-disable-next-line no-console
+      console.warn(`Failed to read DB_PASSWORD_FILE at ${filePath}:`, error);
+      return inlinePassword;
+    }
+  })(),
   IS_PRODUCTION: parsed.data.NODE_ENV === 'production',
   IS_DEVELOPMENT: parsed.data.NODE_ENV === 'development',
   IS_TEST: parsed.data.NODE_ENV === 'test',
