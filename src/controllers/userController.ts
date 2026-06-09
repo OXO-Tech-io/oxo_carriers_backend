@@ -480,25 +480,27 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
     await UserModel.linkKeycloakSub(user.id, kcSub);
     log(req).info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
 
-    // Send Required Actions (Password update & Email verification) email directly via Keycloak
+    // Send onboarding/password setup email using EmailJS now that Keycloak is configured
     let onboardingEmailSent = true;
     try {
-      log(req).info({ email: user.email }, 'Sending Keycloak onboarding required actions email...');
-      await keycloakAdminService.sendRequiredActionsEmail(kcSub, [
-        'UPDATE_PASSWORD',
-        'VERIFY_EMAIL',
-      ]);
-      log(req).info({ email: user.email }, 'Keycloak required actions email sent.');
+      log(req).info({ email: user.email }, 'Sending EmailJS password setup email');
+      await sendPasswordSetupEmail(
+        user.email,
+        emailVerificationToken,
+        user.firstName,
+        user.employeeId || ''
+      );
+      log(req).info({ email: user.email }, 'EmailJS password setup email sent');
     } catch (emailError: any) {
       onboardingEmailSent = false;
-      log(req).error({ err: emailError }, 'Failed to send Keycloak required actions email');
+      log(req).error({ err: emailError }, 'Failed to send EmailJS password setup email');
     }
 
     res.status(200).json({
       success: true,
       message: onboardingEmailSent
-        ? 'User provisioned in Keycloak successfully. Onboarding email has been sent.'
-        : 'User provisioned in Keycloak successfully, but the onboarding email could not be sent.',
+        ? 'User provisioned in Keycloak successfully. A password setup email has been sent.'
+        : 'User provisioned in Keycloak successfully, but the password setup email could not be sent.',
       keycloakSub: kcSub,
       onboardingEmailSent,
     });

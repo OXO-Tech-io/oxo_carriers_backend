@@ -96,6 +96,14 @@ const Schema = z.object({
   EMAILJS_PUBLIC_KEY: optionalString,
   EMAILJS_PRIVATE_KEY: optionalString,
 
+  // ─── SMTP ───────────────────────────────────────────────────────────────
+  SMTP_HOST: z.string().default('localhost'),
+  SMTP_PORT: z.coerce.number().int().positive().default(587),
+  SMTP_SECURE: boolish.default(false),
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  SMTP_FROM: optionalString,
+
   // ─── JWT Authentication ─────────────────────────────────────────────────
   JWT_SECRET: z.string().min(32).default('your-super-secret-key-min-32-chars-required'),
   JWT_EXPIRES_IN: z.string().default('24h'),
