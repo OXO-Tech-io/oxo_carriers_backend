@@ -219,7 +219,7 @@ jobs:
             --set-env-vars="KC_REALM=${{ secrets.QA_KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.QA_KC_BACKEND_CLIENT_ID }}" \
             --set-env-vars="KC_BACKEND_CLIENT_SECRET=${{ secrets.QA_KC_BACKEND_CLIENT_SECRET }}" \
-            --revision-suffix=${{ github.sha }} \
+            --revision-suffix=${{ github.sha }}-${{ github.run_attempt }} \
             --labels="commit=${{ github.sha }},branch=qa,app=oxo-carriers-backend" \
             --quiet
 
