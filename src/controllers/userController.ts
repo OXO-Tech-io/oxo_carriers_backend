@@ -150,6 +150,26 @@ export const createUser = async (req: Request, res: Response) => {
       email_verification_token: verificationToken,
     });
 
+    // Provision the user in Keycloak so they can sign in via the OXO login form.
+    // Keycloak owns the password from this point forward; the bcrypt hash in the
+    // `users` table is dead weight kept only for backwards compatibility.
+    let kcSub: string | null = null;
+    let keycloakProvisioned = false;
+    try {
+      kcSub = await keycloakAdminService.createUser({
+        email,
+        firstName: effectiveFirst,
+        lastName: effectiveLast,
+        password: tempPassword,
+        temporaryPassword: true,
+        role: userRole,
+      });
+      await UserModel.linkKeycloakSub(user.id, kcSub);
+      keycloakProvisioned = true;
+    } catch (kcError) {
+      log(req).error({ err: kcError }, 'Keycloak provisioning failed during user creation');
+    }
+
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
@@ -191,7 +211,7 @@ export const createUser = async (req: Request, res: Response) => {
         ? 'User created successfully. A password setup email has been sent.'
         : 'User created successfully, but the password setup email could not be sent.',
       user: userWithoutPassword,
-      keycloakProvisioned: false,
+      keycloakProvisioned,
     });
   } catch (error: any) {
     log(req).error({ err: error }, 'Create user failed');
