@@ -213,4 +213,38 @@ export const keycloakAdminService = {
       );
     }
   },
+
+  async verifyEmail(userId: string): Promise<void> {
+    const getRes = await adminFetch(`/users/${userId}`);
+    if (!getRes.ok) {
+      const text = await getRes.text();
+      throw new AppError(`Keycloak get user failed (${getRes.status}): ${text}`, 502);
+    }
+    const userRepresentation = await getRes.json() as any;
+    userRepresentation.emailVerified = true;
+
+    const putRes = await adminFetch(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify(userRepresentation),
+    });
+    if (!putRes.ok) {
+      const text = await putRes.text();
+      throw new AppError(`Keycloak verify email failed (${putRes.status}): ${text}`, 502);
+    }
+  },
+
+  async updatePassword(userId: string, password: string): Promise<void> {
+    const res = await adminFetch(`/users/${userId}/reset-password`, {
+      method: 'PUT',
+      body: JSON.stringify({
+        type: 'password',
+        value: password,
+        temporary: false,
+      }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new AppError(`Keycloak update password failed (${res.status}): ${text}`, 502);
+    }
+  },
 };
