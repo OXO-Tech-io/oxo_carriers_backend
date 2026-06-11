@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { users, type User as DrizzleUser } from '../db/schema';
+import { users, userPermissions, type User as DrizzleUser } from '../db/schema';
 import { User, UserRole } from '../types';
 import bcrypt from 'bcryptjs';
 import { eq, like, or, and, sql } from 'drizzle-orm';
@@ -68,6 +68,26 @@ export class UserModel {
       .returning();
 
     if (!insertedUser) throw new Error('Failed to create user from Keycloak claims');
+
+    // Initialize default permissions for employee role
+    if (claims.role === UserRole.EMPLOYEE) {
+      const defaultPermissions = [
+        'dashboard',
+        'leaves',
+        'salaries',
+        'facilities',
+        'medical_claims',
+        'reports',
+      ];
+      for (const permission of defaultPermissions) {
+        await db.insert(userPermissions).values({
+          userId: insertedUser.id,
+          permissionKey: permission,
+          accessLevel: 'read',
+        });
+      }
+    }
+
     return insertedUser;
   }
 

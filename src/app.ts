@@ -440,6 +440,44 @@ const startServer = async () => {
           },
           'Database connection check passed on startup',
         );
+
+        // Assign default permissions to existing employee accounts if they don't already have them
+        try {
+          logger.info('⚙️ Checking default permissions for existing employees...');
+          const employeesRes = await pool.query("SELECT id FROM users WHERE role = 'employee'");
+          const employeeIds = (employeesRes.rows || []).map((row: any) => row.id);
+          const defaultPermissions = [
+            'dashboard',
+            'leaves',
+            'salaries',
+            'facilities',
+            'medical_claims',
+            'reports',
+          ];
+          let assignedCount = 0;
+          for (const empId of employeeIds) {
+            for (const permission of defaultPermissions) {
+              const checkRes = await pool.query(
+                'SELECT 1 FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+                [empId, permission]
+              );
+              if (checkRes.rows.length === 0) {
+                await pool.query(
+                  'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                  [empId, permission, 'read']
+                );
+                assignedCount++;
+              }
+            }
+          }
+          if (assignedCount > 0) {
+            logger.info(`✅ Assigned ${assignedCount} missing default permissions to employees in Postgres.`);
+          } else {
+            logger.info('✅ All employee permissions are up to date in Postgres.');
+          }
+        } catch (syncError: any) {
+          logger.error({ err: syncError }, 'Failed to check/assign default employee permissions on startup');
+        }
       } catch (error) {
         logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');
       }
