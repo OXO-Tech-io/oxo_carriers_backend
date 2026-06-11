@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../types';
+import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 
 export class LeaveModel {
   static async createRequest(request: {
@@ -279,6 +280,45 @@ export class LeaveModel {
 
   static async getLeaveBalance(userId: number, year?: number): Promise<LeaveBalance[]> {
     const currentYear = year || new Date().getFullYear();
+
+    try {
+      // Get all active leave types
+      const leaveTypesRes = await pool.query(
+        'SELECT id, name, max_days FROM leave_types WHERE is_active = true'
+      );
+      const activeLeaveTypes = leaveTypesRes.rows as any[];
+
+      // Fetch user details to get hire date (needed for pro-rated leave calculation)
+      const userRes = await pool.query('SELECT hire_date FROM users WHERE id = $1', [userId]);
+      const user = userRes.rows[0];
+      const hireDate = user?.hire_date ? new Date(user.hire_date) : new Date();
+
+      // For each active leave type, ensure the user has a balance record
+      for (const type of activeLeaveTypes) {
+        const balanceCheck = await pool.query(
+          'SELECT 1 FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+          [userId, type.id, currentYear]
+        );
+        if (balanceCheck.rows.length === 0) {
+          let totalDays = type.max_days;
+          if (
+            type.name.toLowerCase() === 'annual' ||
+            type.name.toLowerCase() === 'annual/paid leave' ||
+            type.name.toLowerCase() === 'annual leave'
+          ) {
+            totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+          }
+          await pool.query(
+            `INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
+             VALUES ($1, $2, $3, 0, $3, $4)`,
+            [userId, type.id, totalDays, currentYear]
+          );
+        }
+      }
+    } catch (err) {
+      console.error('Failed to auto-initialize leave balances in getLeaveBalance:', err);
+    }
+
     const result = await pool.query(
       `SELECT elb.*,
               lt.id as lt_id, lt.name, lt.description, lt.max_days, lt.is_active,
