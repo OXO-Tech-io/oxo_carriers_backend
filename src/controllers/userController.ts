@@ -157,11 +157,16 @@ export const createUser = async (req: Request, res: Response) => {
       const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
       const types = leaveTypesResult.rows as any[];
 
-      const hireDate = user.hireDate ? new Date(user.hireDate) : new Date();
+      const hireDateVal = user.hireDate || (user as any).hire_date;
+      const hireDate = hireDateVal ? new Date(hireDateVal) : new Date();
 
       for (const type of types) {
         let totalDays = type.max_days;
-        if (type.name.toLowerCase() === 'annual' || type.name.toLowerCase() === 'annual/paid leave') {
+        if (
+          type.name.toLowerCase() === 'annual' ||
+          type.name.toLowerCase() === 'annual/paid leave' ||
+          type.name.toLowerCase() === 'annual leave'
+        ) {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
         await pool.query(
@@ -227,11 +232,11 @@ export const updateUser = async (req: Request, res: Response) => {
     } = req.body;
 
     const updates: any = {};
-    if (first_name) updates.first_name = first_name;
-    if (last_name) updates.last_name = last_name;
+    if (first_name) updates.firstName = first_name;
+    if (last_name) updates.lastName = last_name;
     if (department !== undefined) updates.department = department;
     if (position !== undefined) updates.position = position;
-    if (manager_id !== undefined) updates.manager_id = manager_id ? parseInt(manager_id) : null;
+    if (manager_id !== undefined) updates.managerId = manager_id ? parseInt(manager_id) : null;
 
     // Only HR and super_admin can update role
     const canUpdateRole =
