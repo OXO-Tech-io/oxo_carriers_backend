@@ -171,6 +171,28 @@ export const createUser = async (req: Request, res: Response) => {
       }
     }
 
+    // Initialize default permissions for employee role
+    if (userRole === UserRole.EMPLOYEE) {
+      const defaultPermissions = [
+        'dashboard',
+        'leaves',
+        'salaries',
+        'facilities',
+        'medical_claims',
+        'reports',
+      ];
+      for (const permission of defaultPermissions) {
+        await pool.query(
+          `INSERT INTO user_permissions (user_id, permission_key, access_level)
+           SELECT $1, $2, $3
+           WHERE NOT EXISTS (
+             SELECT 1 FROM user_permissions WHERE user_id = $1 AND permission_key = $2
+           )`,
+          [user.id, permission, 'read']
+        );
+      }
+    }
+
     const { password: _, ...userWithoutPassword } = user;
 
     res.status(201).json({

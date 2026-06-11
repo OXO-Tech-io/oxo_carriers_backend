@@ -1046,6 +1046,36 @@ const insertDefaultData = async (
       logger.info("  ✓ Dummy user already exists");
     }
 
+    // Ensure all existing employee users in MySQL have the default permissions
+    try {
+      logger.info("⚙️ Ensuring default permissions for employees in MySQL...");
+      const [employees]: any = await connection.query(`
+        SELECT id FROM users WHERE role = 'employee'
+      `);
+      
+      const defaultPermissions = [
+        'dashboard',
+        'leaves',
+        'salaries',
+        'facilities',
+        'medical_claims',
+        'reports'
+      ];
+
+      for (const emp of employees) {
+        for (const permission of defaultPermissions) {
+          await connection.query(`
+            INSERT INTO user_permissions (user_id, permission_key, access_level)
+            VALUES (?, ?, 'read')
+            ON DUPLICATE KEY UPDATE access_level = VALUES(access_level)
+          `, [emp.id, permission]);
+        }
+      }
+      logger.info("  ✓ Employee permissions configured in MySQL");
+    } catch (permError: any) {
+      logger.warn("  ⚠ Warning configuring default employee permissions in MySQL:", permError.message);
+    }
+
     logger.info("✅ Default data ready");
   } catch (error: any) {
     logger.error("⚠️  Warning inserting default data:", error.message);
