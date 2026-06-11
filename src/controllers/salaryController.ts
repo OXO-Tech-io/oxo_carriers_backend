@@ -8,6 +8,7 @@ import path from 'path';
 import fs from 'fs';
 import { env } from '../config/env';
 import { logger } from '../lib/logger';
+import { sendPayslipAvailableEmail } from '../config/email';
 
 const log = (req: Request) => req.log ?? logger;
 
@@ -91,6 +92,29 @@ export const generateSalary = async (req: Request, res: Response) => {
     const salary = await SalaryModel.generateSalary(parseInt(userId), monthYear, generatedBy);
 
     res.status(201).json({ success: true, message: 'Salary generated successfully', salary });
+
+    // Send payslip notification email to employee (non-blocking)
+    try {
+      const userResult = await pool.query(
+        'SELECT first_name, last_name, email FROM users WHERE id = $1',
+        [parseInt(userId)]
+      );
+      const userRows = userResult.rows as any[];
+      const employeeUser = userRows[0];
+      if (employeeUser?.email) {
+        const payPeriod = monthYear.toLocaleDateString('en-GB', { year: 'numeric', month: 'long' });
+        await sendPayslipAvailableEmail(employeeUser.email, {
+          employeeName: `${employeeUser.first_name} ${employeeUser.last_name}`.trim(),
+          payPeriod,
+          netSalary: `${parseFloat(String(salary.net_salary)).toLocaleString()}`,
+          grossEarnings: `${parseFloat(String(salary.total_earnings)).toLocaleString()}`,
+          totalDeductions: `${parseFloat(String(salary.total_deductions)).toLocaleString()}`,
+          downloadUrl: `${env.FRONTEND_URL ?? 'https://app.oxocareers.com'}/salaries`,
+        });
+      }
+    } catch (emailErr: any) {
+      log(req).error({ err: emailErr }, 'Failed to send payslip email');
+    }
   } catch (error: any) {
     log(req).error({ err: error }, 'Generate salary failed');
     res.status(500).json({ success: false, message: 'Failed to generate salary', error: error.message });
@@ -563,6 +587,31 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
     );
 
     res.json({ success: true, message: 'Salary status updated', salary: updated });
+
+    // If salary is marked as 'paid', send payslip email to employee (non-blocking)
+    if (status === SalaryStatus.PAID && updated) {
+      try {
+        const userResult = await pool.query(
+          'SELECT first_name, last_name, email FROM users WHERE id = $1',
+          [updated.user_id]
+        );
+        const userRows = userResult.rows as any[];
+        const employeeUser = userRows[0];
+        if (employeeUser?.email) {
+          const payPeriod = new Date(updated.month_year).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' });
+          await sendPayslipAvailableEmail(employeeUser.email, {
+            employeeName: `${employeeUser.first_name} ${employeeUser.last_name}`.trim(),
+            payPeriod,
+            netSalary: `${parseFloat(String(updated.net_salary)).toLocaleString()}`,
+            grossEarnings: `${parseFloat(String(updated.total_earnings)).toLocaleString()}`,
+            totalDeductions: `${parseFloat(String(updated.total_deductions)).toLocaleString()}`,
+            downloadUrl: `${env.FRONTEND_URL ?? 'https://app.oxocareers.com'}/salaries`,
+          });
+        }
+      } catch (emailErr: any) {
+        log(req).error({ err: emailErr }, 'Failed to send payslip paid email');
+      }
+    }
   } catch (error: any) {
     log(req).error({ err: error }, 'Update salary status failed');
     res.status(500).json({ success: false, message: 'Failed to update salary status', error: error.message });

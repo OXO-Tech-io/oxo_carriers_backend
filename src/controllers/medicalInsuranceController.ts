@@ -2,6 +2,11 @@ import { Request, Response } from 'express';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from '../models/MedicalInsurance';
 import { MedicalClaimType, MedicalClaimStatus, UserRole } from '../types';
 import { logger } from '../lib/logger';
+import {
+  sendMedicalClaimSubmittedEmail,
+  sendMedicalClaimApprovedEmail,
+  sendMedicalClaimRejectedEmail,
+} from '../config/email';
 
 const log = (req: Request) => req.log ?? logger;
 
@@ -60,6 +65,25 @@ export const apply = async (req: Request, res: Response) => {
     });
 
     res.status(201).json({ success: true, message: 'Medical insurance claim submitted', claim });
+
+    // Send confirmation email to employee (non-blocking)
+    try {
+      const employeeName = claim.user
+        ? `${claim.user.first_name} ${claim.user.last_name}`.trim()
+        : 'Employee';
+      const employeeEmail = claim.user?.email;
+      if (employeeEmail) {
+        await sendMedicalClaimSubmittedEmail(employeeEmail, {
+          employeeName,
+          claimId: `CLM-${claim.id}`,
+          claimType: claim.type,
+          claimAmount: `${parseFloat(String(claim.amount)).toLocaleString()}`,
+          submissionDate: new Date().toLocaleDateString('en-GB'),
+        });
+      }
+    } catch (emailErr: any) {
+      log(req).error({ err: emailErr }, 'Failed to send medical claim submitted email');
+    }
   } catch (error: any) {
     log(req).error({ err: error }, 'Medical insurance apply failed');
     res.status(500).json({ success: false, message: 'Failed to submit claim', error: error.message });
@@ -145,6 +169,28 @@ export const approve = async (req: Request, res: Response) => {
 
     const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.APPROVED, userId!, null);
     res.json({ success: true, message: 'Claim approved', claim: updated });
+
+    // Send approval email to employee (non-blocking)
+    try {
+      const employeeName = updated?.user
+        ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
+        : 'Employee';
+      const employeeEmail = updated?.user?.email;
+      if (employeeEmail && updated) {
+        await sendMedicalClaimApprovedEmail(employeeEmail, {
+          employeeName,
+          claimId: `CLM-${updated.id}`,
+          claimType: updated.type,
+          claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+          approvedAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+          approvalDate: new Date().toLocaleDateString('en-GB'),
+          settlementInfo: 'Bank Direct Deposit',
+          processingTimeline: '2-4 Business Days',
+        });
+      }
+    } catch (emailErr: any) {
+      log(req).error({ err: emailErr }, 'Failed to send medical claim approved email');
+    }
   } catch (error: any) {
     log(req).error({ err: error }, 'Approve medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to approve claim', error: error.message });
@@ -177,6 +223,26 @@ export const reject = async (req: Request, res: Response) => {
 
     const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.REJECTED, userId!, admin_comment.trim());
     res.json({ success: true, message: 'Claim rejected', claim: updated });
+
+    // Send rejection email to employee (non-blocking)
+    try {
+      const employeeName = updated?.user
+        ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
+        : 'Employee';
+      const employeeEmail = updated?.user?.email;
+      if (employeeEmail && updated) {
+        await sendMedicalClaimRejectedEmail(employeeEmail, {
+          employeeName,
+          claimId: `CLM-${updated.id}`,
+          claimType: updated.type,
+          claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+          rejectionReason: admin_comment.trim(),
+          requiredCorrections: 'Please review the rejection reason and resubmit with corrected documentation.',
+        });
+      }
+    } catch (emailErr: any) {
+      log(req).error({ err: emailErr }, 'Failed to send medical claim rejected email');
+    }
   } catch (error: any) {
     log(req).error({ err: error }, 'Reject medical claim failed');
     res.status(500).json({ success: false, message: 'Failed to reject claim', error: error.message });
