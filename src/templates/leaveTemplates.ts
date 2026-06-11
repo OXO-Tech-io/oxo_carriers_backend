@@ -41,7 +41,7 @@ export const getLeaveSubmittedEmailHtml = (params: LeaveEmailParams): string => 
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">Your leave request has been submitted successfully. It is currently pending review by your manager. You can track the status of this request or cancel it in the Employee Self Service Portal.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'View Request Status',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/leaves',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves',
   });
 };
 
@@ -70,7 +70,7 @@ export const getLeaveApprovedEmailHtml = (params: LeaveEmailParams): string => {
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">Your leave request has been approved. Your status has been updated in the HR system, and your calendar will reflect these dates. Enjoy your time off!</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'View Approved Leave',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/leaves',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves',
   });
 };
 
@@ -112,7 +112,7 @@ export const getLeaveRejectedEmailHtml = (params: LeaveEmailParams): string => {
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">We regret to inform you that your leave request has been declined by your manager or HR department. Please review the details and next steps below.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Go to Leave Portal',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/leaves',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves',
     extraHtml: extraHtml,
   });
 };

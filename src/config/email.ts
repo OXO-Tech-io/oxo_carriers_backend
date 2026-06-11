@@ -32,7 +32,7 @@ import {
 
 const log = baseLogger.child({ module: 'email' });
 
-const FRONTEND_FALLBACK = 'https://app.oxocareers.com';
+const FRONTEND_FALLBACK = 'https://oxo-carriers-frontend-297614602590.us-central1.run.app';
 
 const getTransporter = () => {
   let host = env.SMTP_HOST || 'smtp-relay.brevo.com';

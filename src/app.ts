@@ -48,7 +48,7 @@ const normalizeOrigin = (origin?: string | null): string => {
 };
 
 const rawAllowedOrigins = [
-  'https://app.oxocareers.com',
+  'https://oxo-carriers-frontend-297614602590.us-central1.run.app',
   'http://localhost:3000',
   'http://localhost:5173',
   env.FRONTEND_URL,

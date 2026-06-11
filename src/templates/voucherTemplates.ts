@@ -34,7 +34,7 @@ export const getVoucherApprovedHtml = (params: VoucherEmailParams): string => {
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">Your voucher request has been approved. You can view the voucher code, bar code, or activation link in your employee self-service portal to redeem it.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Redeem Voucher',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/vouchers',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/vouchers',
   });
 };
 
@@ -71,7 +71,7 @@ export const getVoucherRejectedHtml = (params: VoucherEmailParams): string => {
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">We regret to inform you that your voucher request has been declined. Please review the details below.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Request Support',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/vouchers',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/vouchers',
     extraHtml: extraHtml,
   });
 };

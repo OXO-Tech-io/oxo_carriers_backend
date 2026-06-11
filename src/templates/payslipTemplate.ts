@@ -85,7 +85,7 @@ export const getPayslipAvailableHtml = (params: PayslipEmailParams): string => {
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">Your monthly salary payslip for the pay period <strong>${params.payPeriod}</strong> has been issued. Below is a high-level summary of your gross earnings, deductions, and final net payout. You can view or download the complete detailed PDF payslip via the button below.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Download Payslip PDF',
-    ctaLink: params.downloadUrl || 'https://app.oxocareers.com/salaries',
+    ctaLink: params.downloadUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/salaries',
     extraHtml: extraHtml,
   });
 };
