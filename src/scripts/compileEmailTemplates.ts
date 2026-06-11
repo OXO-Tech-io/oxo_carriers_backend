@@ -30,7 +30,7 @@ const templates = [
       reason: 'Annual family vacation and rest.',
       submittedDate: '2026-06-11',
       referenceNumber: 'LV-2026-8941',
-      ctaUrl: 'https://app.oxocareers.com/leaves/request/LV-2026-8941'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves/request/LV-2026-8941'
     })
   },
   {
@@ -45,7 +45,7 @@ const templates = [
       approvedBy: 'Robert Chen (HR Manager)',
       remainingBalance: 16,
       referenceNumber: 'LV-2026-8941',
-      ctaUrl: 'https://app.oxocareers.com/leaves'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves'
     })
   },
   {
@@ -58,7 +58,7 @@ const templates = [
       totalDays: 5,
       rejectionReason: 'Rejection due to crucial system migration during this week. Please reschedule after the release on June 25th.',
       referenceNumber: 'LV-2026-8941',
-      ctaUrl: 'https://app.oxocareers.com/leaves'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/leaves'
     })
   },
 
@@ -71,7 +71,7 @@ const templates = [
       claimType: 'Outpatient Dental Care',
       claimAmount: '$240.00',
       submissionDate: '2026-06-11',
-      ctaUrl: 'https://app.oxocareers.com/medical-claims/CLM-90284'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims/CLM-90284'
     })
   },
   {
@@ -85,7 +85,7 @@ const templates = [
       approvalDate: '2026-06-11',
       settlementInfo: 'Direct deposit to bank account ending in **5678',
       processingTimeline: '2-3 Business Days',
-      ctaUrl: 'https://app.oxocareers.com/medical-claims'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims'
     })
   },
   {
@@ -97,7 +97,7 @@ const templates = [
       claimAmount: '$240.00',
       rejectionReason: 'Attached receipt does not contain itemized treatment charges or procedure codes.',
       requiredCorrections: 'Please scan and upload an itemized tax invoice showing separate treatment codes, patient name, and clinic details.',
-      ctaUrl: 'https://app.oxocareers.com/medical-claims'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims'
     })
   },
 
@@ -114,7 +114,7 @@ const templates = [
       taxDeductions: '$250.00',
       otherDeductions: '$100.00',
       totalDeductions: '$350.00',
-      downloadUrl: 'https://app.oxocareers.com/salaries'
+      downloadUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/salaries'
     })
   },
 
@@ -127,7 +127,7 @@ const templates = [
       voucherType: 'Wellness & Gym Membership',
       approvedAmount: '$75.00',
       expiryDate: '2026-12-31',
-      ctaUrl: 'https://app.oxocareers.com/vouchers'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/vouchers'
     })
   },
   {
@@ -138,7 +138,7 @@ const templates = [
       requestedAmount: '$150.00',
       rejectionReason: 'Electronics category vouchers are restricted to employees with 1+ years of tenure.',
       resubmissionInstructions: 'You are eligible to submit requests for Wellness or Meal vouchers. Please verify tenure requirements before submitting alternative requests.',
-      ctaUrl: 'https://app.oxocareers.com/vouchers'
+      ctaUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/vouchers'
     })
   },
 
@@ -148,7 +148,7 @@ const templates = [
     html: getSetupPasswordEmailHtml({
       name: employee.name,
       employeeId: employee.id,
-      setupLink: 'https://app.oxocareers.com/reset-password?token=setup_mock_token_123',
+      setupLink: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/reset-password?token=setup_mock_token_123',
       expiry: '7 days'
     })
   },
@@ -156,7 +156,7 @@ const templates = [
     filename: 'auth_password_reset.html',
     html: getPasswordResetEmailHtml({
       name: employee.name,
-      resetLink: 'https://app.oxocareers.com/reset-password?token=reset_mock_token_456',
+      resetLink: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/reset-password?token=reset_mock_token_456',
       expiry: '1 hour'
     })
   },
@@ -164,7 +164,7 @@ const templates = [
     filename: 'auth_email_verification.html',
     html: getEmailVerificationEmailHtml({
       name: employee.name,
-      verificationLink: 'https://app.oxocareers.com/verify-email?token=verify_mock_token_789',
+      verificationLink: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/verify-email?token=verify_mock_token_789',
       expiry: '24 hours'
     })
   },
@@ -174,7 +174,7 @@ const templates = [
       name: employee.name,
       employeeId: employee.id,
       password: 'TempPass987!',
-      loginUrl: 'https://app.oxocareers.com/login',
+      loginUrl: 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/login',
       button_text: 'Go to Employee Portal'
     })
   }
