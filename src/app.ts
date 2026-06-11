@@ -6,6 +6,7 @@ import { env, ENV_LOADED_FROM } from './config/env';
 import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
 import { pool } from './config/database';
+import { calculateProRatedAnnualLeave } from './utils/leaveCalculation';
 
 import express from 'express';
 import path from 'path';
@@ -441,7 +442,70 @@ const startServer = async () => {
           'Database connection check passed on startup',
         );
 
-        // Assign default permissions to existing employee accounts if they don't already have them
+        // 1. Self-seed default leave types if empty
+        try {
+          const typesCountRes = await pool.query('SELECT COUNT(*) FROM leave_types');
+          const count = parseInt(typesCountRes.rows[0]?.count || '0');
+          if (count === 0) {
+            logger.info('🌱 Database leave_types table is empty. Inserting default leave types...');
+            await pool.query(`
+              INSERT INTO leave_types (name, description, max_days, is_active) VALUES
+              ('Annual Leave', 'Annual paid leave', 21, true),
+              ('Sick Leave', 'Medical sick leave', 14, true),
+              ('Casual Leave', 'Short notice casual leave', 7, true)
+            `);
+            logger.info('✅ Default leave types inserted successfully.');
+          }
+        } catch (seedError: any) {
+          logger.error({ err: seedError }, 'Failed to self-seed default leave types on startup');
+        }
+
+        // 2. Initialize missing leave balances for existing employees
+        try {
+          logger.info('⚙️ Checking leave balances for existing employees...');
+          const employeesRes = await pool.query("SELECT id, hire_date FROM users WHERE role = 'employee'");
+          const employees = employeesRes.rows || [];
+          
+          const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM leave_types WHERE is_active = true");
+          const leaveTypes = leaveTypesRes.rows || [];
+          
+          const currentYear = new Date().getFullYear();
+          let initializedBalancesCount = 0;
+
+          for (const emp of employees) {
+            for (const type of leaveTypes) {
+              const checkRes = await pool.query(
+                'SELECT 1 FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+                [emp.id, type.id, currentYear]
+              );
+              if (checkRes.rows.length === 0) {
+                const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
+                let totalDays = type.max_days;
+                if (
+                  type.name.toLowerCase() === 'annual' ||
+                  type.name.toLowerCase() === 'annual/paid leave' ||
+                  type.name.toLowerCase() === 'annual leave'
+                ) {
+                  totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+                }
+                await pool.query(
+                  'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
+                  [emp.id, type.id, totalDays, currentYear]
+                );
+                initializedBalancesCount++;
+              }
+            }
+          }
+          if (initializedBalancesCount > 0) {
+            logger.info(`✅ Initialized ${initializedBalancesCount} missing leave balance records for existing employees.`);
+          } else {
+            logger.info('✅ All employee leave balances are up to date.');
+          }
+        } catch (balanceError: any) {
+          logger.error({ err: balanceError }, 'Failed to check/initialize employee leave balances on startup');
+        }
+
+        // 3. Assign default permissions to existing employee accounts if they don't already have them
         try {
           logger.info('⚙️ Checking default permissions for existing employees...');
           const employeesRes = await pool.query("SELECT id FROM users WHERE role = 'employee'");
