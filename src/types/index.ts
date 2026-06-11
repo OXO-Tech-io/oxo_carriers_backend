@@ -138,6 +138,23 @@ export interface LeaveRequest {
   attachment_url?: string;
   created_at: Date;
   updated_at: Date;
+  /** Joined user data (available when model query includes LEFT JOIN users) */
+  user?: {
+    id: number;
+    first_name: string;
+    last_name: string;
+    email: string;
+    employee_id: string;
+  };
+  /** Joined leave type data (available when model query includes LEFT JOIN leave_types) */
+  leave_type?: {
+    id: number;
+    name: string;
+    description?: string;
+    max_days: number;
+    is_active: boolean;
+    created_at: Date;
+  };
 }
 
 export interface LeaveCalendar {

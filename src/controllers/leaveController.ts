@@ -10,6 +10,12 @@ import {
   ListLeaveRequestsQuery,
   RejectLeaveRequestInput,
 } from '../validators/leave.validator';
+import {
+  sendLeaveSubmittedEmail,
+  sendLeaveApprovedEmail,
+  sendLeaveRejectedEmail,
+} from '../config/email';
+import { logger } from '../lib/logger';
 
 const requireUser = (req: Request) => {
   if (!req.user) throw new UnauthorizedError();
@@ -54,6 +60,28 @@ export const createLeaveRequest = async (req: Request, res: Response) => {
     attachmentUrl
   );
   created(res, request, 'Leave request created');
+
+  // Send confirmation email to employee (non-blocking)
+  try {
+    const employeeName = request.user
+      ? `${request.user.first_name} ${request.user.last_name}`.trim()
+      : 'Employee';
+    const employeeEmail = request.user?.email;
+    if (employeeEmail) {
+      await sendLeaveSubmittedEmail(employeeEmail, {
+        employeeName,
+        leaveType: request.leave_type?.name ?? 'Leave',
+        startDate: new Date(request.start_date).toLocaleDateString('en-GB'),
+        endDate: new Date(request.end_date).toLocaleDateString('en-GB'),
+        totalDays: request.total_days,
+        reason: request.reason ?? undefined,
+        submittedDate: new Date().toLocaleDateString('en-GB'),
+        referenceNumber: `LV-${request.id}`,
+      });
+    }
+  } catch (emailErr: any) {
+    logger.error({ err: emailErr }, 'Failed to send leave submitted email');
+  }
 };
 
 export const approveLeaveRequest = async (req: Request, res: Response) => {
@@ -68,6 +96,28 @@ export const approveLeaveRequest = async (req: Request, res: Response) => {
     rejectionReason
   );
   ok(res, updated, 'Leave request updated');
+
+  // Send approval email to employee (non-blocking)
+  try {
+    const employeeName = updated.user
+      ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
+      : 'Employee';
+    const employeeEmail = updated.user?.email;
+    if (employeeEmail) {
+      await sendLeaveApprovedEmail(employeeEmail, {
+        employeeName,
+        leaveType: updated.leave_type?.name ?? 'Leave',
+        startDate: new Date(updated.start_date).toLocaleDateString('en-GB'),
+        endDate: new Date(updated.end_date).toLocaleDateString('en-GB'),
+        totalDays: updated.total_days,
+        approvedDate: new Date().toLocaleDateString('en-GB'),
+        approvedBy: approvedBy === 'team_leader' ? 'Team Leader' : 'HR Management',
+        referenceNumber: `LV-${updated.id}`,
+      });
+    }
+  } catch (emailErr: any) {
+    logger.error({ err: emailErr }, 'Failed to send leave approved email');
+  }
 };
 
 export const rejectLeaveRequest = async (req: Request, res: Response) => {
@@ -80,4 +130,25 @@ export const rejectLeaveRequest = async (req: Request, res: Response) => {
     rejectionReason
   );
   ok(res, updated, 'Leave request rejected');
+
+  // Send rejection email to employee (non-blocking)
+  try {
+    const employeeName = updated.user
+      ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
+      : 'Employee';
+    const employeeEmail = updated.user?.email;
+    if (employeeEmail) {
+      await sendLeaveRejectedEmail(employeeEmail, {
+        employeeName,
+        leaveType: updated.leave_type?.name ?? 'Leave',
+        startDate: new Date(updated.start_date).toLocaleDateString('en-GB'),
+        endDate: new Date(updated.end_date).toLocaleDateString('en-GB'),
+        totalDays: updated.total_days,
+        rejectionReason: rejectionReason ?? 'No reason provided.',
+        referenceNumber: `LV-${updated.id}`,
+      });
+    }
+  } catch (emailErr: any) {
+    logger.error({ err: emailErr }, 'Failed to send leave rejected email');
+  }
 };
