@@ -335,34 +335,34 @@ app.get(['/api/test-email', '/test-email'], (_req, res) => {
 
 app.post('/api/test-email', async (req, res) => {
   try {
-    const { email, subject, message, templateId } = req.body;
+    const { email, subject, message } = req.body;
     const testEmail = email || 'info@oxocareers.com';
-    const emailSubject = subject || '🧪 EmailJS Test Email';
+    const emailSubject = subject || '🧪 SMTP Test Email';
 
     const { sendEmail } = await import('./config/email');
 
     const params = {
       message:
         message ||
-        'This is a test email to verify EmailJS configuration is working correctly.',
+        'This is a test email to verify SMTP configuration is working correctly.',
       timestamp: new Date().toISOString(),
       to_email: testEmail,
     };
 
-    const result = await sendEmail(testEmail, emailSubject, params, templateId);
+    const result = await sendEmail(testEmail, emailSubject, params);
 
     if (result) {
       res.json({
         success: true,
-        message: `Test email sent successfully via EmailJS to ${testEmail}`,
+        message: `Test email sent successfully via SMTP to ${testEmail}`,
         status: result.status,
       });
     } else {
       res.status(500).json({
         success: false,
         message:
-          'Failed to send test email via EmailJS. Check server logs for details.',
-        hint: 'Make sure EMAILJS keys are set in .env',
+          'Failed to send test email via SMTP. Check server logs for details.',
+        hint: 'Make sure SMTP variables are set in .env',
       });
     }
   } catch (error: any) {

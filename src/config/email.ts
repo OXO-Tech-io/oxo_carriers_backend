@@ -7,8 +7,8 @@ const log = baseLogger.child({ module: 'email' });
 const FRONTEND_FALLBACK = 'https://app.oxocareers.com';
 
 const getTransporter = () => {
-  const host = env.SMTP_HOST;
-  const port = env.SMTP_PORT;
+  let host = env.SMTP_HOST || 'smtp-relay.brevo.com';
+  const port = env.SMTP_PORT || 587;
   const secure = env.SMTP_SECURE;
   const user = env.SMTP_USER;
   const pass = env.SMTP_PASS;
@@ -16,6 +16,16 @@ const getTransporter = () => {
   if (!user || !pass) {
     log.error('SMTP credentials missing');
     return null;
+  }
+
+  let tlsOptions: any = {
+    rejectUnauthorized: false, // helps with self-signed certs common in hosting environments
+  };
+
+  // Workaround for Node.js DNS resolution issues on this host
+  if (host === 'smtp-relay.brevo.com') {
+    host = '1.179.116.1';
+    tlsOptions.servername = 'smtp-relay.brevo.com';
   }
 
   return nodemailer.createTransport({
@@ -26,9 +36,7 @@ const getTransporter = () => {
       user,
       pass,
     },
-    tls: {
-      rejectUnauthorized: false, // helps with self-signed certs common in hosting environments
-    },
+    tls: tlsOptions,
   });
 };
 
@@ -37,7 +45,6 @@ export const sendEmail = async (
   to: string,
   subject: string,
   templateParams: any,
-  templateId?: string,
 ): Promise<any> => {
   const transporter = getTransporter();
   if (!transporter) {
