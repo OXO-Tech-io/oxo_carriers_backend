@@ -189,10 +189,7 @@ export const createUser = async (req: Request, res: Response) => {
       for (const permission of defaultPermissions) {
         await pool.query(
           `INSERT INTO user_permissions (user_id, permission_key, access_level)
-           SELECT $1, $2, $3
-           WHERE NOT EXISTS (
-             SELECT 1 FROM user_permissions WHERE user_id = $1 AND permission_key = $2
-           )`,
+           VALUES ($1, $2, $3)`,
           [user.id, permission, 'read']
         );
       }
