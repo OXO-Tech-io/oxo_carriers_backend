@@ -325,9 +325,9 @@ export const renderMasterLayout = (options: MasterLayoutOptions): string => {
                   </td>
                   <!-- Header Nav Links -->
                   <td class="header-nav" align="right" style="vertical-align: middle; font-family: 'Inter', sans-serif; font-size: 12px; font-weight: 600;">
-                    <a href="https://app.oxocareers.com/dashboard" target="_blank" style="color: #1E40AF; text-decoration: none; margin-left: 12px;">Portal</a>
+                    <a href="https://oxo-carriers-frontend-297614602590.us-central1.run.app/dashboard" target="_blank" style="color: #1E40AF; text-decoration: none; margin-left: 12px;">Portal</a>
                     <span style="color: #CBD5E1; margin-left: 8px; margin-right: 8px;">|</span>
-                    <a href="https://app.oxocareers.com/support" target="_blank" style="color: #64748B; text-decoration: none;">Support</a>
+                    <a href="https://oxo-carriers-frontend-297614602590.us-central1.run.app/support" target="_blank" style="color: #64748B; text-decoration: none;">Support</a>
                   </td>
                 </tr>
               </table>

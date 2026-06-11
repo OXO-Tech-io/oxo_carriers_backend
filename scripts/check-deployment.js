@@ -79,7 +79,7 @@ if (allGood) {
   console.log('1. Make sure .env file has correct database credentials');
   console.log('2. Set NODE_ENV=production');
   console.log('3. Set PORT to match your server configuration');
-  console.log('4. Set FRONTEND_URL=https://app.oxocareers.com');
+  console.log('4. Set FRONTEND_URL=https://oxo-carriers-frontend-297614602590.us-central1.run.app');
   console.log('5. Run: npm install --production (if node_modules missing)');
   console.log('6. If using dist/app.js, run: npm run build first');
   console.log('7. Start the application in cPanel Node.js Selector\n');

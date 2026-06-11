@@ -109,7 +109,7 @@ export const generateSalary = async (req: Request, res: Response) => {
           netSalary: `${parseFloat(String(salary.net_salary)).toLocaleString()}`,
           grossEarnings: `${parseFloat(String(salary.total_earnings)).toLocaleString()}`,
           totalDeductions: `${parseFloat(String(salary.total_deductions)).toLocaleString()}`,
-          downloadUrl: `${env.FRONTEND_URL ?? 'https://app.oxocareers.com'}/salaries`,
+          downloadUrl: `${env.FRONTEND_URL ?? 'https://oxo-carriers-frontend-297614602590.us-central1.run.app'}/salaries`,
         });
       }
     } catch (emailErr: any) {
@@ -605,7 +605,7 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
             netSalary: `${parseFloat(String(updated.net_salary)).toLocaleString()}`,
             grossEarnings: `${parseFloat(String(updated.total_earnings)).toLocaleString()}`,
             totalDeductions: `${parseFloat(String(updated.total_deductions)).toLocaleString()}`,
-            downloadUrl: `${env.FRONTEND_URL ?? 'https://app.oxocareers.com'}/salaries`,
+            downloadUrl: `${env.FRONTEND_URL ?? 'https://oxo-carriers-frontend-297614602590.us-central1.run.app'}/salaries`,
           });
         }
       } catch (emailErr: any) {

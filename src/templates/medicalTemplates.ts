@@ -38,7 +38,7 @@ export const getMedicalClaimSubmittedHtml = (params: MedicalEmailParams): string
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">We have received your medical insurance claim. Our benefits team is reviewing the claim against your policy coverage. You can track updates and view upload history in the portal.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Track Claim Status',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/medical-claims',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims',
   });
 };
 
@@ -66,7 +66,7 @@ export const getMedicalClaimApprovedHtml = (params: MedicalEmailParams): string 
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">Your medical insurance claim has been approved. The approved reimbursement has been queued for payout according to the settlement details below.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'View Claim Details',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/medical-claims',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims',
   });
 };
 
@@ -108,7 +108,7 @@ export const getMedicalClaimRejectedHtml = (params: MedicalEmailParams): string 
     messageHtml: `<p style="margin:0;">Hello ${params.employeeName},</p><p style="margin:12px 0 0 0;">We regret to inform you that your medical insurance claim could not be processed as submitted. Please see the rejection details and resubmission instructions below to correct the issue.</p>`,
     detailsTableHtml: renderDetailsTable(details),
     ctaText: 'Resubmit Claim',
-    ctaLink: params.ctaUrl || 'https://app.oxocareers.com/medical-claims',
+    ctaLink: params.ctaUrl || 'https://oxo-carriers-frontend-297614602590.us-central1.run.app/medical-claims',
     extraHtml: extraHtml,
   });
 };
