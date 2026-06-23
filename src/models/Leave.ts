@@ -15,7 +15,7 @@ export class LeaveModel {
     attachment_url?: string;
   }): Promise<LeaveRequest> {
     const result = await pool.query(
-      `INSERT INTO leave_requests (user_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
+      `INSERT INTO tbl_leave_requests (user_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
       [
         request.user_id,
@@ -44,9 +44,9 @@ export class LeaveModel {
               lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
               lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
               u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
-       FROM leave_requests lr
-       LEFT JOIN leave_types lt ON lr.leave_type_id = lt.id
-       LEFT JOIN users u ON lr.user_id = u.id
+       FROM tbl_leave_requests lr
+       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
+       LEFT JOIN tbl_employee u ON lr.user_id = u.id
        WHERE lr.id = $1`,
       [id]
     );
@@ -162,9 +162,9 @@ export class LeaveModel {
              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id, u.department
-      FROM leave_requests lr
-      LEFT JOIN users u ON lr.user_id = u.id
-      LEFT JOIN leave_types lt ON lr.leave_type_id = lt.id
+      FROM tbl_leave_requests lr
+      LEFT JOIN tbl_employee u ON lr.user_id = u.id
+      LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -252,7 +252,7 @@ export class LeaveModel {
     params.push(id);
 
     await pool.query(
-      `UPDATE leave_requests SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
+      `UPDATE tbl_leave_requests SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
       params
     );
 
@@ -270,7 +270,7 @@ export class LeaveModel {
   static async deductLeaveBalance(userId: number, leaveTypeId: number, days: number): Promise<void> {
     const currentYear = new Date().getFullYear();
     await pool.query(
-      `UPDATE employee_leave_balance
+      `UPDATE tbl_employee_leave_balance
        SET used_days = used_days + $1,
            remaining_days = total_days - (used_days + $2)
        WHERE user_id = $3 AND leave_type_id = $4 AND year = $5`,
@@ -284,19 +284,19 @@ export class LeaveModel {
     try {
       // Get all active leave types
       const leaveTypesRes = await pool.query(
-        'SELECT id, name, max_days FROM leave_types WHERE is_active = true'
+        'SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true'
       );
       const activeLeaveTypes = leaveTypesRes.rows as any[];
 
       // Fetch user details to get hire date (needed for pro-rated leave calculation)
-      const userRes = await pool.query('SELECT hire_date FROM users WHERE id = $1', [userId]);
+      const userRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE id = $1', [userId]);
       const user = userRes.rows[0];
       const hireDate = user?.hire_date ? new Date(user.hire_date) : new Date();
 
       // For each active leave type, ensure the user has a balance record
       for (const type of activeLeaveTypes) {
         const balanceCheck = await pool.query(
-          'SELECT 1 FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+          'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
           [userId, type.id, currentYear]
         );
         if (balanceCheck.rows.length === 0) {
@@ -309,7 +309,7 @@ export class LeaveModel {
             totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
           }
           await pool.query(
-            `INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
+            `INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
              VALUES ($1, $2, $3, 0, $3, $4)`,
             [userId, type.id, totalDays, currentYear]
           );
@@ -323,8 +323,8 @@ export class LeaveModel {
       `SELECT elb.*,
               lt.id as lt_id, lt.name, lt.description, lt.max_days, lt.is_active,
               (elb.total_days - elb.used_days) as calculated_remaining_days
-       FROM employee_leave_balance elb
-       JOIN leave_types lt ON elb.leave_type_id = lt.id
+       FROM tbl_employee_leave_balance elb
+       JOIN tbl_leave_types lt ON elb.leave_type_id = lt.id
        WHERE elb.user_id = $1 AND elb.year = $2
        ORDER BY lt.name`,
       [userId, currentYear]
@@ -362,7 +362,7 @@ export class LeaveModel {
   }
 
   static async getLeaveTypes(): Promise<LeaveType[]> {
-    const result = await pool.query('SELECT * FROM leave_types WHERE is_active = true ORDER BY name');
+    const result = await pool.query('SELECT * FROM tbl_leave_types WHERE is_active = true ORDER BY name');
     return result.rows as LeaveType[];
   }
 }

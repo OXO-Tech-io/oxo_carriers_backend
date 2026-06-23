@@ -1,9 +1,9 @@
 import { pgTable, serial, integer, varchar, text, timestamp, json } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Audit Logs Table
-export const auditLogs = pgTable('audit_logs', {
+export const auditLogs = pgTable('tbl_audit_logs', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
     action: varchar('action', { length: 100 }).notNull(),

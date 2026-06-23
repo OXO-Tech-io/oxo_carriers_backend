@@ -12,7 +12,7 @@ async function createTestUser() {
 
     // Check if user already exists
     const existing = await pool.query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id FROM tbl_employee WHERE email = $1',
       [email]
     );
     const existingUsers = existing.rows as any[];
@@ -20,7 +20,7 @@ async function createTestUser() {
     if (existingUsers.length > 0) {
       console.log('User already exists. Updating password...');
       await pool.query(
-        'UPDATE users SET password = $1, must_change_password = false WHERE email = $2',
+        'UPDATE tbl_employee SET password = $1, must_change_password = false WHERE email = $2',
         [hashedPassword, email]
       );
       console.log('✅ Password updated for test@gmail.com');
@@ -28,7 +28,7 @@ async function createTestUser() {
       // Create new user
       const employeeId = `EMP${new Date().getFullYear()}0001`;
       await pool.query(
-        `INSERT INTO users (employee_id, email, password, first_name, last_name, role, must_change_password)
+        `INSERT INTO tbl_employee (employee_id, email, password, first_name, last_name, role, must_change_password)
          VALUES ($1, $2, $3, $4, $5, 'hr_manager', false)`,
         [employeeId, email, hashedPassword, 'Test', 'User']
       );

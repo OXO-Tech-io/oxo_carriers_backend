@@ -1,12 +1,12 @@
 import { pgTable, serial, integer, varchar, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Enums
 export const accessLevelEnum = pgEnum('access_level', ['read', 'write']);
 
 // User Permissions Table
-export const userPermissions = pgTable('user_permissions', {
+export const userPermissions = pgTable('tbl_user_permissions', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     permissionKey: varchar('permission_key', { length: 100 }).notNull(),

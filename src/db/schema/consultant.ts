@@ -9,13 +9,13 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Enums
 export const submissionStatusEnum = pgEnum('submission_status', ['pending', 'approved', 'rejected']);
 
 // Consultant Work Submissions Table
-export const consultantWorkSubmissions = pgTable('consultant_work_submissions', {
+export const consultantWorkSubmissions = pgTable('tbl_consultant_work_submissions', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     project: varchar('project', { length: 255 }).notNull(),

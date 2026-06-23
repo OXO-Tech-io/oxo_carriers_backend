@@ -75,7 +75,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         employee_id,
         email_verified,
         must_change_password
-      FROM hris."users"
+      FROM hris."tbl_employee"
       WHERE email = $1
       LIMIT 1
     `;

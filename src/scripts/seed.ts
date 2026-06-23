@@ -6,6 +6,24 @@ async function seed() {
     console.log('🌱 Starting database seeding...');
 
     try {
+        // Seed employee types first
+        console.log('🌱 Seeding employee types...');
+        const typesToInsert = [
+            { name: 'permanent' },
+            { name: 'contract' },
+            { name: 'consultation' }
+        ];
+        
+        for (const type of typesToInsert) {
+            const existingType = await db.query.employeeTypes.findFirst({
+                where: (et, { eq }) => eq(et.name, type.name)
+            });
+            if (!existingType) {
+                await db.insert(schema.employeeTypes).values(type);
+            }
+        }
+        console.log('✅ Employee types checked/seeded');
+
         // Check if super admin already exists
         const existingAdmin = await db.query.users.findFirst({
             where: (users, { eq }) => eq(users.email, 'admin@oxocarriers.com'),
@@ -15,6 +33,12 @@ async function seed() {
             console.log('✅ Super admin already exists. Skipping seed.');
             return;
         }
+
+        // Fetch permanent type for admin
+        const permanentType = await db.query.employeeTypes.findFirst({
+            where: (et, { eq }) => eq(et.name, 'permanent')
+        });
+        const employeeTypeId = permanentType ? permanentType.id : null;
 
         // Create default super admin
         const hashedPassword = await bcrypt.hash('Admin@123', 10);
@@ -26,6 +50,7 @@ async function seed() {
             firstName: 'Super',
             lastName: 'Admin',
             role: 'super_admin',
+            employeeTypeId,
             emailVerified: true,
             department: 'Administration',
             position: 'System Administrator',

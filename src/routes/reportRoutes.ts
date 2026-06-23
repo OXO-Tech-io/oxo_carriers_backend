@@ -23,9 +23,9 @@ router.get('/leaves', async (req, res: Response) => {
         u.last_name,
         u.department,
         lt.name as leave_type_name
-      FROM leave_requests lr
-      JOIN users u ON lr.user_id = u.id
-      JOIN leave_types lt ON lr.leave_type_id = lt.id
+      FROM tbl_leave_requests lr
+      JOIN tbl_employee u ON lr.user_id = u.id
+      JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -114,8 +114,8 @@ router.get('/salaries', async (req, res: Response) => {
         u.first_name,
         u.last_name,
         u.department
-      FROM monthly_salaries ms
-      JOIN users u ON ms.user_id = u.id
+      FROM tbl_monthly_salaries ms
+      JOIN tbl_employee u ON ms.user_id = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -193,19 +193,19 @@ router.get('/dashboard', async (req, res: Response) => {
 
     // Total employees
     const employeeCountResult = await pool.query(
-      `SELECT COUNT(*) as count FROM users WHERE role = 'employee'`
+      `SELECT COUNT(*) as count FROM tbl_employee WHERE role = 'employee'`
     );
     const totalEmployees = Number((employeeCountResult.rows as any[])[0].count);
 
     // Pending leave requests
     const pendingLeavesResult = await pool.query(
-      `SELECT COUNT(*) as count FROM leave_requests WHERE status = 'pending'`
+      `SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status = 'pending'`
     );
     const pendingLeaveRequests = Number((pendingLeavesResult.rows as any[])[0].count);
 
     // Leave requests this month
     const monthLeavesResult = await pool.query(
-      `SELECT COUNT(*) as count FROM leave_requests
+      `SELECT COUNT(*) as count FROM tbl_leave_requests
        WHERE EXTRACT(MONTH FROM created_at) = $1 AND EXTRACT(YEAR FROM created_at) = $2`,
       [currentMonth, currentYear]
     );
@@ -214,7 +214,7 @@ router.get('/dashboard', async (req, res: Response) => {
     // Total salaries paid this month
     const monthSalariesResult = await pool.query(
       `SELECT COUNT(*) as count, SUM(net_salary) as total
-       FROM monthly_salaries
+       FROM tbl_monthly_salaries
        WHERE EXTRACT(MONTH FROM month_year) = $1 AND EXTRACT(YEAR FROM month_year) = $2 AND status = 'paid'`,
       [currentMonth, currentYear]
     );
@@ -225,8 +225,8 @@ router.get('/dashboard', async (req, res: Response) => {
     // Department-wise leave distribution
     const deptLeavesResult = await pool.query(
       `SELECT u.department, COUNT(*) as count
-       FROM leave_requests lr
-       JOIN users u ON lr.user_id = u.id
+       FROM tbl_leave_requests lr
+       JOIN tbl_employee u ON lr.user_id = u.id
        WHERE EXTRACT(YEAR FROM lr.created_at) = $1
        GROUP BY u.department`,
       [currentYear]

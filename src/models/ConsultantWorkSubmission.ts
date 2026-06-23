@@ -12,7 +12,7 @@ export class ConsultantWorkSubmissionModel {
     resubmission_of?: number | null;
   }): Promise<CWS> {
     const result = await pool.query(
-      `INSERT INTO consultant_work_submissions (user_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
+      `INSERT INTO tbl_consultant_work_submissions (user_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
         data.user_id,
@@ -33,8 +33,8 @@ export class ConsultantWorkSubmissionModel {
   static async findById(id: number): Promise<CWS | null> {
     const result = await pool.query(
       `SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-       FROM consultant_work_submissions c
-       LEFT JOIN users u ON c.user_id = u.id
+       FROM tbl_consultant_work_submissions c
+       LEFT JOIN tbl_employee u ON c.user_id = u.id
        WHERE c.id = $1`,
       [id]
     );
@@ -46,8 +46,8 @@ export class ConsultantWorkSubmissionModel {
   static async findByUserId(userId: number, filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
       SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-      FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
+      FROM tbl_consultant_work_submissions c
+      LEFT JOIN tbl_employee u ON c.user_id = u.id
       WHERE c.user_id = $1
     `;
     const params: any[] = [userId];
@@ -63,8 +63,8 @@ export class ConsultantWorkSubmissionModel {
   static async getAll(filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
       SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-      FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
+      FROM tbl_consultant_work_submissions c
+      LEFT JOIN tbl_employee u ON c.user_id = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -84,7 +84,7 @@ export class ConsultantWorkSubmissionModel {
     adminComment?: string | null
   ): Promise<CWS | null> {
     await pool.query(
-      `UPDATE consultant_work_submissions SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
+      `UPDATE tbl_consultant_work_submissions SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
       [status, adminComment ?? null, reviewedBy, id]
     );
     return this.findById(id);

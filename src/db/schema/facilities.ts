@@ -9,7 +9,7 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Enums
 export const facilityTypeEnum = pgEnum('facility_type', [
@@ -27,7 +27,7 @@ export const bookingStatusEnum = pgEnum('booking_status', [
 ]);
 
 // Facilities Table
-export const facilities = pgTable('facilities', {
+export const facilities = pgTable('tbl_facilities', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     type: facilityTypeEnum('type').notNull(),
@@ -40,7 +40,7 @@ export const facilities = pgTable('facilities', {
 });
 
 // Facility Bookings Table
-export const facilityBookings = pgTable('facility_bookings', {
+export const facilityBookings = pgTable('tbl_facility_bookings', {
     id: serial('id').primaryKey(),
     facilityId: integer('facility_id').notNull().references(() => facilities.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

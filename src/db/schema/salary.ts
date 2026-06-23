@@ -10,14 +10,14 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Enums
 export const componentTypeEnum = pgEnum('component_type', ['earning', 'deduction']);
 export const salaryStatusEnum = pgEnum('salary_status', ['generated', 'paid', 'pending']);
 
 // Salary Components Table
-export const salaryComponents = pgTable('salary_components', {
+export const salaryComponents = pgTable('tbl_salary_components', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     type: componentTypeEnum('type').notNull(),
@@ -27,7 +27,7 @@ export const salaryComponents = pgTable('salary_components', {
 });
 
 // Employee Salary Structure Table
-export const employeeSalaryStructure = pgTable('employee_salary_structure', {
+export const employeeSalaryStructure = pgTable('tbl_employee_salary_structure', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
@@ -40,7 +40,7 @@ export const employeeSalaryStructure = pgTable('employee_salary_structure', {
 });
 
 // Monthly Salaries Table
-export const monthlySalaries = pgTable('monthly_salaries', {
+export const monthlySalaries = pgTable('tbl_monthly_salaries', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     monthYear: date('month_year').notNull(),
@@ -58,7 +58,7 @@ export const monthlySalaries = pgTable('monthly_salaries', {
 });
 
 // Salary Slip Details Table
-export const salarySlipDetails = pgTable('salary_slip_details', {
+export const salarySlipDetails = pgTable('tbl_salary_slip_details', {
     id: serial('id').primaryKey(),
     salaryId: integer('salary_id').notNull().references(() => monthlySalaries.id, { onDelete: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),

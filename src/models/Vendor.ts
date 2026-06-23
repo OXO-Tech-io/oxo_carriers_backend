@@ -26,7 +26,7 @@ export class VendorModel {
     bank_branch?: string | null;
   }): Promise<Vendor> {
     const result = await pool.query(
-      `INSERT INTO vendors (email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
+      `INSERT INTO tbl_vendors (email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
       [
         data.email,
@@ -45,7 +45,7 @@ export class VendorModel {
   }
 
   static async getAll(filters?: { search?: string }): Promise<Vendor[]> {
-    let query = 'SELECT * FROM vendors WHERE 1=1';
+    let query = 'SELECT * FROM tbl_vendors WHERE 1=1';
     const params: any[] = [];
     if (filters?.search?.trim()) {
       const term = `%${filters.search.trim()}%`;

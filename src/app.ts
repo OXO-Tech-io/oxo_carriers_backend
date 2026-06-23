@@ -444,12 +444,12 @@ const startServer = async () => {
 
         // 1. Self-seed default leave types if empty
         try {
-          const typesCountRes = await pool.query('SELECT COUNT(*) FROM leave_types');
+          const typesCountRes = await pool.query('SELECT COUNT(*) FROM tbl_leave_types');
           const count = parseInt(typesCountRes.rows[0]?.count || '0');
           if (count === 0) {
-            logger.info('🌱 Database leave_types table is empty. Inserting default leave types...');
+            logger.info('🌱 Database tbl_leave_types table is empty. Inserting default leave types...');
             await pool.query(`
-              INSERT INTO leave_types (name, description, max_days, is_active) VALUES
+              INSERT INTO tbl_leave_types (name, description, max_days, is_active) VALUES
               ('Annual Leave', 'Annual paid leave', 21, true),
               ('Sick Leave', 'Medical sick leave', 14, true),
               ('Casual Leave', 'Short notice casual leave', 7, true)
@@ -463,10 +463,10 @@ const startServer = async () => {
         // 2. Initialize missing leave balances for existing employees
         try {
           logger.info('⚙️ Checking leave balances for existing employees...');
-          const employeesRes = await pool.query("SELECT id, hire_date FROM users WHERE role = 'employee'");
+          const employeesRes = await pool.query("SELECT id, hire_date FROM tbl_employee WHERE role = 'employee'");
           const employees = employeesRes.rows || [];
           
-          const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM leave_types WHERE is_active = true");
+          const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true");
           const leaveTypes = leaveTypesRes.rows || [];
           
           const currentYear = new Date().getFullYear();
@@ -475,7 +475,7 @@ const startServer = async () => {
           for (const emp of employees) {
             for (const type of leaveTypes) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+                'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
                 [emp.id, type.id, currentYear]
               );
               if (checkRes.rows.length === 0) {
@@ -489,7 +489,7 @@ const startServer = async () => {
                   totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
                 }
                 await pool.query(
-                  'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
+                  'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
                   [emp.id, type.id, totalDays, currentYear]
                 );
                 initializedBalancesCount++;
@@ -508,7 +508,7 @@ const startServer = async () => {
         // 3. Assign default permissions to existing employee accounts if they don't already have them
         try {
           logger.info('⚙️ Checking default permissions for existing employees...');
-          const employeesRes = await pool.query("SELECT id FROM users WHERE role = 'employee'");
+          const employeesRes = await pool.query("SELECT id FROM tbl_employee WHERE role = 'employee'");
           const employeeIds = (employeesRes.rows || []).map((row: any) => row.id);
           const defaultPermissions = [
             'dashboard',
@@ -522,12 +522,12 @@ const startServer = async () => {
           for (const empId of employeeIds) {
             for (const permission of defaultPermissions) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+                'SELECT 1 FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
                 [empId, permission]
               );
               if (checkRes.rows.length === 0) {
                 await pool.query(
-                  'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                  'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
                   [empId, permission, 'read']
                 );
                 assignedCount++;

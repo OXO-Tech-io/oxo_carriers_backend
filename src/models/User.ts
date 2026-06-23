@@ -1,5 +1,5 @@
 import { db } from '../db';
-import { users, userPermissions, type User as DrizzleUser } from '../db/schema';
+import { users, userPermissions, employeeTypes, type User as DrizzleUser } from '../db/schema';
 import { User, UserRole } from '../types';
 import bcrypt from 'bcryptjs';
 import { eq, like, or, and, sql } from 'drizzle-orm';
@@ -52,6 +52,19 @@ export class UserModel {
       return { ...byEmail, keycloakSub: claims.sub };
     }
 
+    // Resolve employeeTypeId based on role
+    let employeeTypeName = 'permanent';
+    if (claims.role === UserRole.CONSULTANT) {
+      employeeTypeName = 'consultation';
+    } else if (claims.role === UserRole.SERVICE_PROVIDER) {
+      employeeTypeName = 'contract';
+    }
+
+    const dbType = await db.query.employeeTypes.findFirst({
+      where: (types, { eq }) => eq(types.name, employeeTypeName),
+    });
+    const employeeTypeId = dbType ? dbType.id : null;
+
     const employeeId = await this.generateEmployeeId();
     const [insertedUser] = await db
       .insert(users)
@@ -62,6 +75,7 @@ export class UserModel {
         firstName: claims.first_name || claims.email.split('@')[0],
         lastName: claims.last_name || '',
         role: claims.role,
+        employeeTypeId,
         mustChangePassword: false,
         emailVerified: true,
       })
@@ -122,6 +136,7 @@ export class UserModel {
     first_name: string;
     last_name: string;
     role: UserRole;
+    employee_type_id?: number | null;
     department?: string;
     position?: string;
     hire_date?: Date;
@@ -137,6 +152,18 @@ export class UserModel {
   }): Promise<DrizzleUser> {
     const hashedPassword = await bcrypt.hash(userData.password, 10);
 
+    let employeeTypeId = userData.employee_type_id;
+    if (employeeTypeId === undefined) {
+      let typeName = 'permanent';
+      if (userData.role === UserRole.CONSULTANT) typeName = 'consultation';
+      else if (userData.role === UserRole.SERVICE_PROVIDER) typeName = 'contract';
+
+      const dbType = await db.query.employeeTypes.findFirst({
+        where: (types, { eq }) => eq(types.name, typeName),
+      });
+      if (dbType) employeeTypeId = dbType.id;
+    }
+
     const [insertedUser] = await db
       .insert(users)
       .values({
@@ -146,6 +173,7 @@ export class UserModel {
         firstName: userData.first_name,
         lastName: userData.last_name,
         role: userData.role,
+        employeeTypeId: employeeTypeId || null,
         department: userData.department || null,
         position: userData.position || null,
         hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,

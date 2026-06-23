@@ -41,8 +41,9 @@ const extractAllKeycloakRoles = (claims: {
 
 const mapKeycloakRoles = (roles: string[] | undefined): UserRole => {
   if (!roles || roles.length === 0) return UserRole.EMPLOYEE;
+  const lowerRoles = roles.map((r) => r.toLowerCase());
   for (const r of ROLE_PRIORITY) {
-    if (roles.includes(r)) return r;
+    if (lowerRoles.includes(r.toLowerCase())) return r;
   }
   return UserRole.EMPLOYEE;
 };
@@ -100,7 +101,7 @@ export const authenticate = async (
         email: claims.email,
         dbResolution,
         userId: user.id,
-        role: user.role,
+        role: role,
       },
       "Keycloak token authenticated and resolved against users table",
     );
@@ -108,7 +109,7 @@ export const authenticate = async (
     req.user = {
       userId: user.id,
       email: user.email,
-      role: user.role as UserRole,
+      role: role as UserRole,
       sub: claims.sub,
     };
     next();

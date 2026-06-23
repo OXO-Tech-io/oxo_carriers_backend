@@ -23,8 +23,16 @@ export const userRoleEnum = pgEnum('user_role', [
     'service_provider',
 ]);
 
-// Users Table
-export const users = pgTable('users', {
+// Employee Types Table
+export const employeeTypes = pgTable('tbl_employee_type', {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 50 }).notNull().unique(), // permanent, contract, consultation
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Employees Table
+export const employees = pgTable('tbl_employee', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 }).unique(),
     email: varchar('email', { length: 100 }).notNull().unique(),
@@ -35,6 +43,7 @@ export const users = pgTable('users', {
     emailVerified: boolean('email_verified').default(false),
     emailVerificationToken: varchar('email_verification_token', { length: 255 }),
     role: userRoleEnum('role').notNull(),
+    employeeTypeId: integer('employee_type_id').references(() => employeeTypes.id),
     department: varchar('department', { length: 100 }),
     position: varchar('position', { length: 100 }),
     hourlyRate: decimal('hourly_rate', { precision: 10, scale: 2 }),
@@ -51,7 +60,10 @@ export const users = pgTable('users', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// User relations
+// Export users alias for backward compatibility with Drizzle relations and queries
+export const users = employees;
+
+// Relations
 export const usersRelations = relations(users, ({ one, many }) => ({
     manager: one(users, {
         fields: [users.managerId],
@@ -59,7 +71,19 @@ export const usersRelations = relations(users, ({ one, many }) => ({
         relationName: 'manager',
     }),
     subordinates: many(users, { relationName: 'manager' }),
+    employeeType: one(employeeTypes, {
+        fields: [employees.employeeTypeId],
+        references: [employeeTypes.id],
+    }),
 }));
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export const employeeTypesRelations = relations(employeeTypes, ({ many }) => ({
+    employees: many(employees),
+}));
+
+export type EmployeeType = typeof employeeTypes.$inferSelect;
+export type NewEmployeeType = typeof employeeTypes.$inferInsert;
+export type User = typeof employees.$inferSelect;
+export type NewUser = typeof employees.$inferInsert;
+export type Employee = typeof employees.$inferSelect;
+export type NewEmployee = typeof employees.$inferInsert;

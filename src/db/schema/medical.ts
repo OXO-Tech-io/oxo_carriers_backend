@@ -9,14 +9,14 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 
 // Enums
 export const claimTypeEnum = pgEnum('claim_type', ['IN', 'OPD']);
 export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected']);
 
 // Medical Insurance Claims Table
-export const medicalInsuranceClaims = pgTable('medical_insurance_claims', {
+export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     type: claimTypeEnum('type').notNull(),

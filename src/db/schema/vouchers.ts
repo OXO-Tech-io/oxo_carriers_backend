@@ -10,7 +10,7 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { users } from './employee';
 import { vendors } from './vendors';
 
 // Enums
@@ -18,7 +18,7 @@ export const voucherStatusEnum = pgEnum('voucher_status', ['pending', 'approved'
 export const voucherTypeEnum = pgEnum('voucher_type', ['employee', 'vendor']);
 
 // Payment Vouchers Table
-export const paymentVouchers = pgTable('payment_vouchers', {
+export const paymentVouchers = pgTable('tbl_payment_vouchers', {
     id: serial('id').primaryKey(),
     voucherType: voucherTypeEnum('voucher_type').notNull(),
     userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),

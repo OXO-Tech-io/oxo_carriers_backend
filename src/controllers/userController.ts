@@ -84,6 +84,7 @@ export const createUser = async (req: Request, res: Response) => {
       bank_branch,
       company_name,
       contact_number,
+      employee_type_id,
     } = req.body;
 
     const userRoleInput = (role as UserRole) || UserRole.EMPLOYEE;
@@ -148,13 +149,14 @@ export const createUser = async (req: Request, res: Response) => {
       company_name: null,
       contact_number: null,
       email_verification_token: verificationToken,
+      employee_type_id: employee_type_id ? parseInt(employee_type_id) : undefined,
     });
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
       const currentYear = new Date().getFullYear();
-      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
+      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true');
       const types = leaveTypesResult.rows as any[];
 
       const hireDateVal = user.hireDate || (user as any).hire_date;
@@ -170,7 +172,7 @@ export const createUser = async (req: Request, res: Response) => {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
         await pool.query(
-          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+          'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
           [user.id, type.id, totalDays, totalDays, currentYear]
         );
       }
@@ -188,7 +190,7 @@ export const createUser = async (req: Request, res: Response) => {
       ];
       for (const permission of defaultPermissions) {
         await pool.query(
-          `INSERT INTO user_permissions (user_id, permission_key, access_level)
+          `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level)
            VALUES ($1, $2, $3)`,
           [user.id, permission, 'read']
         );
@@ -340,7 +342,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
 export const getDepartments = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      'SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department'
+      'SELECT DISTINCT department FROM tbl_employee WHERE department IS NOT NULL ORDER BY department'
     );
     const departments = (result.rows as any[]).map(row => row.department);
     res.json({ success: true, departments });
@@ -485,7 +487,7 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
     if (!emailVerificationToken) {
       emailVerificationToken = verificationToken;
       await pool.query(
-        'UPDATE hris.users SET email_verification_token = $1 WHERE id = $2',
+        'UPDATE hris.tbl_employee SET email_verification_token = $1 WHERE id = $2',
         [emailVerificationToken, user.id]
       );
     }
