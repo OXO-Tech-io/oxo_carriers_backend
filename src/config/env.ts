@@ -107,6 +107,9 @@ const Schema = z.object({
   // ─── JWT Authentication ─────────────────────────────────────────────────
   JWT_SECRET: z.string().min(32).default('your-super-secret-key-min-32-chars-required'),
   JWT_EXPIRES_IN: z.string().default('24h'),
+
+  // ─── PII Encryption ─────────────────────────────────────────────────────
+  PII_ENCRYPTION_KEY: z.string().default('default-pii-encryption-key-must-change-in-prod'),
 });
 
 export type Env = z.infer<typeof Schema>;

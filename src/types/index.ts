@@ -336,3 +336,15 @@ import { Request } from "express";
 export interface AuthRequest extends Request {
   user?: JwtPayload;
 }
+
+export interface EmployeePii {
+  id: number;
+  employeeId: string;
+  passportNumber?: string | null;
+  nationalId?: string | null;
+  address?: string | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}

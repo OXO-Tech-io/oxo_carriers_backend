@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import * as userController from '../controllers/userController';
+import * as employeePiiController from '../controllers/employeePiiController';
 import { authenticate, requireHRManager, requireHR, requireHROrFinance, requireSuperAdmin } from '../middleware/auth';
 
 const router = Router();
@@ -9,6 +10,8 @@ router.use(authenticate);
 
 router.get('/', requireHROrFinance, userController.getAllUsers);
 router.get('/departments', requireHROrFinance, userController.getDepartments);
+router.get('/:id/pii', employeePiiController.getEmployeePii);
+router.put('/:id/pii', employeePiiController.upsertEmployeePii);
 router.get('/:id', userController.getUserById);
 router.post('/', requireHROrFinance, userController.createUser);
 router.post('/:id/keycloak', requireHR, userController.provisionKeycloakUser);

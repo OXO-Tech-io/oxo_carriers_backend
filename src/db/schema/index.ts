@@ -9,3 +9,5 @@ export * from './consultant';
 export * from './vendors';
 export * from './vouchers';
 export * from './audit';
+export * from './employeePii';
+
