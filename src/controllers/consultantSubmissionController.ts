@@ -7,9 +7,9 @@ const log = (req: Request) => req.log ?? logger;
 
 export const submit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can submit work' });
     }
@@ -26,7 +26,7 @@ export const submit = async (req: Request, res: Response) => {
     const log_sheet_url = `/uploads/documents/${file.filename}`;
 
     const submission = await ConsultantWorkSubmissionModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       project: project.trim(),
       tech: tech.trim(),
       total_hours: hours,
@@ -43,10 +43,10 @@ export const submit = async (req: Request, res: Response) => {
 
 export const getMySubmissions = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const employeeId = (req as any).user?.employeeId;
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const status = req.query.status as ConsultantSubmissionStatus | undefined;
-    const submissions = await ConsultantWorkSubmissionModel.findByUserId(userId, { status });
+    const submissions = await ConsultantWorkSubmissionModel.findByEmployeeId(employeeId, { status });
     res.json({ success: true, submissions });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get my consultant submissions failed');
@@ -76,13 +76,13 @@ export const getSubmissions = async (req: Request, res: Response) => {
 export const getById = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
 
     const submission = await ConsultantWorkSubmissionModel.findById(id);
     if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
 
-    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE && submission.user_id !== userId) {
+    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE && submission.employee_id !== employeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -148,9 +148,9 @@ export const reject = async (req: Request, res: Response) => {
 
 export const resubmit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can resubmit' });
     }
@@ -159,7 +159,7 @@ export const resubmit = async (req: Request, res: Response) => {
     const { project, tech, total_hours, comment } = req.body;
     const original = await ConsultantWorkSubmissionModel.findById(id);
     if (!original) return res.status(404).json({ success: false, message: 'Original submission not found' });
-    if (original.user_id !== userId) return res.status(403).json({ success: false, message: 'Forbidden' });
+    if (original.employee_id !== employeeId) return res.status(403).json({ success: false, message: 'Forbidden' });
     if (original.status !== ConsultantSubmissionStatus.REJECTED) {
       return res.status(400).json({ success: false, message: 'Only rejected submissions can be resubmitted' });
     }
@@ -174,7 +174,7 @@ export const resubmit = async (req: Request, res: Response) => {
     const log_sheet_url = `/uploads/documents/${file.filename}`;
 
     const submission = await ConsultantWorkSubmissionModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       project: projectVal,
       tech: techVal,
       total_hours: hoursVal,

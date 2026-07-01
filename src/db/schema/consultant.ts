@@ -17,7 +17,7 @@ export const submissionStatusEnum = pgEnum('submission_status', ['pending', 'app
 // Consultant Work Submissions Table
 export const consultantWorkSubmissions = pgTable('consultant_work_submissions', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     project: varchar('project', { length: 255 }).notNull(),
     tech: varchar('tech', { length: 255 }).notNull(),
     totalHours: decimal('total_hours', { precision: 10, scale: 2 }).notNull(),
@@ -35,8 +35,8 @@ export const consultantWorkSubmissions = pgTable('consultant_work_submissions', 
 // Relations
 export const consultantWorkSubmissionsRelations = relations(consultantWorkSubmissions, ({ one }) => ({
     user: one(users, {
-        fields: [consultantWorkSubmissions.userId],
-        references: [users.id],
+        fields: [consultantWorkSubmissions.employeeId],
+        references: [users.employeeId],
     }),
     reviewer: one(users, {
         fields: [consultantWorkSubmissions.reviewedBy],

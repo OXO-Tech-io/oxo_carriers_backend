@@ -3,7 +3,7 @@ import { ConsultantWorkSubmission as CWS, ConsultantSubmissionStatus } from '../
 
 export class ConsultantWorkSubmissionModel {
   static async create(data: {
-    user_id: number;
+    employee_id: string;
     project: string;
     tech: string;
     total_hours: number;
@@ -12,10 +12,10 @@ export class ConsultantWorkSubmissionModel {
     resubmission_of?: number | null;
   }): Promise<CWS> {
     const result = await pool.query(
-      `INSERT INTO consultant_work_submissions (user_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
+      `INSERT INTO consultant_work_submissions (employee_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
-        data.user_id,
+        data.employee_id,
         data.project,
         data.tech,
         data.total_hours,
@@ -34,7 +34,7 @@ export class ConsultantWorkSubmissionModel {
     const result = await pool.query(
       `SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
        FROM consultant_work_submissions c
-       LEFT JOIN users u ON c.user_id = u.id
+       LEFT JOIN users u ON c.employee_id = u.employee_id
        WHERE c.id = $1`,
       [id]
     );
@@ -43,14 +43,14 @@ export class ConsultantWorkSubmissionModel {
     return this.mapRow(rowsArray[0]);
   }
 
-  static async findByUserId(userId: number, filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
+  static async findByEmployeeId(employeeId: string, filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
       SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
       FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
-      WHERE c.user_id = $1
+      LEFT JOIN users u ON c.employee_id = u.employee_id
+      WHERE c.employee_id = $1
     `;
-    const params: any[] = [userId];
+    const params: any[] = [employeeId];
     if (filters?.status) {
       params.push(filters.status);
       query += ` AND c.status = $${params.length}`;
@@ -64,7 +64,7 @@ export class ConsultantWorkSubmissionModel {
     let query = `
       SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
       FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
+      LEFT JOIN users u ON c.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -93,7 +93,7 @@ export class ConsultantWorkSubmissionModel {
   private static mapRow(row: any): CWS {
     return {
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       project: row.project,
       tech: row.tech,
       total_hours: parseFloat(row.total_hours) || row.total_hours,

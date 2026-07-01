@@ -8,7 +8,7 @@ export const accessLevelEnum = pgEnum('access_level', ['read', 'write']);
 // User Permissions Table
 export const userPermissions = pgTable('user_permissions', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     permissionKey: varchar('permission_key', { length: 100 }).notNull(),
     accessLevel: accessLevelEnum('access_level').notNull().default('read'),
     assignedBy: integer('assigned_by').references(() => users.id, { onDelete: 'set null' }),
@@ -19,8 +19,8 @@ export const userPermissions = pgTable('user_permissions', {
 // Relations
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
     user: one(users, {
-        fields: [userPermissions.userId],
-        references: [users.id],
+        fields: [userPermissions.employeeId],
+        references: [users.employeeId],
     }),
     assigner: one(users, {
         fields: [userPermissions.assignedBy],

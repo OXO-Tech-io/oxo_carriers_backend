@@ -5,7 +5,7 @@ import { users } from './users';
 // Audit Logs Table
 export const auditLogs = pgTable('audit_logs', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    employeeId: varchar('employee_id', { length: 50 }).references(() => users.employeeId, { onDelete: 'set null' }),
     action: varchar('action', { length: 100 }).notNull(),
     tableName: varchar('table_name', { length: 100 }),
     recordId: integer('record_id'),
@@ -14,13 +14,14 @@ export const auditLogs = pgTable('audit_logs', {
     ipAddress: varchar('ip_address', { length: 45 }),
     userAgent: text('user_agent'),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Relations
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
     user: one(users, {
-        fields: [auditLogs.userId],
-        references: [users.id],
+        fields: [auditLogs.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

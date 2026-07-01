@@ -110,7 +110,7 @@ export interface LeaveType {
 
 export interface LeaveBalance {
   id: number;
-  user_id: number;
+  employee_id: string;
   leave_type_id: number;
   total_days: number;
   used_days: number;
@@ -123,7 +123,7 @@ export interface LeaveBalance {
 
 export interface LeaveRequest {
   id: number;
-  user_id: number;
+  employee_id: string;
   leave_type_id: number;
   start_date: Date;
   end_date: Date;
@@ -180,7 +180,7 @@ export interface SalaryComponent {
 
 export interface EmployeeSalaryStructure {
   id: number;
-  user_id: number;
+  employee_id: string;
   component_id: number;
   amount: number;
   is_percentage: boolean;
@@ -197,7 +197,7 @@ export interface EmployeeSalaryStructureWithComponent extends EmployeeSalaryStru
 
 export interface MonthlySalary {
   id: number;
-  user_id: number;
+  employee_id: string;
   month_year: Date;
   basic_salary: number;
   local_salary?: number;
@@ -206,7 +206,7 @@ export interface MonthlySalary {
   total_deductions: number;
   net_salary: number;
   status: SalaryStatus;
-  generated_by?: number;
+  generated_by_employee_id?: string;
   paid_date?: Date;
   pdf_url?: string;
   created_at: Date;
@@ -249,7 +249,7 @@ export enum BookingStatus {
 export interface FacilityBooking {
   id: number;
   facility_id: number;
-  user_id: number;
+  employee_id: string;
   start_time: Date;
   end_time: Date;
   purpose?: string;
@@ -271,7 +271,7 @@ export enum MedicalClaimStatus {
 
 export interface MedicalInsuranceClaim {
   id: number;
-  user_id: number;
+  employee_id: string;
   type: MedicalClaimType;
   quarter: string;
   amount: number;
@@ -301,7 +301,7 @@ export enum ConsultantSubmissionStatus {
 
 export interface ConsultantWorkSubmission {
   id: number;
-  user_id: number;
+  employee_id: string;
   project: string;
   tech: string;
   total_hours: number;
@@ -326,6 +326,7 @@ export interface ConsultantWorkSubmission {
 
 export interface JwtPayload {
   userId: number;
+  employeeId?: string;
   email: string;
   role: UserRole;
   sub?: string;

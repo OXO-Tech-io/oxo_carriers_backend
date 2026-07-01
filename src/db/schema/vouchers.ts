@@ -21,7 +21,7 @@ export const voucherTypeEnum = pgEnum('voucher_type', ['employee', 'vendor']);
 export const paymentVouchers = pgTable('payment_vouchers', {
     id: serial('id').primaryKey(),
     voucherType: voucherTypeEnum('voucher_type').notNull(),
-    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    employeeId: varchar('employee_id', { length: 50 }).references(() => users.employeeId, { onDelete: 'set null' }),
     vendorId: integer('vendor_id').references(() => vendors.id, { onDelete: 'set null' }),
     amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
     description: text('description').notNull(),
@@ -43,8 +43,8 @@ export const paymentVouchers = pgTable('payment_vouchers', {
 // Relations
 export const paymentVouchersRelations = relations(paymentVouchers, ({ one }) => ({
     user: one(users, {
-        fields: [paymentVouchers.userId],
-        references: [users.id],
+        fields: [paymentVouchers.employeeId],
+        references: [users.employeeId],
     }),
     vendor: one(vendors, {
         fields: [paymentVouchers.vendorId],

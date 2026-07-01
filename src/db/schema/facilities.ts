@@ -43,7 +43,7 @@ export const facilities = pgTable('facilities', {
 export const facilityBookings = pgTable('facility_bookings', {
     id: serial('id').primaryKey(),
     facilityId: integer('facility_id').notNull().references(() => facilities.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     startTime: timestamp('start_time').notNull(),
     endTime: timestamp('end_time').notNull(),
     purpose: text('purpose'),
@@ -63,8 +63,8 @@ export const facilityBookingsRelations = relations(facilityBookings, ({ one }) =
         references: [facilities.id],
     }),
     user: one(users, {
-        fields: [facilityBookings.userId],
-        references: [users.id],
+        fields: [facilityBookings.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

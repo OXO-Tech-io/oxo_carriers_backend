@@ -24,12 +24,13 @@ export const salaryComponents = pgTable('salary_components', {
     isDefault: boolean('is_default').default(false),
     isActive: boolean('is_active').default(true),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Employee Salary Structure Table
 export const employeeSalaryStructure = pgTable('employee_salary_structure', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
     amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
     isPercentage: boolean('is_percentage').default(false),
@@ -37,12 +38,13 @@ export const employeeSalaryStructure = pgTable('employee_salary_structure', {
     effectiveDate: date('effective_date').notNull(),
     endDate: date('end_date'),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Monthly Salaries Table
 export const monthlySalaries = pgTable('monthly_salaries', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     monthYear: date('month_year').notNull(),
     basicSalary: decimal('basic_salary', { precision: 10, scale: 2 }).notNull(),
     localSalary: decimal('local_salary', { precision: 10, scale: 2 }).default('0'),
@@ -51,10 +53,11 @@ export const monthlySalaries = pgTable('monthly_salaries', {
     totalDeductions: decimal('total_deductions', { precision: 10, scale: 2 }).notNull(),
     netSalary: decimal('net_salary', { precision: 10, scale: 2 }).notNull(),
     status: salaryStatusEnum('status').default('generated'),
-    generatedBy: integer('generated_by').references(() => users.id, { onDelete: 'set null' }),
+    generatedByEmployeeId: varchar('generated_by_employee_id', { length: 50 }).references(() => users.employeeId, { onDelete: 'set null' }),
     paidDate: date('paid_date'),
     pdfUrl: varchar('pdf_url', { length: 500 }),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Salary Slip Details Table
@@ -64,6 +67,8 @@ export const salarySlipDetails = pgTable('salary_slip_details', {
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
     amount: decimal('amount', { precision: 10, scale: 2 }).notNull(),
     type: componentTypeEnum('type').notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Relations
@@ -74,8 +79,8 @@ export const salaryComponentsRelations = relations(salaryComponents, ({ many }) 
 
 export const employeeSalaryStructureRelations = relations(employeeSalaryStructure, ({ one }) => ({
     user: one(users, {
-        fields: [employeeSalaryStructure.userId],
-        references: [users.id],
+        fields: [employeeSalaryStructure.employeeId],
+        references: [users.employeeId],
     }),
     component: one(salaryComponents, {
         fields: [employeeSalaryStructure.componentId],
@@ -85,12 +90,12 @@ export const employeeSalaryStructureRelations = relations(employeeSalaryStructur
 
 export const monthlySalariesRelations = relations(monthlySalaries, ({ one, many }) => ({
     user: one(users, {
-        fields: [monthlySalaries.userId],
-        references: [users.id],
+        fields: [monthlySalaries.employeeId],
+        references: [users.employeeId],
     }),
     generator: one(users, {
-        fields: [monthlySalaries.generatedBy],
-        references: [users.id],
+        fields: [monthlySalaries.generatedByEmployeeId],
+        references: [users.employeeId],
     }),
     details: many(salarySlipDetails),
 }));

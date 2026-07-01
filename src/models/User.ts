@@ -81,7 +81,7 @@ export class UserModel {
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({
-          userId: insertedUser.id,
+          employeeId: insertedUser.employeeId || '',
           permissionKey: permission,
           accessLevel: 'read',
         });

@@ -28,34 +28,38 @@ export const getLeaveTypes = async (_req: Request, res: Response) => {
 };
 
 export const getLeaveBalance = async (req: Request, res: Response) => {
-  const { userId } = requireUser(req);
+  const { employeeId } = requireUser(req);
+  if (!employeeId) throw new UnauthorizedError();
   const query = req.query as unknown as LeaveBalanceQuery;
-  const balances = await leaveService.getLeaveBalance(userId, query);
+  const balances = await leaveService.getLeaveBalance(employeeId, query);
   ok(res, balances, 'Leave balance fetched');
 };
 
 export const getLeaveRequests = async (req: Request, res: Response) => {
-  const { userId, role } = requireUser(req);
+  const { employeeId, role } = requireUser(req);
+  if (!employeeId) throw new UnauthorizedError();
   const query = req.query as unknown as ListLeaveRequestsQuery;
-  const requests = await leaveService.listLeaveRequests(userId, role, query);
+  const requests = await leaveService.listLeaveRequests(employeeId, role, query);
   ok(res, requests, 'Leave requests fetched');
 };
 
 export const getLeaveRequestById = async (req: Request, res: Response) => {
-  const { userId, role } = requireUser(req);
+  const { employeeId, role } = requireUser(req);
+  if (!employeeId) throw new UnauthorizedError();
   const { id } = req.params as unknown as LeaveIdParam;
-  const request = await leaveService.getLeaveRequestById(id, userId, role);
+  const request = await leaveService.getLeaveRequestById(id, employeeId, role);
   ok(res, request, 'Leave request fetched');
 };
 
 export const createLeaveRequest = async (req: Request, res: Response) => {
-  const { userId } = requireUser(req);
+  const { employeeId } = requireUser(req);
+  if (!employeeId) throw new UnauthorizedError();
   const input = req.body as CreateLeaveRequestInput;
   const attachmentUrl = req.file
     ? `/uploads/documents/${req.file.filename}`
     : undefined;
   const request = await leaveService.createLeaveRequest(
-    userId,
+    employeeId,
     input,
     attachmentUrl
   );

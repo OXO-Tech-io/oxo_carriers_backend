@@ -32,12 +32,13 @@ export const leaveTypes = pgTable('leave_types', {
     maxDays: integer('max_days').notNull(),
     isActive: boolean('is_active').default(true),
     createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
 });
 
 // Employee Leave Balance Table
 export const employeeLeaveBalance = pgTable('employee_leave_balance', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     totalDays: decimal('total_days', { precision: 5, scale: 2 }).default('0'),
     usedDays: decimal('used_days', { precision: 5, scale: 2 }).default('0'),
@@ -50,7 +51,7 @@ export const employeeLeaveBalance = pgTable('employee_leave_balance', {
 // Leave Requests Table
 export const leaveRequests = pgTable('leave_requests', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 }).notNull().references(() => users.employeeId, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     startDate: date('start_date').notNull(),
     endDate: date('end_date').notNull(),
@@ -75,7 +76,7 @@ export const leaveCalendar = pgTable('leave_calendar', {
     description: text('description'),
     isRecurring: boolean('is_recurring').default(false),
     year: integer('year'),
-    createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdByEmployeeId: varchar('created_by_employee_id', { length: 50 }).references(() => users.employeeId, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -88,8 +89,8 @@ export const leaveTypesRelations = relations(leaveTypes, ({ many }) => ({
 
 export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ one }) => ({
     user: one(users, {
-        fields: [employeeLeaveBalance.userId],
-        references: [users.id],
+        fields: [employeeLeaveBalance.employeeId],
+        references: [users.employeeId],
     }),
     leaveType: one(leaveTypes, {
         fields: [employeeLeaveBalance.leaveTypeId],
@@ -99,8 +100,8 @@ export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ 
 
 export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
     user: one(users, {
-        fields: [leaveRequests.userId],
-        references: [users.id],
+        fields: [leaveRequests.employeeId],
+        references: [users.employeeId],
     }),
     leaveType: one(leaveTypes, {
         fields: [leaveRequests.leaveTypeId],
@@ -110,8 +111,8 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
 
 export const leaveCalendarRelations = relations(leaveCalendar, ({ one }) => ({
     creator: one(users, {
-        fields: [leaveCalendar.createdBy],
-        references: [users.id],
+        fields: [leaveCalendar.createdByEmployeeId],
+        references: [users.employeeId],
     }),
 }));
 

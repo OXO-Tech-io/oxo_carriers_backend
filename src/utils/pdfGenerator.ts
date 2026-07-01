@@ -9,7 +9,7 @@ const log = baseLogger.child({ module: 'pdf-generator' });
 interface SalaryData {
   salary: {
     id: number;
-    user_id: number;
+    employee_id: string;
     month_year: string | Date;
     basic_salary: number;
     local_salary?: number;

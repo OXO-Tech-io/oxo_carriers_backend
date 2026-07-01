@@ -24,17 +24,16 @@ export const getSalaryComponents = async (req: Request, res: Response) => {
 
 export const getEmployeeSalaryStructure = async (req: Request, res: Response) => {
   try {
-    const { userId: userIdParam } = req.params;
-    const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
-    const currentUserId = (req as any).user?.userId;
+    const { employeeId } = req.params;
+    const currentEmployeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
 
     // Employees can only view their own structure
-    if (role === UserRole.EMPLOYEE && parseInt(userId) !== currentUserId) {
+    if (role === UserRole.EMPLOYEE && employeeId !== currentEmployeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const structure = await SalaryModel.getEmployeeSalaryStructure(parseInt(userId as string));
+    const structure = await SalaryModel.getEmployeeSalaryStructure(employeeId as string);
     res.json({ success: true, structure });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get salary structure failed');
@@ -49,15 +48,14 @@ export const updateSalaryStructure = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, message: 'Only HR Manager can update salary structure' });
     }
 
-    const { userId: userIdParam } = req.params;
-    const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
+    const { employeeId } = req.params;
     const { components } = req.body;
 
     if (!Array.isArray(components) || components.length === 0) {
       return res.status(400).json({ success: false, message: 'Components array is required' });
     }
 
-    await SalaryModel.updateSalaryStructure(parseInt(userId as string), components);
+    await SalaryModel.updateSalaryStructure(employeeId as string, components);
 
     res.json({ success: true, message: 'Salary structure updated successfully' });
   } catch (error: any) {
@@ -73,31 +71,30 @@ export const generateSalary = async (req: Request, res: Response) => {
       return res.status(403).json({ success: false, message: 'Only HR can generate salaries' });
     }
 
-    const { userId: userIdBody, month, year } = req.body;
-    const userId = Array.isArray(userIdBody) ? userIdBody[0] : userIdBody;
-    const generatedBy = (req as any).user!.userId;
+    const { employeeId, month, year } = req.body;
+    const generatedBy = (req as any).user!.employeeId;
 
-    if (!userId || !month || !year) {
-      return res.status(400).json({ success: false, message: 'User ID, month, and year are required' });
+    if (!employeeId || !month || !year) {
+      return res.status(400).json({ success: false, message: 'Employee ID, month, and year are required' });
     }
 
     const monthYear = new Date(year, month - 1, 1);
 
     // Check if salary already exists
-    const existing = await SalaryModel.findByUserId(parseInt(userId), { year, month });
+    const existing = await SalaryModel.findByEmployeeId(employeeId, { year, month });
     if (existing.length > 0) {
       return res.status(400).json({ success: false, message: 'Salary for this month already exists' });
     }
 
-    const salary = await SalaryModel.generateSalary(parseInt(userId), monthYear, generatedBy);
+    const salary = await SalaryModel.generateSalary(employeeId, monthYear, generatedBy!);
 
     res.status(201).json({ success: true, message: 'Salary generated successfully', salary });
 
     // Send payslip notification email to employee (non-blocking)
     try {
       const userResult = await pool.query(
-        'SELECT first_name, last_name, email FROM users WHERE id = $1',
-        [parseInt(userId)]
+        'SELECT first_name, last_name, email FROM users WHERE employee_id = $1',
+        [employeeId]
       );
       const userRows = userResult.rows as any[];
       const employeeUser = userRows[0];
@@ -123,10 +120,10 @@ export const generateSalary = async (req: Request, res: Response) => {
 
 export const getSalaries = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
-    const { userId: paramUserId, department, year, month, status } = req.query;
-    const paramUserIdStr = Array.isArray(paramUserId) ? paramUserId[0] : paramUserId;
+    const { employeeId: paramEmployeeId, department, year, month, status } = req.query;
+    const paramEmployeeIdStr = Array.isArray(paramEmployeeId) ? paramEmployeeId[0] : paramEmployeeId;
     const departmentStr = Array.isArray(department) ? department[0] : department;
     const yearStr = Array.isArray(year) ? year[0] : year;
     const monthStr = Array.isArray(month) ? month[0] : month;
@@ -135,14 +132,14 @@ export const getSalaries = async (req: Request, res: Response) => {
     let salaries;
     if (role === UserRole.EMPLOYEE) {
       // Employees can only see their own salaries
-      salaries = await SalaryModel.findByUserId(userId!, {
+      salaries = await SalaryModel.findByEmployeeId(employeeId!, {
         year: year ? parseInt(year as string) : undefined,
         month: month ? parseInt(month as string) : undefined
       });
     } else {
       // HR can see all salaries
       salaries = await SalaryModel.getAll({
-        userId: paramUserIdStr ? parseInt(paramUserIdStr as string) : undefined,
+        employeeId: paramEmployeeIdStr as string,
         department: departmentStr as string,
         year: yearStr ? parseInt(yearStr as string) : undefined,
         month: monthStr ? parseInt(monthStr as string) : undefined,
@@ -161,7 +158,7 @@ export const getSalaryById = async (req: Request, res: Response) => {
   try {
     const { id: idParam } = req.params;
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
 
     const salary = await SalaryModel.findById(parseInt(id as string));
@@ -170,7 +167,7 @@ export const getSalaryById = async (req: Request, res: Response) => {
     }
 
     // Employees can only view their own salary
-    if (role === UserRole.EMPLOYEE && salary.user_id !== userId) {
+    if (role === UserRole.EMPLOYEE && salary.employee_id !== employeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -187,7 +184,7 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
   try {
     const { id: idParam } = req.params;
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
 
     log(req).info({ salaryId: id }, 'Generating salary slip PDF');
@@ -199,18 +196,18 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     }
 
     // Employees can only view their own salary
-    if (role === UserRole.EMPLOYEE && salary.user_id !== userId) {
-      log(req).warn({ userId, salaryId: id }, 'Access denied for salary slip');
+    if (role === UserRole.EMPLOYEE && salary.employee_id !== employeeId) {
+      log(req).warn({ employeeId, salaryId: id }, 'Access denied for salary slip');
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
     const details = await SalaryModel.getSlipDetails(parseInt(id as string));
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [salary.user_id]);
+    const userResult = await pool.query('SELECT * FROM users WHERE employee_id = $1', [salary.employee_id]);
     const users = userResult.rows as any[];
     const user = users[0];
 
     if (!user) {
-      log(req).warn({ userId: salary.user_id }, 'User not found for salary');
+      log(req).warn({ employeeId: salary.employee_id }, 'User not found for salary');
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
@@ -298,7 +295,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     }
 
     const monthYear = new Date(parseInt(yearStr as string), parseInt(monthStr as string) - 1, 1);
-    const generatedBy = (req as any).user!.userId;
+    const generatedBy = (req as any).user!.employeeId;
 
     // Find header row and column indices
     let headerRow = 1;
@@ -313,7 +310,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         const cellValue = cell.value?.toString().toLowerCase().trim() || '';
         
         // ID column - can be "id", "user id", "user_id", "employee id", etc.
-        if ((cellValue === 'id' || cellValue.includes('user id') || cellValue.includes('user_id')) && idCol === 0) {
+        if ((cellValue === 'id' || cellValue.includes('user id') || cellValue.includes('user_id') || cellValue.includes('employee id') || cellValue.includes('employee_id')) && idCol === 0) {
           idCol = colNumber;
           foundHeaders++;
         }
@@ -417,34 +414,37 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         const idValue = row.getCell(idCol).value?.toString().trim();
         if (!idValue || idValue === '') continue; // Skip empty rows
 
-        // Try to parse as number first (user ID)
-        let userId: number | null = null;
-        const parsedId = parseInt(idValue);
+        let employeeId: string | null = null;
         
-        if (!isNaN(parsedId)) {
-          // It's a numeric ID
-          userId = parsedId;
+        // Try to find by employee_id first
+        const empResult = await pool.query('SELECT employee_id FROM users WHERE employee_id = $1', [idValue]);
+        const empUsers = empResult.rows as any[];
+        if (empUsers.length > 0) {
+          employeeId = empUsers[0].employee_id;
         } else {
-          // Try to find by employee_id
-          const empResult = await pool.query('SELECT id FROM users WHERE employee_id = $1', [idValue]);
-          const empUsers = empResult.rows as any[];
-          if (empUsers.length > 0) {
-            userId = empUsers[0].id;
+          // Check if idValue is numeric and might be the old numeric user ID
+          const parsedId = parseInt(idValue);
+          if (!isNaN(parsedId)) {
+            const userResult2 = await pool.query('SELECT employee_id FROM users WHERE id = $1', [parsedId]);
+            const users = userResult2.rows as any[];
+            if (users.length > 0) {
+              employeeId = users[0].employee_id;
+            }
           }
         }
 
-        if (!userId || isNaN(userId)) {
+        if (!employeeId) {
           results.failed++;
           results.errors.push(`Row ${rowNum}: Invalid ID "${idValue}" - not found in system`);
           continue;
         }
 
         // Verify user exists
-        const userResult2 = await pool.query('SELECT id, first_name, last_name FROM users WHERE id = $1', [userId]);
+        const userResult2 = await pool.query('SELECT employee_id, first_name, last_name FROM users WHERE employee_id = $1', [employeeId]);
         const users = userResult2.rows as any[];
         if (users.length === 0) {
           results.failed++;
-          results.errors.push(`Row ${rowNum}: User with ID ${userId} not found`);
+          results.errors.push(`Row ${rowNum}: User with Employee ID ${employeeId} not found`);
           continue;
         }
 
@@ -512,11 +512,11 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
 
         // Create salary from Excel data
         log(req).info(
-          { userId, localSalary, oxoSalary, epfDeduction, allowances, salaryAdvanceDeductions },
+          { employeeId, localSalary, oxoSalary, epfDeduction, allowances, salaryAdvanceDeductions },
           'Creating salary from Excel row',
         );
         await SalaryModel.createSalaryFromExcel(
-          userId,
+          employeeId,
           monthYear,
           {
             fullSalary,
@@ -529,9 +529,9 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
             allowances,
             salaryAdvanceDeductions
           },
-          generatedBy
+          generatedBy!
         );
-        log(req).info({ userId }, 'Successfully created salary');
+        log(req).info({ employeeId }, 'Successfully created salary');
 
         results.success++;
       } catch (error: any) {
@@ -592,8 +592,8 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
     if (status === SalaryStatus.PAID && updated) {
       try {
         const userResult = await pool.query(
-          'SELECT first_name, last_name, email FROM users WHERE id = $1',
-          [updated.user_id]
+          'SELECT first_name, last_name, email FROM users WHERE employee_id = $1',
+          [updated.employee_id]
         );
         const userRows = userResult.rows as any[];
         const employeeUser = userRows[0];
@@ -620,12 +620,12 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
 
 export const getYearToDateEarnings = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const { year: yearQuery } = req.query;
     const yearStr = Array.isArray(yearQuery) ? yearQuery[0] : yearQuery;
     const currentYear = yearStr ? parseInt(yearStr as string) : new Date().getFullYear();
 
-    const salaries = await SalaryModel.findByUserId(userId!, { year: currentYear });
+    const salaries = await SalaryModel.findByEmployeeId(employeeId!, { year: currentYear });
 
     const totalEarnings = salaries.reduce((sum, salary) => sum + parseFloat(salary.total_earnings.toString()), 0);
     const totalDeductions = salaries.reduce((sum, salary) => sum + parseFloat(salary.total_deductions.toString()), 0);

@@ -75,9 +75,9 @@ export class FacilityController {
     try {
       const authReq = req as AuthRequest;
       const { facility_id, start_time, end_time, purpose } = req.body;
-      const user_id = authReq.user?.userId;
+      const employee_id = authReq.user?.employeeId;
 
-      if (!user_id) return res.status(401).json({ message: 'Unauthorized' });
+      if (!employee_id) return res.status(401).json({ message: 'Unauthorized' });
 
       // Check availability
       const isAvailable = await FacilityBookingModel.checkAvailability(
@@ -92,7 +92,7 @@ export class FacilityController {
 
       const booking = await FacilityBookingModel.create({
         facility_id,
-        user_id,
+        employee_id,
         start_time: new Date(start_time),
         end_time: new Date(end_time),
         purpose,
@@ -108,10 +108,10 @@ export class FacilityController {
   static async getMyBookings(req: Request, res: Response) {
     try {
       const authReq = req as AuthRequest;
-      const user_id = authReq.user?.userId;
-      if (!user_id) return res.status(401).json({ message: 'Unauthorized' });
+      const employee_id = authReq.user?.employeeId;
+      if (!employee_id) return res.status(401).json({ message: 'Unauthorized' });
 
-      const bookings = await FacilityBookingModel.getAll({ user_id });
+      const bookings = await FacilityBookingModel.getAll({ employee_id });
       res.json(bookings);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -131,14 +131,14 @@ export class FacilityController {
     try {
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id as string);
-      const user_id = authReq.user?.userId;
+      const employee_id = authReq.user?.employeeId;
       const role = authReq.user?.role;
 
       const booking = await FacilityBookingModel.findById(id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
 
       // Only allow owner or admin/hr to cancel
-      if (booking.user_id !== user_id && role === UserRole.EMPLOYEE) {
+      if (booking.employee_id !== employee_id && role === UserRole.EMPLOYEE) {
         return res.status(403).json({ message: 'Forbidden' });
       }
 

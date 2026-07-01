@@ -107,6 +107,7 @@ export const authenticate = async (
 
     req.user = {
       userId: user.id,
+      employeeId: user.employeeId || undefined,
       email: user.email,
       role: user.role as UserRole,
       sub: claims.sub,

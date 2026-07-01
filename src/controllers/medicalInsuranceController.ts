@@ -12,8 +12,8 @@ const log = (req: Request) => req.log ?? logger;
 
 export const apply = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).user?.employeeId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
@@ -37,7 +37,7 @@ export const apply = async (req: Request, res: Response) => {
     }
 
     if (type === MedicalClaimType.OPD) {
-      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(userId, quarter);
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, quarter);
       if (used + amount > maxAmount) {
         return res.status(400).json({
           success: false,
@@ -56,7 +56,7 @@ export const apply = async (req: Request, res: Response) => {
     const relevant_document_url = relevantFile ? `/uploads/documents/${relevantFile.filename}` : null;
 
     const claim = await MedicalInsuranceModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       type,
       quarter,
       amount,
@@ -92,12 +92,12 @@ export const apply = async (req: Request, res: Response) => {
 
 export const getMyClaims = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).user?.employeeId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
     const status = req.query.status as MedicalClaimStatus | undefined;
-    const claims = await MedicalInsuranceModel.findByUserId(userId, { status });
+    const claims = await MedicalInsuranceModel.findByEmployeeId(employeeId, { status });
     res.json({ success: true, claims });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get my medical claims failed');
@@ -129,7 +129,7 @@ export const getById = async (req: Request, res: Response) => {
   try {
     const idParam = req.params.id;
     const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).user?.employeeId;
     const role = (req as any).user?.role;
 
     const claim = await MedicalInsuranceModel.findById(id);
@@ -137,7 +137,7 @@ export const getById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'Claim not found' });
     }
 
-    if (role === UserRole.EMPLOYEE && claim.user_id !== userId) {
+    if (role === UserRole.EMPLOYEE && claim.employee_id !== employeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -251,8 +251,8 @@ export const reject = async (req: Request, res: Response) => {
 
 export const resubmit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).user?.employeeId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
@@ -266,7 +266,7 @@ export const resubmit = async (req: Request, res: Response) => {
     if (!original) {
       return res.status(404).json({ success: false, message: 'Original claim not found' });
     }
-    if (original.user_id !== userId) {
+    if (original.employee_id !== employeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
     if (original.status !== MedicalClaimStatus.REJECTED) {
@@ -286,7 +286,7 @@ export const resubmit = async (req: Request, res: Response) => {
     }
 
     if (finalType === MedicalClaimType.OPD) {
-      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(userId, finalQuarter);
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, finalQuarter);
       if (used + finalAmount > maxAmount) {
         return res.status(400).json({
           success: false,
@@ -305,7 +305,7 @@ export const resubmit = async (req: Request, res: Response) => {
     const relevant_document_url = relevantFile ? `/uploads/documents/${relevantFile.filename}` : original.relevant_document_url ?? null;
 
     const claim = await MedicalInsuranceModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       type: finalType,
       quarter: finalQuarter,
       amount: finalAmount,
