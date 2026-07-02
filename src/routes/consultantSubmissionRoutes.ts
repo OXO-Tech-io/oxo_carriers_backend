@@ -8,7 +8,7 @@ const router = Router();
 router.use(authenticate);
 
 router.get('/', consultantSubmissionController.getSubmissions);
-router.get('/:id', consultantSubmissionController.getById);
+router.get('/:id', consultantSubmissionController.getSubmissionById);
 router.post('/', uploadConsultantLogSheet, consultantSubmissionController.submit);
 router.put('/:id/approve', requireHR, consultantSubmissionController.approve);
 router.put('/:id/reject', requireHR, consultantSubmissionController.reject);

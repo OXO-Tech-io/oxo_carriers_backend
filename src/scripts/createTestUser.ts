@@ -1,5 +1,4 @@
 import pool from '../config/database';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -7,8 +6,6 @@ dotenv.config();
 async function createTestUser() {
   try {
     const email = 'test@gmail.com';
-    const password = 'admin@12';
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Check if user already exists
     const existing = await pool.query(
@@ -18,26 +15,20 @@ async function createTestUser() {
     const existingUsers = existing.rows as any[];
 
     if (existingUsers.length > 0) {
-      console.log('User already exists. Updating password...');
-      await pool.query(
-        'UPDATE users SET password = $1, must_change_password = false WHERE email = $2',
-        [hashedPassword, email]
-      );
-      console.log('✅ Password updated for test@gmail.com');
+      console.log('User already exists.');
     } else {
       // Create new user
       const employeeId = `EMP${new Date().getFullYear()}0001`;
       await pool.query(
-        `INSERT INTO users (employee_id, email, password, first_name, last_name, role, must_change_password)
-         VALUES ($1, $2, $3, $4, $5, 'hr_manager', false)`,
-        [employeeId, email, hashedPassword, 'Test', 'User']
+        `INSERT INTO users (employee_id, email, first_name, last_name, role)
+         VALUES ($1, $2, $3, $4, 'hr_manager')`,
+        [employeeId, email, 'Test', 'User']
       );
       console.log('✅ Test user created successfully!');
     }
 
     console.log('\n📋 Login Credentials:');
     console.log('   Email: test@gmail.com');
-    console.log('   Password: admin@12');
     console.log('   Role: HR Manager\n');
 
     process.exit(0);

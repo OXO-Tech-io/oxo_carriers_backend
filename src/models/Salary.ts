@@ -1,6 +1,7 @@
 import pool from '../config/database';
 import { MonthlySalary, SalaryComponent, EmployeeSalaryStructure, EmployeeSalaryStructureWithComponent, SalaryStatus, ComponentType } from '../types';
 import { logger as baseLogger } from '../lib/logger';
+import { decryptSalary, encryptSalary } from '../utils/encryption';
 
 const log = baseLogger.child({ module: 'salary-model' });
 
@@ -19,7 +20,10 @@ export class SalaryModel {
        ORDER BY sc.type, sc.name`,
       [userId]
     );
-    return result.rows as EmployeeSalaryStructureWithComponent[];
+    return result.rows.map((row: any) => ({
+      ...row,
+      amount: parseFloat(decryptSalary(row.amount) || '0'),
+    })) as EmployeeSalaryStructureWithComponent[];
   }
 
   static async updateSalaryStructure(
@@ -40,7 +44,7 @@ export class SalaryModel {
         [
           userId,
           component.component_id,
-          component.amount,
+          encryptSalary(component.amount),
           component.is_percentage || false,
           component.percentage_of || null
         ]
@@ -107,7 +111,17 @@ export class SalaryModel {
     const result = await pool.query(
       `INSERT INTO monthly_salaries (user_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'generated', $9) RETURNING id`,
-      [userId, monthYear, basicSalary, localSalary, oxoInternationalSalary, totalEarnings, totalDeductions, netSalary, generatedBy]
+      [
+        userId,
+        monthYear,
+        encryptSalary(basicSalary),
+        encryptSalary(localSalary),
+        encryptSalary(oxoInternationalSalary),
+        encryptSalary(totalEarnings),
+        encryptSalary(totalDeductions),
+        encryptSalary(netSalary),
+        generatedBy
+      ]
     );
 
     const salaryId = (result.rows[0] as any).id;
@@ -116,7 +130,7 @@ export class SalaryModel {
     for (const detail of slipDetails) {
       await pool.query(
         'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-        [salaryId, detail.component_id, detail.amount, detail.type]
+        [salaryId, detail.component_id, encryptSalary(detail.amount), detail.type]
       );
     }
 
@@ -127,10 +141,24 @@ export class SalaryModel {
     return createdSalary;
   }
 
+  private static decryptMonthlySalary(ms: any): any {
+    if (!ms) return ms;
+    return {
+      ...ms,
+      basic_salary: decryptSalary(ms.basic_salary),
+      local_salary: decryptSalary(ms.local_salary),
+      oxo_international_salary: decryptSalary(ms.oxo_international_salary),
+      total_earnings: decryptSalary(ms.total_earnings),
+      total_deductions: decryptSalary(ms.total_deductions),
+      net_salary: decryptSalary(ms.net_salary),
+    };
+  }
+
   static async findById(id: number): Promise<MonthlySalary | null> {
     const result = await pool.query('SELECT * FROM monthly_salaries WHERE id = $1', [id]);
     const salaries = result.rows as MonthlySalary[];
-    return salaries[0] || null;
+    if (salaries.length === 0) return null;
+    return this.decryptMonthlySalary(salaries[0]);
   }
 
   static async findByUserId(userId: number, filters?: { year?: number; month?: number }): Promise<MonthlySalary[]> {
@@ -150,7 +178,7 @@ export class SalaryModel {
     query += ' ORDER BY month_year DESC';
 
     const result = await pool.query(query, params);
-    return result.rows as MonthlySalary[];
+    return result.rows.map(row => this.decryptMonthlySalary(row)) as MonthlySalary[];
   }
 
   static async getAll(filters?: {
@@ -196,7 +224,7 @@ export class SalaryModel {
     query += ' ORDER BY ms.month_year DESC, u.first_name';
 
     const result = await pool.query(query, params);
-    return result.rows as any[];
+    return result.rows.map(row => this.decryptMonthlySalary(row)) as any[];
   }
 
   static async getSlipDetails(salaryId: number): Promise<any[]> {
@@ -208,7 +236,10 @@ export class SalaryModel {
        ORDER BY sc.type, sc.name`,
       [salaryId]
     );
-    return result.rows as any[];
+    return result.rows.map(row => ({
+      ...row,
+      amount: decryptSalary(row.amount),
+    }));
   }
 
   static async updateStatus(id: number, status: SalaryStatus, paidDate?: Date): Promise<MonthlySalary | null> {
@@ -346,7 +377,17 @@ export class SalaryModel {
          status = 'generated',
          generated_by = EXCLUDED.generated_by
        RETURNING id`,
-      [userId, monthYear, basicSalary, localSalaryValue, oxoInternationalSalaryValue, totalEarnings, totalDeductions, netSalary, generatedBy]
+      [
+        userId,
+        monthYear,
+        encryptSalary(basicSalary),
+        encryptSalary(localSalaryValue),
+        encryptSalary(oxoInternationalSalaryValue),
+        encryptSalary(totalEarnings),
+        encryptSalary(totalDeductions),
+        encryptSalary(netSalary),
+        generatedBy
+      ]
     );
 
     // Verify the insert immediately after
@@ -357,23 +398,27 @@ export class SalaryModel {
     const verifyRows = verifyResult.rows as any[];
     if (verifyRows.length > 0) {
       const saved = verifyRows[0];
+      const decryptedLocal = decryptSalary(saved.local_salary);
+      const decryptedOxo = decryptSalary(saved.oxo_international_salary);
+      const decryptedBasic = decryptSalary(saved.basic_salary);
+
       log.debug(
         {
           id: saved.id,
-          localSalary: saved.local_salary,
-          oxoInternationalSalary: saved.oxo_international_salary,
-          basicSalary: saved.basic_salary,
+          localSalary: decryptedLocal,
+          oxoInternationalSalary: decryptedOxo,
+          basicSalary: decryptedBasic,
           expectedLocal: localSalaryValue,
           expectedOxo: oxoInternationalSalaryValue,
         },
         'Verified salary record',
       );
 
-      if (Number(saved.oxo_international_salary) !== oxoInternationalSalaryValue) {
+      if (Number(decryptedOxo) !== oxoInternationalSalaryValue) {
         log.error(
           {
             expected: oxoInternationalSalaryValue,
-            actual: saved.oxo_international_salary,
+            actual: decryptedOxo,
           },
           'MISMATCH: OXO International Salary not saved correctly',
         );
@@ -435,7 +480,7 @@ export class SalaryModel {
     if (localSalaryId && excelData.localSalary > 0) {
       await pool.query(
         'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-        [salaryId, localSalaryId, excelData.localSalary, 'earning']
+        [salaryId, localSalaryId, encryptSalary(excelData.localSalary), 'earning']
       );
       log.debug({ amount: excelData.localSalary, salaryId }, 'Inserted Local Salary slip detail');
     } else {
@@ -447,7 +492,7 @@ export class SalaryModel {
       if (oxoSalaryId) {
         await pool.query(
           'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-          [salaryId, oxoSalaryId, excelData.oxoInternationalSalary, 'earning']
+          [salaryId, oxoSalaryId, encryptSalary(excelData.oxoInternationalSalary), 'earning']
         );
         log.debug({ amount: excelData.oxoInternationalSalary, salaryId }, 'Inserted OXO International Salary slip detail');
       } else {
@@ -461,7 +506,7 @@ export class SalaryModel {
     if (fullSalaryId && fullSalary > 0) {
       await pool.query(
         'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-        [salaryId, fullSalaryId, fullSalary, 'earning']
+        [salaryId, fullSalaryId, encryptSalary(fullSalary), 'earning']
       );
     }
 
@@ -469,7 +514,7 @@ export class SalaryModel {
     if (epfId && epfDeduction > 0) {
       await pool.query(
         'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-        [salaryId, epfId, epfDeduction, 'deduction']
+        [salaryId, epfId, encryptSalary(epfDeduction), 'deduction']
       );
     }
 
@@ -492,7 +537,7 @@ export class SalaryModel {
       if (allowancesId) {
         await pool.query(
           'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-          [salaryId, allowancesId, excelData.allowances, 'earning']
+          [salaryId, allowancesId, encryptSalary(excelData.allowances), 'earning']
         );
         log.debug({ amount: excelData.allowances, salaryId }, 'Inserted Allowances slip detail');
       }
@@ -517,7 +562,7 @@ export class SalaryModel {
       if (deductionsId) {
         await pool.query(
           'INSERT INTO salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-          [salaryId, deductionsId, excelData.salaryAdvanceDeductions, 'deduction']
+          [salaryId, deductionsId, encryptSalary(excelData.salaryAdvanceDeductions), 'deduction']
         );
         log.debug({ amount: excelData.salaryAdvanceDeductions, salaryId }, 'Inserted Salary Advance/Deductions slip detail');
       }

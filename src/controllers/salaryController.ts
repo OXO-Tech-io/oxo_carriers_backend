@@ -26,8 +26,9 @@ export const getEmployeeSalaryStructure = async (req: Request, res: Response) =>
   try {
     const { userId: userIdParam } = req.params;
     const userId = Array.isArray(userIdParam) ? userIdParam[0] : userIdParam;
-    const currentUserId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const currentUserId = (req as any).employee?.userId;
+    const employeeId = (req as any).employee?.employeeId;
+    const role = (req as any).employee?.role;
 
     // Employees can only view their own structure
     if (role === UserRole.EMPLOYEE && parseInt(userId) !== currentUserId) {
@@ -45,7 +46,7 @@ export const getEmployeeSalaryStructure = async (req: Request, res: Response) =>
 export const updateSalaryStructure = async (req: Request, res: Response) => {
   try {
     // Only HR Manager can update salary structure
-    if ((req as any).user?.role !== UserRole.HR_MANAGER) {
+    if ((req as any).employee?.role !== UserRole.HR_MANAGER) {
       return res.status(403).json({ success: false, message: 'Only HR Manager can update salary structure' });
     }
 
@@ -69,13 +70,13 @@ export const updateSalaryStructure = async (req: Request, res: Response) => {
 export const generateSalary = async (req: Request, res: Response) => {
   try {
     // Only HR can generate salaries
-    if ((req as any).user?.role !== UserRole.HR_MANAGER && (req as any).user?.role !== UserRole.HR_EXECUTIVE) {
+    if ((req as any).employee?.role !== UserRole.HR_MANAGER && (req as any).employee?.role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can generate salaries' });
     }
 
     const { userId: userIdBody, month, year } = req.body;
     const userId = Array.isArray(userIdBody) ? userIdBody[0] : userIdBody;
-    const generatedBy = (req as any).user!.userId;
+    const generatedBy = (req as any).employee!.userId;
 
     if (!userId || !month || !year) {
       return res.status(400).json({ success: false, message: 'User ID, month, and year are required' });
@@ -123,8 +124,9 @@ export const generateSalary = async (req: Request, res: Response) => {
 
 export const getSalaries = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
     const { userId: paramUserId, department, year, month, status } = req.query;
     const paramUserIdStr = Array.isArray(paramUserId) ? paramUserId[0] : paramUserId;
     const departmentStr = Array.isArray(department) ? department[0] : department;
@@ -161,8 +163,9 @@ export const getSalaryById = async (req: Request, res: Response) => {
   try {
     const { id: idParam } = req.params;
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
 
     const salary = await SalaryModel.findById(parseInt(id as string));
     if (!salary) {
@@ -187,8 +190,9 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
   try {
     const { id: idParam } = req.params;
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
 
     log(req).info({ salaryId: id }, 'Generating salary slip PDF');
 
@@ -273,7 +277,7 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
 export const uploadBulkSalaries = async (req: Request, res: Response) => {
   try {
     // Only HR can upload bulk salaries
-    const userRole = (req as any).user?.role;
+    const userRole = (req as any).employee?.role;
     if (userRole !== UserRole.HR_MANAGER && userRole !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR Manager and HR Executive can upload bulk salaries' });
     }
@@ -298,7 +302,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
     }
 
     const monthYear = new Date(parseInt(yearStr as string), parseInt(monthStr as string) - 1, 1);
-    const generatedBy = (req as any).user!.userId;
+    const generatedBy = (req as any).employee!.userId;
 
     // Find header row and column indices
     let headerRow = 1;
@@ -566,7 +570,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
 export const updateSalaryStatus = async (req: Request, res: Response) => {
   try {
     // Only HR can update salary status
-    if ((req as any).user?.role !== UserRole.HR_MANAGER && (req as any).user?.role !== UserRole.HR_EXECUTIVE) {
+    if ((req as any).employee?.role !== UserRole.HR_MANAGER && (req as any).employee?.role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can update salary status' });
     }
 
@@ -620,7 +624,8 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
 
 export const getYearToDateEarnings = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
     const { year: yearQuery } = req.query;
     const yearStr = Array.isArray(yearQuery) ? yearQuery[0] : yearQuery;
     const currentYear = yearStr ? parseInt(yearStr as string) : new Date().getFullYear();

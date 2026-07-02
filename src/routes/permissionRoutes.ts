@@ -11,8 +11,8 @@ const requirePermissionsRead = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const userId = req.user?.userId;
-  const role = req.user?.role;
+  const userId = req.employee?.userId;
+  const role = req.employee?.role;
 
   if (!userId || !role) {
     return res.status(401).json({ success: false, message: "Unauthorized" });
@@ -35,8 +35,8 @@ const requirePermissionsWrite = async (
   res: Response,
   next: NextFunction,
 ) => {
-  const userId = req.user?.userId;
-  const role = req.user?.role;
+  const userId = req.employee?.userId;
+  const role = req.employee?.role;
 
   if (!userId || !role) {
     return res.status(401).json({ success: false, message: "Unauthorized" });

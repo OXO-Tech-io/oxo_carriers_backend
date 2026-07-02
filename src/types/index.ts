@@ -334,5 +334,5 @@ export interface JwtPayload {
 import { Request } from "express";
 
 export interface AuthRequest extends Request {
-  user?: JwtPayload;
+  employee?: JwtPayload;
 }

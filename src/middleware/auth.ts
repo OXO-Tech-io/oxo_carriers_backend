@@ -1,13 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import { JwtPayload, UserRole } from "../types";
-import { UserModel } from "../models/User";
+import { EmployeeModel } from "../models/User";
 import { verifyKeycloakToken } from "./keycloakAuth";
 import { logger as baseLogger } from "../lib/logger";
 
 declare global {
   namespace Express {
     interface Request {
-      user?: JwtPayload;
+      employee?: JwtPayload;
       file?: Express.Multer.File;
     }
   }
@@ -74,15 +74,15 @@ export const authenticate = async (
 
     // Visibility for ops/debugging: confirm whether this Keycloak identity is
     // already present in Cloud SQL (`users`) before we resolve.
-    const existingBySub = await UserModel.findByKeycloakSub(claims.sub);
+    const existingBySub = await EmployeeModel.findByKeycloakSub(claims.sub);
     let user = existingBySub;
     let dbResolution = "existing_by_sub";
 
     if (!user) {
-      const existingByEmail = await UserModel.findByEmail(claims.email);
+      const existingByEmail = await EmployeeModel.findByEmail(claims.email);
       if (existingByEmail) {
         // Link Keycloak sub to DB user
-        await UserModel.linkKeycloakSub(existingByEmail.id, claims.sub);
+        await EmployeeModel.linkKeycloakSub(existingByEmail.id, claims.sub);
         user = { ...existingByEmail, keycloakSub: claims.sub };
         dbResolution = "existing_by_email_linked_sub";
       }
@@ -105,7 +105,7 @@ export const authenticate = async (
       "Keycloak token authenticated and resolved against users table",
     );
 
-    req.user = {
+    req.employee = {
       userId: user.id,
       email: user.email,
       role: user.role as UserRole,
@@ -127,15 +127,15 @@ export const authenticate = async (
  */
 export const authorize = (...roles: UserRole[]) => {
   return (req: Request, res: Response, next: NextFunction): void => {
-    if (!req.user) {
+    if (!req.employee) {
       res.status(401).json({ success: false, message: "Unauthorized" });
       return;
     }
-    if (req.user.role === UserRole.SUPER_ADMIN) {
+    if (req.employee.role === UserRole.SUPER_ADMIN) {
       next();
       return;
     }
-    if (!roles.includes(req.user.role)) {
+    if (!roles.includes(req.employee.role)) {
       res
         .status(403)
         .json({
@@ -160,4 +160,4 @@ export const requireHROrFinance = authorize(
 );
 
 export const isSuperAdmin = (req: Request): boolean =>
-  req.user?.role === UserRole.SUPER_ADMIN;
+  req.employee?.role === UserRole.SUPER_ADMIN;

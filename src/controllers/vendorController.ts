@@ -8,7 +8,7 @@ const canCreateVendor = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FI
 /** POST /vendors - create vendor (no email verification) */
 export const createVendor = async (req: Request, res: Response) => {
   try {
-    if (!req.user?.role || !canCreateVendor.includes(req.user.role)) {
+    if (!req.employee?.role || !canCreateVendor.includes(req.employee.role)) {
       return res.status(403).json({ success: false, message: 'Only HR or Finance can create vendors' });
     }
     const { email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch } = req.body;

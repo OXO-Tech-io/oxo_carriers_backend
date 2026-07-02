@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { UserModel } from '../models/User';
+import { EmployeeModel } from '../models/User';
 import { UserRole } from '../types';
 import pool from '../config/database';
 import crypto from 'crypto';
@@ -18,7 +18,7 @@ export const getAllUsers = async (req: Request, res: Response) => {
   try {
     const { role, department, search } = req.query;
     
-    const users = await UserModel.getAll({
+    const users = await EmployeeModel.getAll({
       role: role as UserRole,
       department: department as string,
       search: search as string
@@ -39,11 +39,11 @@ export const getUserById = async (req: Request, res: Response) => {
 
     // Employees, consultants, service providers can only view their own profile; HR can view any
     const selfOnlyRoles = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
-    if (req.user && selfOnlyRoles.includes(req.user.role) && req.user.userId !== userId) {
+    if (req.employee && selfOnlyRoles.includes(req.employee.role) && req.employee.userId !== userId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
-    const user = await UserModel.findById(userId);
+    const user = await EmployeeModel.findById(userId);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -59,7 +59,7 @@ export const createUser = async (req: Request, res: Response) => {
   try {
     // Only HR (and super_admin) can create users; Finance can only create service providers via createServiceProvider.
     const canCreateUser = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
-    if (!req.user?.role || (!isSuperAdmin(req) && !canCreateUser.includes(req.user.role))) {
+    if (!req.employee?.role || (!isSuperAdmin(req) && !canCreateUser.includes(req.employee.role))) {
       return res.status(403).json({
         success: false,
         message: 'Only HR can create employees. Finance can only create service providers via Create Service Provider.',
@@ -69,7 +69,6 @@ export const createUser = async (req: Request, res: Response) => {
     const {
       employee_id,
       email,
-      password,
       first_name,
       last_name,
       role,
@@ -106,33 +105,30 @@ export const createUser = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Hourly rate is required for Consultant role' });
     }
 
-    const existingUser = await UserModel.findByEmail(email);
+    const existingUser = await EmployeeModel.findByEmail(email);
     if (existingUser) {
-      return res.status(400).json({ success: false, message: 'Email already exists' });
+      return res.status(409).json({ success: false, message: 'Email already registered' });
     }
 
-    // Use provided employee_id or generate one automatically
-    const employeeId = employee_id && employee_id.trim() !== '' 
-      ? employee_id.trim() 
-      : await UserModel.generateEmployeeId();
+    // Generate unique employee ID if not provided
+    const employeeId = employee_id
+      ? employee_id.trim()
+      : await EmployeeModel.generateEmployeeId();
 
-    // Check if employee_id already exists (if provided)
-    if (employee_id && employee_id.trim() !== '') {
-      const existingEmployee = await UserModel.findByEmployeeId(employeeId);
+    if (employee_id) {
+      const existingEmployee = await EmployeeModel.findByEmployeeId(employeeId);
       if (existingEmployee) {
-        return res.status(400).json({ success: false, message: 'Employee ID already exists' });
+        return res.status(409).json({ success: false, message: 'Employee ID already registered' });
       }
     }
 
     const userRole = (role as UserRole) || UserRole.EMPLOYEE;
 
-    const tempPassword = password || crypto.randomBytes(12).toString('base64').slice(0, 12);
     const verificationToken = crypto.randomBytes(32).toString('hex');
 
-    const user = await UserModel.create({
+    const user = await EmployeeModel.create({
       employee_id: employeeId,
       email,
-      password: tempPassword,
       first_name: effectiveFirst,
       last_name: effectiveLast,
       role: userRole,
@@ -195,12 +191,10 @@ export const createUser = async (req: Request, res: Response) => {
       }
     }
 
-    const { password: _, ...userWithoutPassword } = user;
-
     res.status(201).json({
       success: true,
       message: 'User created successfully in database.',
-      user: userWithoutPassword,
+      user,
     });
   } catch (error: any) {
     log(req).error({ err: error }, 'Create user failed');
@@ -216,7 +210,7 @@ export const updateUser = async (req: Request, res: Response) => {
 
     // Employees, consultants, service providers can only update their own profile (limited fields)
     const selfOnlyRoles = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
-    if (req.user && selfOnlyRoles.includes(req.user.role) && req.user.userId !== userId) {
+    if (req.employee && selfOnlyRoles.includes(req.employee.role) && req.employee.userId !== userId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -238,13 +232,13 @@ export const updateUser = async (req: Request, res: Response) => {
     // Only HR and super_admin can update role
     const canUpdateRole =
       isSuperAdmin(req) ||
-      req.user?.role === UserRole.HR_MANAGER ||
-      req.user?.role === UserRole.HR_EXECUTIVE;
+      req.employee?.role === UserRole.HR_MANAGER ||
+      req.employee?.role === UserRole.HR_EXECUTIVE;
     if (canUpdateRole && req.body.role) {
       updates.role = req.body.role;
     }
 
-    const user = await UserModel.update(userId, updates);
+    const user = await EmployeeModel.update(userId, updates);
     if (!user) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -259,7 +253,7 @@ export const updateUser = async (req: Request, res: Response) => {
 export const deleteUser = async (req: Request, res: Response) => {
   try {
     // Only HR Manager or super_admin can delete users
-    const canDelete = isSuperAdmin(req) || req.user?.role === UserRole.HR_MANAGER;
+    const canDelete = isSuperAdmin(req) || req.employee?.role === UserRole.HR_MANAGER;
     if (!canDelete) {
       return res.status(403).json({ success: false, message: 'Only HR Manager or Super Admin can delete users' });
     }
@@ -268,11 +262,11 @@ export const deleteUser = async (req: Request, res: Response) => {
     const id = Array.isArray(idParam) ? idParam[0] : idParam;
     const userId = parseInt(id as string);
 
-    if (req.user?.userId === userId) {
+    if (req.employee?.userId === userId) {
       return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
     }
 
-    await UserModel.delete(userId);
+    await EmployeeModel.delete(userId);
 
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (error: any) {
@@ -286,8 +280,8 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     // HR Manager, HR Executive, and super_admin can reset passwords
     const canReset =
       isSuperAdmin(req) ||
-      req.user?.role === UserRole.HR_MANAGER ||
-      req.user?.role === UserRole.HR_EXECUTIVE;
+      req.employee?.role === UserRole.HR_MANAGER ||
+      req.employee?.role === UserRole.HR_EXECUTIVE;
     if (!canReset) {
       return res.status(403).json({ success: false, message: 'Only HR or Super Admin can reset passwords' });
     }
@@ -297,7 +291,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
     const userId = parseInt(id as string);
 
     log(req).info({ userId }, 'Admin initiating password reset');
-    const user = await UserModel.findById(userId);
+    const user = await EmployeeModel.findById(userId);
     if (!user) {
       log(req).warn({ userId }, 'User not found for password reset');
       return res.status(404).json({ success: false, message: 'User not found' });
@@ -368,7 +362,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
     }
 
     // Prevent super_admin from changing their own role (safety guard)
-    if (req.user?.userId === userId) {
+    if (req.employee?.userId === userId) {
       return res.status(400).json({ success: false, message: 'Cannot change your own role' });
     }
 
@@ -380,7 +374,7 @@ export const updateUserRole = async (req: Request, res: Response) => {
       });
     }
 
-    const targetUser = await UserModel.findById(userId);
+    const targetUser = await EmployeeModel.findById(userId);
     if (!targetUser) {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
@@ -388,13 +382,13 @@ export const updateUserRole = async (req: Request, res: Response) => {
     const previousRole = targetUser.role;
 
     // Update role
-    const updated = await UserModel.update(userId, { role });
+    const updated = await EmployeeModel.update(userId, { role });
     if (!updated) {
       return res.status(500).json({ success: false, message: 'Failed to update role' });
     }
 
     log(req).info(
-      { actorId: req.user?.userId, targetUserId: userId, previousRole, newRole: role },
+      { actorId: req.employee?.userId, targetUserId: userId, previousRole, newRole: role },
       'Super Admin changed user role',
     );
 
@@ -462,7 +456,7 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
       return;
     }
 
-    const user = await UserModel.findById(userId);
+    const user = await EmployeeModel.findById(userId);
     if (!user) {
       res.status(404).json({ success: false, message: 'User not found' });
       return;
@@ -501,7 +495,7 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
       role: user.role as UserRole,
     });
 
-    await UserModel.linkKeycloakSub(user.id, kcSub);
+    await EmployeeModel.linkKeycloakSub(user.id, kcSub);
     log(req).info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
 
     // Send onboarding/password setup email using EmailJS now that Keycloak is configured

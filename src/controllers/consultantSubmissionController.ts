@@ -7,9 +7,10 @@ const log = (req: Request) => req.log ?? logger;
 
 export const submit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can submit work' });
     }
@@ -43,8 +44,9 @@ export const submit = async (req: Request, res: Response) => {
 
 export const getMySubmissions = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     const status = req.query.status as ConsultantSubmissionStatus | undefined;
     const submissions = await ConsultantWorkSubmissionModel.findByUserId(userId, { status });
     res.json({ success: true, submissions });
@@ -66,18 +68,19 @@ export const getAll = async (req: Request, res: Response) => {
 };
 
 export const getSubmissions = async (req: Request, res: Response) => {
-  const role = (req as any).user?.role;
+  const role = (req as any).employee?.role;
   if (role === UserRole.HR_MANAGER || role === UserRole.HR_EXECUTIVE) {
     return getAll(req, res);
   }
   return getMySubmissions(req, res);
 };
 
-export const getById = async (req: Request, res: Response) => {
+export const getSubmissionById = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
 
     const submission = await ConsultantWorkSubmissionModel.findById(id);
     if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
@@ -96,8 +99,8 @@ export const getById = async (req: Request, res: Response) => {
 export const approve = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
-    const role = (req as any).user?.role;
-    const userId = (req as any).user?.userId;
+    const role = (req as any).employee?.role;
+    const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can approve consultant submissions' });
@@ -121,8 +124,8 @@ export const reject = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
     const { admin_comment } = req.body;
-    const role = (req as any).user?.role;
-    const userId = (req as any).user?.userId;
+    const role = (req as any).employee?.role;
+    const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can reject consultant submissions' });
@@ -148,9 +151,10 @@ export const reject = async (req: Request, res: Response) => {
 
 export const resubmit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
-    if (!userId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
+    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can resubmit' });
     }

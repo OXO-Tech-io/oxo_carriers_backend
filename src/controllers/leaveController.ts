@@ -18,8 +18,8 @@ import {
 import { logger } from '../lib/logger';
 
 const requireUser = (req: Request) => {
-  if (!req.user) throw new UnauthorizedError();
-  return req.user;
+  if (!req.employee) throw new UnauthorizedError();
+  return req.employee;
 };
 
 export const getLeaveTypes = async (_req: Request, res: Response) => {

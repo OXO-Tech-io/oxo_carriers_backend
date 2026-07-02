@@ -78,7 +78,7 @@ describe("auth middleware", () => {
   });
 
   it("authorize allows super admin bypass", () => {
-    const req = { user: { role: UserRole.SUPER_ADMIN } };
+    const req = { employee: { role: UserRole.SUPER_ADMIN } };
     const res = createRes();
     const next = vi.fn();
 
@@ -87,7 +87,7 @@ describe("auth middleware", () => {
   });
 
   it("authorize returns 403 for disallowed role", () => {
-    const req = { user: { role: UserRole.EMPLOYEE } };
+    const req = { employee: { role: UserRole.EMPLOYEE } };
     const res = createRes();
     const next = vi.fn();
 
@@ -97,9 +97,9 @@ describe("auth middleware", () => {
 
   it("isSuperAdmin checks role correctly", () => {
     expect(
-      isSuperAdmin({ user: { role: UserRole.SUPER_ADMIN } } as never),
+      isSuperAdmin({ employee: { role: UserRole.SUPER_ADMIN } } as never),
     ).toBe(true);
-    expect(isSuperAdmin({ user: { role: UserRole.EMPLOYEE } } as never)).toBe(
+    expect(isSuperAdmin({ employee: { role: UserRole.EMPLOYEE } } as never)).toBe(
       false,
     );
   });

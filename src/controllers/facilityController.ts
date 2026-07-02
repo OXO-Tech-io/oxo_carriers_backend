@@ -75,7 +75,7 @@ export class FacilityController {
     try {
       const authReq = req as AuthRequest;
       const { facility_id, start_time, end_time, purpose } = req.body;
-      const user_id = authReq.user?.userId;
+      const user_id = authReq.employee?.userId;
 
       if (!user_id) return res.status(401).json({ message: 'Unauthorized' });
 
@@ -108,7 +108,7 @@ export class FacilityController {
   static async getMyBookings(req: Request, res: Response) {
     try {
       const authReq = req as AuthRequest;
-      const user_id = authReq.user?.userId;
+      const user_id = authReq.employee?.userId;
       if (!user_id) return res.status(401).json({ message: 'Unauthorized' });
 
       const bookings = await FacilityBookingModel.getAll({ user_id });
@@ -131,8 +131,8 @@ export class FacilityController {
     try {
       const authReq = req as AuthRequest;
       const id = parseInt(req.params.id as string);
-      const user_id = authReq.user?.userId;
-      const role = authReq.user?.role;
+      const user_id = authReq.employee?.userId;
+      const role = authReq.employee?.role;
 
       const booking = await FacilityBookingModel.findById(id);
       if (!booking) return res.status(404).json({ message: 'Booking not found' });
