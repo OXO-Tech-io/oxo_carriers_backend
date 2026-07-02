@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { UserModel } from '../models/User';
+import { EmployeeModel } from '../models/User';
 import { NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { ok } from '../utils/response';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
@@ -13,8 +13,8 @@ import { UserRole } from '../types';
  * and registration are all owned by Keycloak.
  */
 export const getMe = async (req: Request, res: Response): Promise<void> => {
-  if (!req.user) throw new UnauthorizedError();
-  const user = await UserModel.findById(req.user.userId);
+  if (!req.employee) throw new UnauthorizedError();
+  const user = await EmployeeModel.findById(req.employee.userId);
   if (!user) throw new NotFoundError('User not found');
   ok(res, user, 'Current user');
 };
@@ -32,14 +32,14 @@ export const verifyEmail = async (req: Request, res: Response): Promise<void> =>
       return;
     }
 
-    const user = await UserModel.findByVerificationToken(token);
+    const user = await EmployeeModel.findByVerificationToken(token);
     if (!user) {
       res.status(400).json({ success: false, message: 'Invalid or expired verification token.' });
       return;
     }
 
     // Mark email verified in DB
-    await UserModel.verifyEmail(user.id);
+    await EmployeeModel.verifyEmail(user.id);
 
     // Sync verification status to Keycloak if they have a Keycloak account
     if (user.keycloakSub) {
@@ -77,17 +77,14 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const user = await UserModel.findByVerificationToken(token);
+    const user = await EmployeeModel.findByVerificationToken(token);
     if (!user) {
       res.status(400).json({ success: false, message: 'Invalid or expired token.' });
       return;
     }
 
-    // 1. Update password in the database (which also updates mustChangePassword to false)
-    await UserModel.updatePassword(user.id, targetPassword);
-
-    // 2. Also ensure email is verified in DB
-    await UserModel.verifyEmail(user.id);
+    // 1. Ensure email is verified in DB
+    await EmployeeModel.verifyEmail(user.id);
 
     // 3. Update or Provision in Keycloak
     let keycloakSub = user.keycloakSub;
@@ -117,7 +114,7 @@ export const resetPassword = async (req: Request, res: Response): Promise<void> 
           temporaryPassword: false, // User just typed this password, so it's not temporary
           role: user.role as UserRole,
         });
-        await UserModel.linkKeycloakSub(user.id, keycloakSub);
+        await EmployeeModel.linkKeycloakSub(user.id, keycloakSub);
         await keycloakAdminService.verifyEmail(keycloakSub);
         keycloakSynced = true;
       } catch (kcError: any) {

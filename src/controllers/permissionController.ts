@@ -8,7 +8,7 @@ import {
   PermissionKey,
 } from "../constants/permissions";
 import { getUserPermissionAssignments } from "../middleware/permissions";
-import { UserModel } from "../models/User";
+import { EmployeeModel } from "../models/User";
 import { ERROR_MESSAGES, HTTP_STATUS, PERMISSION_ERRORS, USER_ERRORS } from "../constants/errorMessages";
 import { USER_QUERIES, PERMISSION_QUERIES } from "../constants/dbQueries";
 
@@ -39,7 +39,7 @@ export const getManageableUsers = async (_req: Request, res: Response) => {
 
 export const getMyPermissions = async (req: Request, res: Response) => {
   try {
-    const userId = req.user?.userId;
+    const userId = req.employee?.userId;
     if (!userId) {
       return res.status(HTTP_STATUS.UNAUTHORIZED).json({ success: false, message: ERROR_MESSAGES.UNAUTHORIZED });
     }
@@ -78,7 +78,7 @@ export const getUserPermissions = async (req: Request, res: Response) => {
         .json({ success: false, message: USER_ERRORS.INVALID_USER_ID });
     }
 
-    const targetUser = await UserModel.findById(userId);
+    const targetUser = await EmployeeModel.findById(userId);
     if (!targetUser) {
       return res
         .status(HTTP_STATUS.NOT_FOUND)
@@ -157,7 +157,7 @@ export const getAllUserPermissions = async (_req: Request, res: Response) => {
 export const replaceUserPermissions = async (req: Request, res: Response) => {
   const client = await pool.connect();
   try {
-    const actorId = req.user?.userId;
+    const actorId = req.employee?.userId;
     const userId = parseUserId(req.params.id);
 
     if (!actorId) {
@@ -170,7 +170,7 @@ export const replaceUserPermissions = async (req: Request, res: Response) => {
         .json({ success: false, message: "Invalid user ID" });
     }
 
-    const targetUser = await UserModel.findById(userId);
+    const targetUser = await EmployeeModel.findById(userId);
     if (!targetUser) {
       return res
         .status(404)

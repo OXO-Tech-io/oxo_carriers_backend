@@ -1,6 +1,5 @@
 import { db } from '../db';
 import * as schema from '../db/schema';
-import bcrypt from 'bcryptjs';
 
 async function seed() {
     console.log('🌱 Starting database seeding...');
@@ -17,12 +16,9 @@ async function seed() {
         }
 
         // Create default super admin
-        const hashedPassword = await bcrypt.hash('Admin@123', 10);
-
         const [admin] = await db.insert(schema.users).values({
             employeeId: 'EMP001',
             email: 'admin@oxocarriers.com',
-            password: hashedPassword,
             firstName: 'Super',
             lastName: 'Admin',
             role: 'super_admin',

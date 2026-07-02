@@ -19,8 +19,8 @@ const hasRoleOrPermission = async (
   permission: PermissionKey,
   requiredLevel: AccessLevel = "read",
 ): Promise<boolean> => {
-  const role = req.user?.role;
-  const userId = req.user?.userId;
+  const role = req.employee?.role;
+  const userId = req.employee?.userId;
 
   if (!role || !userId) {
     return false;
@@ -83,7 +83,7 @@ export class VoucherController {
           : service_provider_id != null
             ? parseInt(service_provider_id, 10)
             : null;
-      const created_by = authReq.user!.userId;
+      const created_by = authReq.employee!.userId;
       const file = (req as any).file;
       const invoice_url = file ? `/uploads/documents/${file.filename}` : null;
       if (vid == null || isNaN(vid) || amount == null || amount === "") {
@@ -188,7 +188,7 @@ export class VoucherController {
       else return res.status(HTTP_STATUS.BAD_REQUEST).json({ message: VOUCHER_ERRORS.INVALID_ACTION });
 
       await PaymentVoucherModel.updateStatus(id, newStatus, {
-        reviewed_by: authReq.user!.userId,
+        reviewed_by: authReq.employee!.userId,
         reviewed_at: new Date(),
         executive_comment: comment ?? null,
       });
@@ -263,7 +263,7 @@ export class VoucherController {
         });
       }
       await PaymentVoucherModel.updateStatus(id, VoucherStatus.BANK_UPLOAD, {
-        bank_upload_by: authReq.user!.userId,
+        bank_upload_by: authReq.employee!.userId,
         bank_upload_at: new Date(),
       });
       const updated = await PaymentVoucherModel.findById(id);
@@ -300,7 +300,7 @@ export class VoucherController {
           .json({ message: VOUCHER_ERRORS.ONLY_BANK_UPLOAD_CAN_MARK_PAID });
       }
       await PaymentVoucherModel.updateStatus(id, VoucherStatus.PAID, {
-        paid_by: authReq.user!.userId,
+        paid_by: authReq.employee!.userId,
         paid_at: new Date(),
       });
       const updated = await PaymentVoucherModel.findById(id);

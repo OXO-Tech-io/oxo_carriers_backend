@@ -12,8 +12,9 @@ const log = (req: Request) => req.log ?? logger;
 
 export const apply = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 
@@ -92,8 +93,9 @@ export const apply = async (req: Request, res: Response) => {
 
 export const getMyClaims = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
     const status = req.query.status as MedicalClaimStatus | undefined;
@@ -118,19 +120,20 @@ export const getAll = async (req: Request, res: Response) => {
 };
 
 export const getClaims = async (req: Request, res: Response) => {
-  const role = (req as any).user?.role;
+  const role = (req as any).employee?.role;
   if (role === UserRole.HR_MANAGER || role === UserRole.HR_EXECUTIVE) {
     return getAll(req, res);
   }
   return getMyClaims(req, res);
 };
 
-export const getById = async (req: Request, res: Response) => {
+export const getClaimById = async (req: Request, res: Response) => {
   try {
     const idParam = req.params.id;
     const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
-    const userId = (req as any).user?.userId;
-    const role = (req as any).user?.role;
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    const role = (req as any).employee?.role;
 
     const claim = await MedicalInsuranceModel.findById(id);
     if (!claim) {
@@ -152,8 +155,8 @@ export const approve = async (req: Request, res: Response) => {
   try {
     const idParam = req.params.id;
     const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
-    const role = (req as any).user?.role;
-    const userId = (req as any).user?.userId;
+    const role = (req as any).employee?.role;
+    const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can approve medical claims' });
@@ -202,8 +205,8 @@ export const reject = async (req: Request, res: Response) => {
     const idParam = req.params.id;
     const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
     const { admin_comment } = req.body;
-    const role = (req as any).user?.role;
-    const userId = (req as any).user?.userId;
+    const role = (req as any).employee?.role;
+    const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
       return res.status(403).json({ success: false, message: 'Only HR can reject medical claims' });
@@ -251,8 +254,9 @@ export const reject = async (req: Request, res: Response) => {
 
 export const resubmit = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
-    if (!userId) {
+    const employeeId = (req as any).employee?.employeeId;
+    const userId = (req as any).employee?.userId;
+    if (!employeeId) {
       return res.status(401).json({ success: false, message: 'Unauthorized' });
     }
 

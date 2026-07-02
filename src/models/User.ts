@@ -1,32 +1,43 @@
 import { db } from '../db';
 import { users, userPermissions, type User as DrizzleUser } from '../db/schema';
 import { User, UserRole } from '../types';
-import bcrypt from 'bcryptjs';
 import { eq, like, or, and, sql } from 'drizzle-orm';
+import { encryptPII, decryptPII } from '../utils/encryption';
 
-export class UserModel {
+function decryptUser(user: DrizzleUser | null): DrizzleUser | null {
+  if (!user) return null;
+  return {
+    ...user,
+    hourlyRate: user.hourlyRate ? decryptPII(user.hourlyRate) : null,
+    bankName: user.bankName ? decryptPII(user.bankName) : null,
+    accountHolderName: user.accountHolderName ? decryptPII(user.accountHolderName) : null,
+    accountNumber: user.accountNumber ? decryptPII(user.accountNumber) : null,
+    bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
+    companyName: user.companyName ? decryptPII(user.companyName) : null,
+    contactNumber: user.contactNumber ? decryptPII(user.contactNumber) : null,
+  };
+}
+
+export class EmployeeModel {
   static async findByEmail(email: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.email, email),
     });
-    return user || null;
+    return decryptUser(user || null);
   }
 
-  static async findById(id: number): Promise<Omit<DrizzleUser, 'password'> | null> {
+  static async findById(id: number): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.id, id),
-      columns: {
-        password: false, // Exclude password from result
-      },
     });
-    return user || null;
+    return decryptUser(user || null);
   }
 
   static async findByKeycloakSub(sub: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.keycloakSub, sub),
     });
-    return user || null;
+    return decryptUser(user || null);
   }
 
   static async linkKeycloakSub(userId: number, sub: string): Promise<void> {
@@ -62,7 +73,6 @@ export class UserModel {
         firstName: claims.first_name || claims.email.split('@')[0],
         lastName: claims.last_name || '',
         role: claims.role,
-        mustChangePassword: false,
         emailVerified: true,
       })
       .returning();
@@ -88,21 +98,21 @@ export class UserModel {
       }
     }
 
-    return insertedUser;
+    return decryptUser(insertedUser) as DrizzleUser;
   }
 
   static async findByEmployeeId(employeeId: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.employeeId, employeeId),
     });
-    return user || null;
+    return decryptUser(user || null);
   }
 
   static async findByVerificationToken(token: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.emailVerificationToken, token),
     });
-    return user || null;
+    return decryptUser(user || null);
   }
 
   static async verifyEmail(userId: number): Promise<void> {
@@ -118,7 +128,6 @@ export class UserModel {
   static async create(userData: {
     employee_id: string;
     email: string;
-    password: string;
     first_name: string;
     last_name: string;
     role: UserRole;
@@ -135,14 +144,11 @@ export class UserModel {
     contact_number?: string | null;
     email_verification_token?: string;
   }): Promise<DrizzleUser> {
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
-
     const [insertedUser] = await db
       .insert(users)
       .values({
         employeeId: userData.employee_id,
         email: userData.email,
-        password: hashedPassword,
         firstName: userData.first_name,
         lastName: userData.last_name,
         role: userData.role,
@@ -150,14 +156,13 @@ export class UserModel {
         position: userData.position || null,
         hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
         managerId: userData.manager_id || null,
-        hourlyRate: userData.hourly_rate?.toString() ?? null,
-        bankName: userData.bank_name ?? null,
-        accountHolderName: userData.account_holder_name ?? null,
-        accountNumber: userData.account_number ?? null,
-        bankBranch: userData.bank_branch ?? null,
-        companyName: userData.company_name ?? null,
-        contactNumber: userData.contact_number ?? null,
-        mustChangePassword: true,
+        hourlyRate: encryptPII(userData.hourly_rate?.toString()) ?? null,
+        bankName: encryptPII(userData.bank_name) ?? null,
+        accountHolderName: encryptPII(userData.account_holder_name) ?? null,
+        accountNumber: encryptPII(userData.account_number) ?? null,
+        bankBranch: encryptPII(userData.bank_branch) ?? null,
+        companyName: encryptPII(userData.company_name) ?? null,
+        contactNumber: encryptPII(userData.contact_number) ?? null,
         emailVerified: false,
         emailVerificationToken: userData.email_verification_token || null,
       })
@@ -166,15 +171,28 @@ export class UserModel {
     if (!insertedUser) {
       throw new Error('Failed to create user');
     }
-    return insertedUser;
+    return decryptUser(insertedUser) as DrizzleUser;
   }
 
-  static async update(id: number, updates: Partial<DrizzleUser>): Promise<Omit<DrizzleUser, 'password'> | null> {
+  static async update(id: number, updates: Partial<DrizzleUser>): Promise<DrizzleUser | null> {
     // Filter out undefined values and restricted fields
     const filteredUpdates: any = {};
+    const piiFields = [
+      'hourlyRate',
+      'bankName',
+      'accountHolderName',
+      'accountNumber',
+      'bankBranch',
+      'companyName',
+      'contactNumber'
+    ];
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined && key !== 'id' && key !== 'createdAt') {
-        filteredUpdates[key] = value;
+        if (piiFields.includes(key)) {
+          filteredUpdates[key] = value !== null ? encryptPII(value as string) : null;
+        } else {
+          filteredUpdates[key] = value;
+        }
       }
     });
 
@@ -190,22 +208,11 @@ export class UserModel {
     return await this.findById(id);
   }
 
-  static async updatePassword(id: number, newPassword: string): Promise<void> {
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
-    await db
-      .update(users)
-      .set({
-        password: hashedPassword,
-        mustChangePassword: false,
-      })
-      .where(eq(users.id, id));
-  }
-
   static async getAll(filters?: {
     role?: UserRole;
     department?: string;
     search?: string;
-  }): Promise<Omit<DrizzleUser, 'password'>[]> {
+  }): Promise<DrizzleUser[]> {
     const conditions = [];
 
     if (filters?.role) {
@@ -230,21 +237,14 @@ export class UserModel {
 
     const allUsers = await db.query.users.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
-      columns: {
-        password: false, // Exclude password
-      },
       orderBy: (users, { desc }) => [desc(users.createdAt)],
     });
 
-    return allUsers;
+    return allUsers.map(user => decryptUser(user)) as DrizzleUser[];
   }
 
   static async delete(id: number): Promise<void> {
     await db.delete(users).where(eq(users.id, id));
-  }
-
-  static async verifyPassword(plainPassword: string, hashedPassword: string): Promise<boolean> {
-    return bcrypt.compare(plainPassword, hashedPassword);
   }
 
   static async generateEmployeeId(): Promise<string> {

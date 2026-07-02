@@ -1,5 +1,6 @@
 import pool from '../config/database';
 import { ConsultantWorkSubmission as CWS, ConsultantSubmissionStatus } from '../types';
+import { decryptPII } from '../utils/encryption';
 
 export class ConsultantWorkSubmissionModel {
   static async create(data: {
@@ -113,7 +114,7 @@ export class ConsultantWorkSubmissionModel {
             last_name: row.last_name,
             email: row.email,
             employee_id: row.employee_id,
-            hourly_rate: row.hourly_rate != null ? parseFloat(row.hourly_rate) : null
+            hourly_rate: row.hourly_rate != null ? parseFloat(decryptPII(row.hourly_rate) || '0') : null
           }
         : undefined
     };

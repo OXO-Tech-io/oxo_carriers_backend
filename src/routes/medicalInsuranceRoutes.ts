@@ -9,7 +9,7 @@ router.use(authenticate);
 
 router.get('/limits', medicalInsuranceController.getLimits);
 router.get('/', medicalInsuranceController.getClaims);
-router.get('/:id', medicalInsuranceController.getById);
+router.get('/:id', medicalInsuranceController.getClaimById);
 router.post('/', uploadMedicalDocuments, medicalInsuranceController.apply);
 router.put('/:id/approve', requireHR, medicalInsuranceController.approve);
 router.put('/:id/reject', requireHR, medicalInsuranceController.reject);

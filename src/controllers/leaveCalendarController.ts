@@ -70,7 +70,7 @@ export const getCalendarByDateRange = async (req: Request, res: Response) => {
  */
 export const createCalendarEntry = async (req: Request, res: Response) => {
   try {
-    const userId = (req as any).user?.userId;
+    const userId = (req as any).employee?.userId;
     const { date, name, description, is_recurring, year } = req.body;
 
     if (!date || !name) {

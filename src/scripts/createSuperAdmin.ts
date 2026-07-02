@@ -15,13 +15,11 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-import bcrypt from 'bcryptjs';
 import pool from '../config/database';
 import { UserRole } from '../types';
 
 async function run() {
   const email    = process.env.SA_EMAIL    || 'superadmin@oxocareers.com';
-  const password = process.env.SA_PASSWORD || 'SuperAdmin@123';
   const firstName = process.env.SA_FNAME   || 'Super';
   const lastName  = process.env.SA_LNAME   || 'Admin';
   const employeeId = 'SA001';
@@ -44,28 +42,24 @@ async function run() {
       }
       // Upgrade existing user to super_admin
       await client.query(
-        "UPDATE users SET role = 'super_admin', must_change_password = false WHERE id = $1",
+        "UPDATE users SET role = 'super_admin' WHERE id = $1",
         [user.id]
       );
       console.log(`[Seed] ✅ Upgraded existing user (id=${user.id}) to super_admin.`);
       return;
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
-
     const result = await client.query<{ id: number }>(
       `INSERT INTO users
-         (employee_id, email, password, first_name, last_name, role, must_change_password, email_verified)
-       VALUES ($1, $2, $3, $4, $5, 'super_admin', false, true)
+         (employee_id, email, first_name, last_name, role, email_verified)
+       VALUES ($1, $2, $3, $4, 'super_admin', true)
        RETURNING id`,
-      [employeeId, email, hashedPassword, firstName, lastName]
+      [employeeId, email, firstName, lastName]
     );
 
     console.log(`[Seed] ✅ Super Admin created successfully.`);
     console.log(`       ID:       ${result.rows[0].id}`);
     console.log(`       Email:    ${email}`);
-    console.log(`       Password: ${password}`);
-    console.log(`       ⚠️  Change this password immediately after first login!`);
   } catch (err: any) {
     console.error('[Seed] ❌ Error:', err.message);
     process.exit(1);
