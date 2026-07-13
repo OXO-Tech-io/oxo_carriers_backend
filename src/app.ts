@@ -28,6 +28,11 @@ import consultantSubmissionRoutes from './routes/consultantSubmissionRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import vendorRoutes from './routes/vendorRoutes';
 import permissionRoutes from './routes/permissionRoutes';
+import profileChangeRequestRoutes from './routes/profileChangeRequestRoutes';
+import employeeEducationRoutes from './routes/employeeEducationRoutes';
+import employeeWorkHistoryRoutes from './routes/employeeWorkHistoryRoutes';
+import notificationRoutes from './routes/notificationRoutes';
+import employeePiiRoutes from './routes/employeePiiRoutes';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -205,6 +210,11 @@ app.use('/api/consultant-submissions', consultantSubmissionRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/profile-change-requests', profileChangeRequestRoutes);
+app.use('/api/employee-education', employeeEducationRoutes);
+app.use('/api/employee-work-history', employeeWorkHistoryRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/employee-pii', employeePiiRoutes);
 
 // Backward-compatible mounts without the /api prefix
 app.use('/auth', authRoutes);
@@ -219,6 +229,11 @@ app.use('/consultant-submissions', consultantSubmissionRoutes);
 app.use('/vouchers', voucherRoutes);
 app.use('/vendors', vendorRoutes);
 app.use('/permissions', permissionRoutes);
+app.use('/profile-change-requests', profileChangeRequestRoutes);
+app.use('/employee-education', employeeEducationRoutes);
+app.use('/employee-work-history', employeeWorkHistoryRoutes);
+app.use('/notifications', notificationRoutes);
+app.use('/employee-pii', employeePiiRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -402,6 +417,11 @@ app.use((req, res) => {
       'GET /api/consultant-submissions',
       'GET /api/vouchers',
       'GET /api/vendors',
+      'GET /api/profile-change-requests',
+      'GET /api/employee-education',
+      'GET /api/employee-work-history',
+      'GET /api/notifications',
+      'GET /api/employee-pii/:id',
     ],
   });
 });
@@ -541,6 +561,44 @@ const startServer = async () => {
           }
         } catch (syncError: any) {
           logger.error({ err: syncError }, 'Failed to check/assign default employee permissions on startup');
+        }
+
+        // 4. Grant HR managers/executives write access to Profile Change Requests
+        // so the "Profile Approvals" nav item appears immediately post-deploy,
+        // without anyone needing to visit the Permissions admin screen first.
+        try {
+          logger.info('⚙️ Checking profile_change_requests permission for HR users...');
+          const hrRes = await pool.query(
+            "SELECT id FROM users WHERE role IN ('hr_manager', 'hr_executive')"
+          );
+          const hrIds = (hrRes.rows || []).map((row: any) => row.id);
+          let hrAssignedCount = 0;
+          for (const hrId of hrIds) {
+            const checkRes = await pool.query(
+              'SELECT access_level FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+              [hrId, 'profile_change_requests']
+            );
+            if (checkRes.rows.length === 0) {
+              await pool.query(
+                'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                [hrId, 'profile_change_requests', 'write']
+              );
+              hrAssignedCount++;
+            } else if (checkRes.rows[0].access_level !== 'write') {
+              await pool.query(
+                'UPDATE user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                [hrId, 'profile_change_requests', 'write']
+              );
+              hrAssignedCount++;
+            }
+          }
+          if (hrAssignedCount > 0) {
+            logger.info(`✅ Granted/updated profile_change_requests (write) for ${hrAssignedCount} HR users.`);
+          } else {
+            logger.info('✅ All HR users already have profile_change_requests (write).');
+          }
+        } catch (hrPermError: any) {
+          logger.error({ err: hrPermError }, 'Failed to check/assign HR profile_change_requests permission on startup');
         }
       } catch (error) {
         logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');

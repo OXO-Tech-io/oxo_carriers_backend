@@ -15,6 +15,7 @@ export const PERMISSIONS = {
   CONSULTANT_SUBMISSIONS: "consultant_submissions",
   VENDORS: "vendors",
   REPORTS: "reports",
+  PROFILE_CHANGE_REQUESTS: "profile_change_requests",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -40,7 +41,8 @@ export interface PermissionDefinition {
     | "claims"
     | "consultants"
     | "vendors"
-    | "reports";
+    | "reports"
+    | "profile";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -139,6 +141,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     label: "Reports",
     description: "Can access and manage reports.",
     group: "reports",
+  },
+  {
+    key: PERMISSIONS.PROFILE_CHANGE_REQUESTS,
+    label: "Profile Change Requests",
+    description:
+      "Can view/submit own profile change requests; write access lets HR review and decide on them.",
+    group: "profile",
   },
 ];
 

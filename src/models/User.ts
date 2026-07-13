@@ -2,7 +2,8 @@ import { db } from '../db';
 import { users, userPermissions, type User as DrizzleUser } from '../db/schema';
 import { User, UserRole } from '../types';
 import bcrypt from 'bcryptjs';
-import { eq, like, or, and, sql } from 'drizzle-orm';
+import { eq, like, or, and, sql, inArray } from 'drizzle-orm';
+import { encryptPII, decryptPII } from '../utils/encryption';
 
 export class UserModel {
   static async findByEmail(email: string): Promise<DrizzleUser | null> {
@@ -78,6 +79,7 @@ export class UserModel {
         'facilities',
         'medical_claims',
         'reports',
+        'profile_change_requests',
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({
@@ -202,14 +204,18 @@ export class UserModel {
   }
 
   static async getAll(filters?: {
-    role?: UserRole;
+    role?: UserRole | UserRole[];
     department?: string;
     search?: string;
   }): Promise<Omit<DrizzleUser, 'password'>[]> {
     const conditions = [];
 
     if (filters?.role) {
-      conditions.push(eq(users.role, filters.role));
+      conditions.push(
+        Array.isArray(filters.role)
+          ? inArray(users.role, filters.role)
+          : eq(users.role, filters.role)
+      );
     }
 
     if (filters?.department) {

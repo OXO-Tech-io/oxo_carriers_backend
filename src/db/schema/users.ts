@@ -45,6 +45,7 @@ export const users = pgTable('users', {
     companyName: varchar('company_name', { length: 200 }),
     contactNumber: varchar('contact_number', { length: 30 }),
     hireDate: date('hire_date'),
+    undergraduateDegreeCompletionDate: date('undergraduate_degree_completion_date'),
     managerId: integer('manager_id'),
     mustChangePassword: boolean('must_change_password').default(false),
     createdAt: timestamp('created_at').defaultNow(),

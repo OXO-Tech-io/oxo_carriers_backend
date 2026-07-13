@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OXO Carriers — ER Diagram</title>
+<style>
+  :root { --bg:#0f172a; --panel:#1e293b; --ink:#e2e8f0; --muted:#94a3b8; --accent:#38bdf8; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: 'Segoe UI', system-ui, sans-serif; background:var(--bg); color:var(--ink); }
+  header { padding:28px 32px 12px; border-bottom:1px solid #334155; }
+  header h1 { margin:0 0 6px; font-size:24px; }
+  header p { margin:0; color:var(--muted); font-size:14px; }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; padding:16px 32px; }
+  .chip { font-size:12px; padding:5px 12px; border-radius:20px; background:var(--panel); border:1px solid #334155; color:var(--muted); }
+  .chip b { color:var(--accent); }
+  .toolbar { padding:0 32px 12px; }
+  .toolbar button { background:var(--panel); color:var(--ink); border:1px solid #334155; border-radius:6px; padding:6px 14px; cursor:pointer; font-size:13px; }
+  .toolbar button:hover { border-color:var(--accent); }
+  .diagram-wrap { padding:8px 32px 40px; overflow:auto; }
+  .mermaid { background:#f8fafc; border-radius:12px; padding:20px; }
+  footer { padding:16px 32px 40px; color:var(--muted); font-size:12px; }
+</style>
+</head>
+<body>
+  <header>
+    <h1>OXO Carriers &mdash; Entity Relationship Diagram</h1>
+    <p>HR / Finance / Facilities backend &middot; 18 tables &middot; PostgreSQL + Drizzle ORM &middot; generated 2026-07-02</p>
+  </header>
+
+  <div class="legend">
+    <span class="chip"><b>Identity</b> users, user_permissions, tbl_employee_pii</span>
+    <span class="chip"><b>Leave</b> leave_types, employee_leave_balance, leave_requests, leave_calendar</span>
+    <span class="chip"><b>Payroll</b> salary_components, employee_salary_structure, monthly_salaries, salary_slip_details</span>
+    <span class="chip"><b>Facilities</b> facilities, facility_bookings</span>
+    <span class="chip"><b>Medical</b> medical_insurance_claims</span>
+    <span class="chip"><b>Consultant</b> consultant_work_submissions</span>
+    <span class="chip"><b>Payments</b> vendors, payment_vouchers</span>
+    <span class="chip"><b>Audit</b> audit_logs</span>
+  </div>
+
+  <div class="toolbar">
+    <button onclick="zoom(1.15)">Zoom +</button>
+    <button onclick="zoom(0.87)">Zoom &minus;</button>
+    <button onclick="zoom(0,true)">Reset</button>
+  </div>
+
+  <div class="diagram-wrap">
+    <pre class="mermaid" id="erd">
+erDiagram
+    users {
+        serial id PK
+        varchar employee_id UK
+        varchar email UK
+        varchar keycloak_sub
+        varchar first_name
+        varchar last_name
+        boolean email_verified
+        user_role role
+        varchar department
+        varchar position
+        varchar hourly_rate
+        varchar bank_name
+        varchar account_number
+        varchar company_name
+        date hire_date
+        integer manager_id FK
+        timestamp created_at
+    }
+    tbl_employee_pii {
+        serial id PK
+        varchar employee_id UK,FK
+        bytea passport_number
+        bytea national_id
+        bytea address
+        bytea emergency_contact_name
+        bytea emergency_contact_phone
+    }
+    user_permissions {
+        serial id PK
+        integer user_id FK
+        varchar permission_key
+        access_level access_level
+        integer assigned_by FK
+    }
+    leave_types {
+        serial id PK
+        varchar name
+        integer max_days
+        boolean is_active
+    }
+    employee_leave_balance {
+        serial id PK
+        integer user_id FK
+        integer leave_type_id FK
+        decimal total_days
+        decimal used_days
+        decimal remaining_days
+        integer year
+    }
+    leave_requests {
+        serial id PK
+        integer user_id FK
+        integer leave_type_id FK
+        date start_date
+        date end_date
+        decimal total_days
+        boolean is_half_day
+        half_day_period half_day_period
+        leave_status status
+        timestamp team_leader_approval_date
+        timestamp hr_approval_date
+    }
+    leave_calendar {
+        serial id PK
+        date date UK
+        varchar name
+        boolean is_recurring
+        integer year
+        integer created_by FK
+    }
+    salary_components {
+        serial id PK
+        varchar name
+        component_type type
+        boolean is_default
+        boolean is_active
+    }
+    employee_salary_structure {
+        serial id PK
+        integer user_id FK
+        integer component_id FK
+        varchar amount
+        boolean is_percentage
+        date effective_date
+        date end_date
+    }
+    monthly_salaries {
+        serial id PK
+        integer user_id FK
+        date month_year
+        varchar basic_salary
+        varchar total_earnings
+        varchar total_deductions
+        varchar net_salary
+        salary_status status
+        integer generated_by FK
+        date paid_date
+        varchar pdf_url
+    }
+    salary_slip_details {
+        serial id PK
+        integer salary_id FK
+        integer component_id FK
+        varchar amount
+        component_type type
+    }
+    facilities {
+        serial id PK
+        varchar name
+        facility_type type
+        integer capacity
+        boolean is_active
+    }
+    facility_bookings {
+        serial id PK
+        integer facility_id FK
+        integer user_id FK
+        timestamp start_time
+        timestamp end_time
+        booking_status status
+    }
+    medical_insurance_claims {
+        serial id PK
+        integer user_id FK
+        claim_type type
+        varchar quarter
+        decimal amount
+        claim_status status
+        varchar supportive_document_url
+        integer reviewed_by FK
+        integer resubmission_of FK
+    }
+    consultant_work_submissions {
+        serial id PK
+        integer user_id FK
+        varchar project
+        varchar tech
+        decimal total_hours
+        varchar log_sheet_url
+        submission_status status
+        integer reviewed_by FK
+        integer resubmission_of FK
+    }
+    vendors {
+        serial id PK
+        varchar email
+        varchar company_name
+        varchar contact_number
+        varchar bank_name
+        varchar account_number
+        varchar service_type
+    }
+    payment_vouchers {
+        serial id PK
+        voucher_type voucher_type
+        integer user_id FK
+        integer vendor_id FK
+        decimal amount
+        text description
+        varchar invoice_number
+        date due_date
+        voucher_status status
+        integer reviewed_by FK
+        date paid_date
+        integer created_by FK
+    }
+    audit_logs {
+        serial id PK
+        integer user_id FK
+        varchar action
+        varchar table_name
+        integer record_id
+        json old_values
+        json new_values
+        varchar ip_address
+    }
+
+    users ||--o| users : "manages"
+    users ||--o| tbl_employee_pii : "has PII"
+    users ||--o{ user_permissions : "granted"
+    users ||--o{ user_permissions : "assigns"
+    users ||--o{ employee_leave_balance : "holds"
+    leave_types ||--o{ employee_leave_balance : "typed"
+    users ||--o{ leave_requests : "requests"
+    leave_types ||--o{ leave_requests : "typed"
+    users ||--o{ leave_calendar : "creates"
+    users ||--o{ employee_salary_structure : "has"
+    salary_components ||--o{ employee_salary_structure : "of"
+    users ||--o{ monthly_salaries : "earns"
+    users ||--o{ monthly_salaries : "generates"
+    monthly_salaries ||--o{ salary_slip_details : "lines"
+    salary_components ||--o{ salary_slip_details : "of"
+    facilities ||--o{ facility_bookings : "booked"
+    users ||--o{ facility_bookings : "books"
+    users ||--o{ medical_insurance_claims : "submits"
+    users ||--o{ medical_insurance_claims : "reviews"
+    medical_insurance_claims ||--o| medical_insurance_claims : "resubmit"
+    users ||--o{ consultant_work_submissions : "submits"
+    users ||--o{ consultant_work_submissions : "reviews"
+    consultant_work_submissions ||--o| consultant_work_submissions : "resubmit"
+    users ||--o{ payment_vouchers : "beneficiary"
+    vendors ||--o{ payment_vouchers : "beneficiary"
+    users ||--o{ payment_vouchers : "reviews"
+    users ||--o{ payment_vouchers : "creates"
+    users ||--o{ audit_logs : "acts"
+    </pre>
+  </div>
+
+  <footer>
+    Source of truth: <code>src/db/schema/*.ts</code> (Drizzle ORM). Regenerate this file if the schema changes.
+  </footer>
+
+<script type="module">
+  import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+  mermaid.initialize({ startOnLoad: true, theme: 'default', er: { useMaxWidth: false } });
+  let scale = 1;
+  const el = document.getElementById('erd');
+  window.zoom = (f, reset) => {
+    scale = reset ? 1 : scale * f;
+    el.style.transform = `scale(${scale})`;
+    el.style.transformOrigin = 'top left';
+  };
+</script>
+</body>
+</html>

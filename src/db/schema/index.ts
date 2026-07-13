@@ -9,3 +9,8 @@ export * from './consultant';
 export * from './vendors';
 export * from './vouchers';
 export * from './audit';
+export * from './employeeEducation';
+export * from './employeeWorkHistory';
+export * from './profileChangeRequests';
+export * from './notifications';
+export * from './attachments';
