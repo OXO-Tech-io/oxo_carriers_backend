@@ -107,6 +107,12 @@ const Schema = z.object({
   // ─── JWT Authentication ─────────────────────────────────────────────────
   JWT_SECRET: z.string().min(32).default('your-super-secret-key-min-32-chars-required'),
   JWT_EXPIRES_IN: z.string().default('24h'),
+
+  // ─── Encryption ─────────────────────────────────────────────────────────
+  /** Used to derive the AES-256 key for PII fields (users.bankName/contactNumber/etc, via encryptPII) and pgcrypto's pgp_sym_encrypt (tbl_employee_pii). */
+  PII_ENCRYPTION_KEY: z.string().min(1).default('default-pii-encryption-key-must-change-in-prod'),
+  /** 64-character hex string (32 bytes). Only required if/when encryptSalary/decryptSalary are called. */
+  SALARY_ENCRYPTION_KEY: optionalString,
 });
 
 export type Env = z.infer<typeof Schema>;

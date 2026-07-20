@@ -15,6 +15,12 @@ export const PERMISSIONS = {
   CONSULTANT_SUBMISSIONS: "consultant_submissions",
   VENDORS: "vendors",
   REPORTS: "reports",
+  PROFILE_CHANGE_REQUESTS: "profile_change_requests",
+  EMPLOYEE_NOTES: "employee_notes",
+  COMMUNICATIONS: "communications",
+  EVENTS: "events",
+  FORMS: "forms",
+  WORK_LOGS: "work_logs",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -40,7 +46,13 @@ export interface PermissionDefinition {
     | "claims"
     | "consultants"
     | "vendors"
-    | "reports";
+    | "reports"
+    | "profile"
+    | "employee_notes"
+    | "communications"
+    | "events"
+    | "forms"
+    | "work_logs";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -139,6 +151,44 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     label: "Reports",
     description: "Can access and manage reports.",
     group: "reports",
+  },
+  {
+    key: PERMISSIONS.PROFILE_CHANGE_REQUESTS,
+    label: "Profile Change Requests",
+    description:
+      "Can view/submit own profile change requests; write access lets HR review and decide on them.",
+    group: "profile",
+  },
+  {
+    key: PERMISSIONS.EMPLOYEE_NOTES,
+    label: "Employee Notes",
+    description:
+      "Write access lets HR Team add notes to an employee profile (create-only). Full read/edit access is restricted to HR Manager regardless of this key.",
+    group: "employee_notes",
+  },
+  {
+    key: PERMISSIONS.COMMUNICATIONS,
+    label: "Communications",
+    description: "Can create and send employee communications and view delivery/response reports.",
+    group: "communications",
+  },
+  {
+    key: PERMISSIONS.EVENTS,
+    label: "Events",
+    description: "Can create events and record employee participation.",
+    group: "events",
+  },
+  {
+    key: PERMISSIONS.FORMS,
+    label: "Forms",
+    description: "Can create forms, distribute them to employees, and view/export responses.",
+    group: "forms",
+  },
+  {
+    key: PERMISSIONS.WORK_LOGS,
+    label: "Work Logs",
+    description: "Write access lets HR Manager view all employee work log submissions.",
+    group: "work_logs",
   },
 ];
 

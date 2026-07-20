@@ -58,6 +58,12 @@ export const upload = multer({
 export const uploadDocument = upload.single('document');
 export const uploadExcel = upload.single('excel');
 
+export const uploadNoteAttachments = upload.array('attachments', 5);
+export const uploadCommunicationAttachments = upload.array('attachments', 5);
+// Form submissions have a dynamic number of file-type fields, named
+// `field_<fieldId>` by the frontend - `.any()` accepts all of them at once.
+export const uploadFormResponseFiles = upload.any();
+
 export const uploadMedicalDocuments = multer({
   storage,
   fileFilter,
