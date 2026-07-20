@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, date, timestamp, pgEnum, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './users';
 
@@ -25,6 +25,7 @@ export const employeeEducation = pgTable('employee_education', {
     qualificationTitle: varchar('qualification_title', { length: 255 }).notNull(),
     awardingInstitution: varchar('awarding_institution', { length: 255 }).notNull(),
     dateAwarded: date('date_awarded'),
+    isOngoing: boolean('is_ongoing').default(false),
     remarks: text('remarks'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),

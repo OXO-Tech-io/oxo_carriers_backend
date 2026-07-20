@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { profileChangeRequestService } from '../services/profileChangeRequest.service';
-import { EmployeeModel } from '../models/User';
+import { UserModel } from '../models/User';
 import { UserRole } from '../types';
 import { UnauthorizedError } from '../utils/AppError';
 import { ok, created } from '../utils/response';
@@ -20,8 +20,8 @@ import {
 import { logger } from '../lib/logger';
 
 const requireUser = (req: Request) => {
-  if (!req.employee) throw new UnauthorizedError();
-  return req.employee;
+  if (!req.user) throw new UnauthorizedError();
+  return req.user;
 };
 
 export const submit = async (req: Request, res: Response) => {
@@ -31,8 +31,8 @@ export const submit = async (req: Request, res: Response) => {
   created(res, request, 'Profile change request submitted');
 
   try {
-    const employee = await EmployeeModel.findById(userId);
-    const hrUsers = await EmployeeModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
+    const employee = await UserModel.findById(userId);
+    const hrUsers = await UserModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
     if (employee) {
       const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
       const changesSummary = profileChangeRequestService.summarizeChanges(input.changes as ProfileChangeItem[]);
@@ -79,7 +79,7 @@ const decideAndNotify = async (
   ok(res, updated, 'Profile change request updated');
 
   try {
-    const employee = await EmployeeModel.findById(updated.userId);
+    const employee = await UserModel.findById(updated.userId);
     if (employee) {
       const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
       const changesSummary = profileChangeRequestService.summarizeChanges(

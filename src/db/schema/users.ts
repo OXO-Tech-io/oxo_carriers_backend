@@ -23,6 +23,8 @@ export const userRoleEnum = pgEnum('user_role', [
     'service_provider',
 ]);
 
+export const userTitleEnum = pgEnum('user_title', ['mr', 'ms', 'mrs', 'dr', 'prof']);
+
 // Users Table
 export const users = pgTable('users', {
     id: serial('id').primaryKey(),
@@ -30,6 +32,7 @@ export const users = pgTable('users', {
     email: varchar('email', { length: 100 }).notNull().unique(),
     password: varchar('password', { length: 255 }),
     keycloakSub: varchar('keycloak_sub', { length: 255 }),
+    title: userTitleEnum('title'),
     firstName: varchar('first_name', { length: 100 }).notNull(),
     lastName: varchar('last_name', { length: 100 }).notNull(),
     emailVerified: boolean('email_verified').default(false),

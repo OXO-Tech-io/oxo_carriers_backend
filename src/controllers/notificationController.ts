@@ -5,8 +5,8 @@ import { ok } from '../utils/response';
 import { ListNotificationsQuery, NotificationIdParam } from '../validators/notification.validator';
 
 const requireUser = (req: Request) => {
-  if (!req.employee) throw new UnauthorizedError();
-  return req.employee;
+  if (!req.user) throw new UnauthorizedError();
+  return req.user;
 };
 
 export const listMine = async (req: Request, res: Response) => {

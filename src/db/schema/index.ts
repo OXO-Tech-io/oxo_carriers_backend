@@ -1,5 +1,6 @@
 // Export all schemas
 export * from './users';
+export * from './employeePii';
 export * from './permissions';
 export * from './leaves';
 export * from './salary';
@@ -14,3 +15,8 @@ export * from './employeeWorkHistory';
 export * from './profileChangeRequests';
 export * from './notifications';
 export * from './attachments';
+export * from './employeeNotes';
+export * from './communications';
+export * from './events';
+export * from './forms';
+export * from './workLogs';

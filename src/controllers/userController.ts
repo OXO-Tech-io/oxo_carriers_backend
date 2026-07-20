@@ -185,6 +185,9 @@ export const createUser = async (req: Request, res: Response) => {
         'facilities',
         'medical_claims',
         'reports',
+        'work_logs',
+        'communications',
+        'forms',
       ];
       for (const permission of defaultPermissions) {
         await pool.query(

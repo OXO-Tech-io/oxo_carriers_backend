@@ -5,8 +5,8 @@ import { ok } from '../utils/response';
 import { ListEducationQuery } from '../validators/employeeEducation.validator';
 
 export const listMine = async (req: Request, res: Response) => {
-  if (!req.employee) throw new UnauthorizedError();
-  const { userId, role } = req.employee;
+  if (!req.user) throw new UnauthorizedError();
+  const { userId, role } = req.user;
   const query = req.query as unknown as ListEducationQuery;
   const records = await employeeEducationService.list(userId, role, query.userId);
   ok(res, records, 'Education records fetched');

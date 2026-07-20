@@ -33,6 +33,11 @@ import employeeEducationRoutes from './routes/employeeEducationRoutes';
 import employeeWorkHistoryRoutes from './routes/employeeWorkHistoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import employeePiiRoutes from './routes/employeePiiRoutes';
+import employeeNoteRoutes from './routes/employeeNoteRoutes';
+import communicationRoutes from './routes/communicationRoutes';
+import eventRoutes from './routes/eventRoutes';
+import formRoutes from './routes/formRoutes';
+import workLogRoutes from './routes/workLogRoutes';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -215,6 +220,11 @@ app.use('/api/employee-education', employeeEducationRoutes);
 app.use('/api/employee-work-history', employeeWorkHistoryRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/employee-pii', employeePiiRoutes);
+app.use('/api/employee-notes', employeeNoteRoutes);
+app.use('/api/communications', communicationRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/forms', formRoutes);
+app.use('/api/work-logs', workLogRoutes);
 
 // Backward-compatible mounts without the /api prefix
 app.use('/auth', authRoutes);
@@ -234,6 +244,11 @@ app.use('/employee-education', employeeEducationRoutes);
 app.use('/employee-work-history', employeeWorkHistoryRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/employee-pii', employeePiiRoutes);
+app.use('/employee-notes', employeeNoteRoutes);
+app.use('/communications', communicationRoutes);
+app.use('/events', eventRoutes);
+app.use('/forms', formRoutes);
+app.use('/work-logs', workLogRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {
@@ -422,6 +437,14 @@ app.use((req, res) => {
       'GET /api/employee-work-history',
       'GET /api/notifications',
       'GET /api/employee-pii/:id',
+      'POST /api/employee-notes',
+      'GET /api/employee-notes/employee/:employeeUserId',
+      'GET /api/communications',
+      'GET /api/communications/mine',
+      'GET /api/events',
+      'GET /api/forms',
+      'GET /api/forms/mine',
+      'GET /api/work-logs/mine',
     ],
   });
 });
@@ -537,6 +560,9 @@ const startServer = async () => {
             'facilities',
             'medical_claims',
             'reports',
+            'work_logs',
+            'communications',
+            'forms',
           ];
           let assignedCount = 0;
           for (const empId of employeeIds) {
@@ -599,6 +625,52 @@ const startServer = async () => {
           }
         } catch (hrPermError: any) {
           logger.error({ err: hrPermError }, 'Failed to check/assign HR profile_change_requests permission on startup');
+        }
+
+        // 5. Grant HR managers/executives write access to Communications, Events
+        // and Forms, and HR managers write access to Work Logs, so those nav
+        // items appear immediately post-deploy without a manual admin step.
+        try {
+          logger.info('⚙️ Checking HR modules permissions for HR users...');
+          const hrRes = await pool.query(
+            "SELECT id, role FROM users WHERE role IN ('hr_manager', 'hr_executive')"
+          );
+          const grants: { userId: number; key: string }[] = [];
+          for (const row of hrRes.rows as any[]) {
+            for (const key of ['communications', 'events', 'forms']) {
+              grants.push({ userId: row.id, key });
+            }
+            if (row.role === 'hr_manager') {
+              grants.push({ userId: row.id, key: 'work_logs' });
+            }
+          }
+          let hrModuleGrantCount = 0;
+          for (const grant of grants) {
+            const checkRes = await pool.query(
+              'SELECT access_level FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+              [grant.userId, grant.key]
+            );
+            if (checkRes.rows.length === 0) {
+              await pool.query(
+                'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                [grant.userId, grant.key, 'write']
+              );
+              hrModuleGrantCount++;
+            } else if (checkRes.rows[0].access_level !== 'write') {
+              await pool.query(
+                'UPDATE user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                [grant.userId, grant.key, 'write']
+              );
+              hrModuleGrantCount++;
+            }
+          }
+          if (hrModuleGrantCount > 0) {
+            logger.info(`✅ Granted/updated HR modules permissions for ${hrModuleGrantCount} assignments.`);
+          } else {
+            logger.info('✅ All HR users already have HR modules permissions.');
+          }
+        } catch (hrModuleError: any) {
+          logger.error({ err: hrModuleError }, 'Failed to check/assign HR modules permissions on startup');
         }
       } catch (error) {
         logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');

@@ -80,6 +80,9 @@ export class UserModel {
         'medical_claims',
         'reports',
         'profile_change_requests',
+        'work_logs',
+        'communications',
+        'forms',
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({

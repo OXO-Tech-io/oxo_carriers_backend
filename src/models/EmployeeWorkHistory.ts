@@ -5,6 +5,7 @@ import { eq } from 'drizzle-orm';
 export type EmployeeWorkHistoryInput = {
   organization: string;
   positionHeld: string;
+  employmentType?: 'regular' | 'intern' | 'trainee';
   startDate: string;
   endDate?: string | null;
   remarks?: string | null;

@@ -1,4 +1,5 @@
 import { EmployeeWorkHistoryModel } from '../models/EmployeeWorkHistory';
+import { experienceSummaryService } from './experienceSummary.service';
 import { UserRole } from '../types';
 import { BadRequestError } from '../utils/AppError';
 
@@ -13,5 +14,15 @@ export const employeeWorkHistoryService = {
       throw new BadRequestError('userId query parameter is required for HR/admin views');
     }
     return EmployeeWorkHistoryModel.listByUserId(queryUserId);
+  },
+
+  async getExperienceSummary(actorUserId: number, actorRole: UserRole, queryUserId?: number) {
+    if (SELF_ROLES.includes(actorRole)) {
+      return experienceSummaryService.calculate(actorUserId);
+    }
+    if (!queryUserId) {
+      throw new BadRequestError('userId query parameter is required for HR/admin views');
+    }
+    return experienceSummaryService.calculate(queryUserId);
   },
 };

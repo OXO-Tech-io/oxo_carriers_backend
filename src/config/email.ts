@@ -36,6 +36,10 @@ import {
   getProfileChangeReturnedEmailHtml,
   ProfileChangeEmailParams
 } from '../templates/profileChangeTemplates';
+import {
+  getCommunicationEmailHtml,
+  CommunicationEmailParams
+} from '../templates/communicationTemplates';
 
 const log = baseLogger.child({ module: 'email' });
 
@@ -349,6 +353,13 @@ export const sendProfileChangeReturnedEmail = async (email: string, params: Prof
   const html = getProfileChangeReturnedEmailHtml(params);
   const subject = `Profile Change Request Returned for Modification - ${params.referenceNumber}`;
   return sendHtmlEmail(email, subject, html);
+};
+
+// ─── Employee communication email helpers ─────────────────────────────────────
+
+export const sendCommunicationEmail = async (email: string, params: CommunicationEmailParams) => {
+  const html = getCommunicationEmailHtml(params);
+  return sendHtmlEmail(email, params.title, html);
 };
 
 // ─── Diagnostic helpers ───────────────────────────────────────────────────────

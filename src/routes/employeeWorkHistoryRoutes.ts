@@ -18,4 +18,10 @@ router.get(
   asyncHandler(employeeWorkHistoryController.listMine)
 );
 
+router.get(
+  '/experience-summary',
+  validate(listWorkHistoryQuerySchema, 'query'),
+  asyncHandler(employeeWorkHistoryController.getExperienceSummary)
+);
+
 export default router;

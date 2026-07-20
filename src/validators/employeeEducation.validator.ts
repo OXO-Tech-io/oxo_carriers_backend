@@ -18,13 +18,19 @@ const isoDate = z
 
 // Reusable "after" (proposed record) shape - imported by profileChangeRequest.validator.ts
 // so field validation for education records isn't duplicated across modules.
-export const educationAfterSchema = z.object({
-  qualificationLevel: z.enum(qualificationLevelValues),
-  qualificationTitle: z.string().min(1, 'Qualification title is required').max(255),
-  awardingInstitution: z.string().min(1, 'Awarding institution is required').max(255),
-  dateAwarded: isoDate.nullable().optional(),
-  remarks: z.string().max(2000).nullable().optional(),
-});
+export const educationAfterSchema = z
+  .object({
+    qualificationLevel: z.enum(qualificationLevelValues),
+    qualificationTitle: z.string().min(1, 'Qualification title is required').max(255),
+    awardingInstitution: z.string().min(1, 'Awarding institution is required').max(255),
+    dateAwarded: isoDate.nullable().optional(),
+    isOngoing: z.boolean().optional().default(false),
+    remarks: z.string().max(2000).nullable().optional(),
+  })
+  .refine(data => data.isOngoing || !!data.dateAwarded, {
+    message: 'Date awarded is required unless this qualification is currently being followed',
+    path: ['dateAwarded'],
+  });
 export type EducationAfterInput = z.infer<typeof educationAfterSchema>;
 
 export const listEducationQuerySchema = z.object({

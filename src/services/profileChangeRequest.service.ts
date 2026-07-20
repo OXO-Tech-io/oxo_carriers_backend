@@ -1,8 +1,7 @@
-import { eq, sql } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { db } from '../db';
 import {
   users,
-  employeePii,
   employeeEducation,
   employeeWorkHistory,
   profileChangeRequests,
@@ -11,13 +10,15 @@ import {
   type ProfileChangeRequest as DrizzleProfileChangeRequest,
 } from '../db/schema';
 import { ProfileChangeRequestModel } from '../models/ProfileChangeRequest';
-import { EmployeeModel } from '../models/User';
+import { EmployeePiiModel } from '../models/EmployeePii';
+import { UserModel } from '../models/User';
 import { UserRole } from '../types';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/AppError';
 import { encryptPII } from '../utils/encryption';
-import { env } from '../config/env';
 import type {
+  AddressValue,
   BankAccountValue,
+  EmergencyContactValue,
   ListProfileChangeRequestsQuery,
   ProfileChangeItem,
   SubmitProfileChangeRequestInput,
@@ -25,10 +26,16 @@ import type {
 
 const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.SUPER_ADMIN];
 
+const PII_FIELD_LABELS: Record<'address' | 'emergency_contact' | 'blood_type', string> = {
+  address: 'Address',
+  emergency_contact: 'Emergency Contact',
+  blood_type: 'Blood Type',
+};
+
 const summarizeChanges = (changes: ProfileChangeItem[]): string[] =>
   changes.map(item => {
     if (item.entityType === 'user_field') return item.field === 'bank_account' ? 'Bank Account' : item.field;
-    if (item.entityType === 'employee_pii_field') return 'Address';
+    if (item.entityType === 'employee_pii_field') return PII_FIELD_LABELS[item.field];
     if (item.entityType === 'education') return `Education (${item.operation})`;
     return `Work History (${item.operation})`;
   });
@@ -69,9 +76,9 @@ export const profileChangeRequestService = {
       newValues: { changes: input.changes },
     });
 
-    const hrUsers = await EmployeeModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
+    const hrUsers = await UserModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
     if (hrUsers.length > 0) {
-      const employee = await EmployeeModel.findById(userId);
+      const employee = await UserModel.findById(userId);
       const employeeName = employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'An employee';
       await db.insert(notifications).values(
         hrUsers.map(hr => ({
@@ -172,28 +179,41 @@ export const profileChangeRequestService = {
             });
           } else if (item.entityType === 'employee_pii_field') {
             if (!employeeRow.employeeId) {
-              throw new BadRequestError('Employee has no employeeId; cannot update address');
+              throw new BadRequestError('Employee has no employeeId; cannot update contact details');
             }
-            const key = env.PII_ENCRYPTION_KEY;
-            await tx
-              .insert(employeePii)
-              .values({
-                employeeId: employeeRow.employeeId,
-                address: sql`pgp_sym_encrypt(${item.after}, ${key})`,
-                createdAt: new Date(),
-                updatedAt: new Date(),
-              })
-              .onConflictDoUpdate({
-                target: employeePii.employeeId,
-                set: { address: sql`pgp_sym_encrypt(${item.after}, ${key})`, updatedAt: new Date() },
-              });
+            if (item.field === 'address') {
+              const after = item.after as AddressValue;
+              await EmployeePiiModel.upsert(
+                employeeRow.employeeId,
+                {
+                  addressLine1: after.addressLine1,
+                  addressLine2: after.addressLine2,
+                  city: after.city,
+                  district: after.district,
+                },
+                tx
+              );
+            } else if (item.field === 'emergency_contact') {
+              const after = item.after as EmergencyContactValue;
+              await EmployeePiiModel.upsert(
+                employeeRow.employeeId,
+                {
+                  emergencyContactName: after.emergencyContactName,
+                  emergencyContactPhone: after.emergencyContactPhone,
+                  emergencyContactRelationship: after.emergencyContactRelationship,
+                },
+                tx
+              );
+            } else {
+              await EmployeePiiModel.upsert(employeeRow.employeeId, { bloodType: item.after as string }, tx);
+            }
             await tx.insert(auditLogs).values({
               userId: actorUserId,
               action: 'profile_change_request.applied',
               tableName: 'tbl_employee_pii',
               recordId: request.userId,
-              oldValues: { address: item.before },
-              newValues: { address: item.after },
+              oldValues: { [item.field]: item.before } as any,
+              newValues: { [item.field]: item.after } as any,
             });
           } else if (item.entityType === 'education') {
             if (item.operation === 'create') {
