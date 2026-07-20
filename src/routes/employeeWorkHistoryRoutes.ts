@@ -3,9 +3,11 @@ import * as employeeWorkHistoryController from '../controllers/employeeWorkHisto
 import { authenticate } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { asyncHandler } from '../utils/asyncHandler';
-import { listWorkHistoryQuerySchema } from '../validators/employeeWorkHistory.validator';
+import { employeeIdParamSchema } from '../validators/employeeWorkHistory.validator';
 
-const router = Router();
+// Mounted at /api/employees/:employeeId/work-histories - mergeParams so the
+// :employeeId from the parent path is visible on req.params here.
+const router = Router({ mergeParams: true });
 
 router.use(authenticate);
 
@@ -14,13 +16,13 @@ router.use(authenticate);
 // write endpoints here: every mutation goes through profile-change-requests.
 router.get(
   '/',
-  validate(listWorkHistoryQuerySchema, 'query'),
-  asyncHandler(employeeWorkHistoryController.listMine)
+  validate(employeeIdParamSchema, 'params'),
+  asyncHandler(employeeWorkHistoryController.list)
 );
 
 router.get(
   '/experience-summary',
-  validate(listWorkHistoryQuerySchema, 'query'),
+  validate(employeeIdParamSchema, 'params'),
   asyncHandler(employeeWorkHistoryController.getExperienceSummary)
 );
 

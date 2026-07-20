@@ -23,7 +23,7 @@ export const workHistoryAfterSchema = z
   });
 export type WorkHistoryAfterInput = z.infer<typeof workHistoryAfterSchema>;
 
-export const listWorkHistoryQuerySchema = z.object({
-  userId: z.coerce.number().int().positive().optional(),
+export const employeeIdParamSchema = z.object({
+  employeeId: z.string().min(1),
 });
-export type ListWorkHistoryQuery = z.infer<typeof listWorkHistoryQuerySchema>;
+export type EmployeeIdParam = z.infer<typeof employeeIdParamSchema>;

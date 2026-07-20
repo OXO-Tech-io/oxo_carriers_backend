@@ -1,13 +1,16 @@
 import { Request, Response } from 'express';
 import { employeeEducationService } from '../services/employeeEducation.service';
-import { UnauthorizedError } from '../utils/AppError';
+import { UserModel } from '../models/User';
+import { NotFoundError, UnauthorizedError } from '../utils/AppError';
 import { ok } from '../utils/response';
-import { ListEducationQuery } from '../validators/employeeEducation.validator';
+import { EmployeeIdParam } from '../validators/employeeEducation.validator';
 
-export const listMine = async (req: Request, res: Response) => {
+export const list = async (req: Request, res: Response) => {
   if (!req.user) throw new UnauthorizedError();
   const { userId, role } = req.user;
-  const query = req.query as unknown as ListEducationQuery;
-  const records = await employeeEducationService.list(userId, role, query.userId);
+  const { employeeId } = req.params as unknown as EmployeeIdParam;
+  const target = await UserModel.findByEmployeeId(employeeId);
+  if (!target) throw new NotFoundError('Employee not found');
+  const records = await employeeEducationService.list(userId, role, target.id);
   ok(res, records, 'Education records fetched');
 };

@@ -32,7 +32,6 @@ import profileChangeRequestRoutes from './routes/profileChangeRequestRoutes';
 import employeeEducationRoutes from './routes/employeeEducationRoutes';
 import employeeWorkHistoryRoutes from './routes/employeeWorkHistoryRoutes';
 import notificationRoutes from './routes/notificationRoutes';
-import employeePiiRoutes from './routes/employeePiiRoutes';
 import employeeNoteRoutes from './routes/employeeNoteRoutes';
 import communicationRoutes from './routes/communicationRoutes';
 import eventRoutes from './routes/eventRoutes';
@@ -216,17 +215,18 @@ app.use('/api/vouchers', voucherRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/permissions', permissionRoutes);
 app.use('/api/profile-change-requests', profileChangeRequestRoutes);
-app.use('/api/employee-education', employeeEducationRoutes);
-app.use('/api/employee-work-history', employeeWorkHistoryRoutes);
+app.use('/api/employees/:employeeId/educations', employeeEducationRoutes);
+app.use('/api/employees/:employeeId/work-histories', employeeWorkHistoryRoutes);
 app.use('/api/notifications', notificationRoutes);
-app.use('/api/employee-pii', employeePiiRoutes);
 app.use('/api/employee-notes', employeeNoteRoutes);
 app.use('/api/communications', communicationRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/work-logs', workLogRoutes);
 
-// Backward-compatible mounts without the /api prefix
+// Backward-compatible mounts without the /api prefix (legacy routes only -
+// the modules above were introduced alongside these mounts and have no
+// existing non-prefixed callers, so they're intentionally not duplicated here)
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/leaves', leaveRoutes);
@@ -239,16 +239,6 @@ app.use('/consultant-submissions', consultantSubmissionRoutes);
 app.use('/vouchers', voucherRoutes);
 app.use('/vendors', vendorRoutes);
 app.use('/permissions', permissionRoutes);
-app.use('/profile-change-requests', profileChangeRequestRoutes);
-app.use('/employee-education', employeeEducationRoutes);
-app.use('/employee-work-history', employeeWorkHistoryRoutes);
-app.use('/notifications', notificationRoutes);
-app.use('/employee-pii', employeePiiRoutes);
-app.use('/employee-notes', employeeNoteRoutes);
-app.use('/communications', communicationRoutes);
-app.use('/events', eventRoutes);
-app.use('/forms', formRoutes);
-app.use('/work-logs', workLogRoutes);
 
 // Health check
 app.get('/health', (_req, res) => {

@@ -105,7 +105,7 @@ const decideAndNotify = async (
   }
 };
 
-export const approve = (req: Request, res: Response) => decideAndNotify(req, res, 'approved');
-export const reject = (req: Request, res: Response) => decideAndNotify(req, res, 'rejected');
-export const returnForModification = (req: Request, res: Response) =>
-  decideAndNotify(req, res, 'returned_for_modification');
+export const decide = (req: Request, res: Response) => {
+  const { decision } = req.body as DecideProfileChangeRequestInput;
+  return decideAndNotify(req, res, decision);
+};

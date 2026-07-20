@@ -33,7 +33,7 @@ export const educationAfterSchema = z
   });
 export type EducationAfterInput = z.infer<typeof educationAfterSchema>;
 
-export const listEducationQuerySchema = z.object({
-  userId: z.coerce.number().int().positive().optional(),
+export const employeeIdParamSchema = z.object({
+  employeeId: z.string().min(1),
 });
-export type ListEducationQuery = z.infer<typeof listEducationQuerySchema>;
+export type EmployeeIdParam = z.infer<typeof employeeIdParamSchema>;

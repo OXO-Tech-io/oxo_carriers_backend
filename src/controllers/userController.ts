@@ -1,5 +1,6 @@
 import { Request, Response } from 'express';
 import { UserModel } from '../models/User';
+import { EmployeePiiModel } from '../models/EmployeePii';
 import { UserRole } from '../types';
 import pool from '../config/database';
 import crypto from 'crypto';
@@ -48,7 +49,11 @@ export const getUserById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.json({ success: true, user });
+    // PII is returned inline rather than through a separate endpoint so
+    // there's a single access-controlled place to view an employee's profile.
+    const pii = user.employeeId ? await EmployeePiiModel.findByEmployeeId(user.employeeId) : null;
+
+    res.json({ success: true, user: { ...user, pii } });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get user failed');
     res.status(500).json({ success: false, message: 'Failed to fetch user', error: error.message });

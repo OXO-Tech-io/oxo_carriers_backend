@@ -33,27 +33,11 @@ router.get(
 );
 
 router.put(
-  '/:id/approve',
+  '/:id/decision',
   requireHR,
   validate(profileChangeRequestIdParamSchema, 'params'),
   validate(decideProfileChangeRequestSchema, 'body'),
-  asyncHandler(profileChangeRequestController.approve)
-);
-
-router.put(
-  '/:id/reject',
-  requireHR,
-  validate(profileChangeRequestIdParamSchema, 'params'),
-  validate(decideProfileChangeRequestSchema, 'body'),
-  asyncHandler(profileChangeRequestController.reject)
-);
-
-router.put(
-  '/:id/return',
-  requireHR,
-  validate(profileChangeRequestIdParamSchema, 'params'),
-  validate(decideProfileChangeRequestSchema, 'body'),
-  asyncHandler(profileChangeRequestController.returnForModification)
+  asyncHandler(profileChangeRequestController.decide)
 );
 
 export default router;
