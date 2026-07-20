@@ -1,11 +1,11 @@
 import { pgTable, serial, integer, varchar, text, timestamp, json } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Audit Logs Table
-export const auditLogs = pgTable('audit_logs', {
+export const auditLogs = pgTable('tbl_audit_logs', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').references(() => users.id, { onDelete: 'set null' }),
+    userId: integer('user_id').references(() => employee.id, { onDelete: 'set null' }),
     action: varchar('action', { length: 100 }).notNull(),
     tableName: varchar('table_name', { length: 100 }),
     recordId: integer('record_id'),
@@ -18,9 +18,9 @@ export const auditLogs = pgTable('audit_logs', {
 
 // Relations
 export const auditLogsRelations = relations(auditLogs, ({ one }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [auditLogs.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
 }));
 

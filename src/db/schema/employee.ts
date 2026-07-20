@@ -6,7 +6,6 @@ import {
     integer,
     timestamp,
     pgEnum,
-    decimal,
     date,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
@@ -23,8 +22,16 @@ export const userRoleEnum = pgEnum('user_role', [
     'service_provider',
 ]);
 
-// Users Table
-export const users = pgTable('users', {
+// Employee Type Table (e.g. permanent, contract, intern)
+export const employeeType = pgTable('tbl_employee_type', {
+    id: serial('id').primaryKey(),
+    name: varchar('name', { length: 50 }).notNull().unique(),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
+// Employees Table (formerly `users`)
+export const employee = pgTable('tbl_employee', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 }).unique(),
     email: varchar('email', { length: 100 }).notNull().unique(),
@@ -34,6 +41,7 @@ export const users = pgTable('users', {
     emailVerified: boolean('email_verified').default(false),
     emailVerificationToken: varchar('email_verification_token', { length: 255 }),
     role: userRoleEnum('role').notNull(),
+    employeeTypeId: integer('employee_type_id').references(() => employeeType.id),
     department: varchar('department', { length: 100 }),
     position: varchar('position', { length: 100 }),
     hourlyRate: varchar('hourly_rate', { length: 500 }),
@@ -49,15 +57,25 @@ export const users = pgTable('users', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-// User relations
-export const usersRelations = relations(users, ({ one, many }) => ({
-    manager: one(users, {
-        fields: [users.managerId],
-        references: [users.id],
+// Employee relations
+export const employeeRelations = relations(employee, ({ one, many }) => ({
+    manager: one(employee, {
+        fields: [employee.managerId],
+        references: [employee.id],
         relationName: 'manager',
     }),
-    subordinates: many(users, { relationName: 'manager' }),
+    subordinates: many(employee, { relationName: 'manager' }),
+    employeeType: one(employeeType, {
+        fields: [employee.employeeTypeId],
+        references: [employeeType.id],
+    }),
 }));
 
-export type User = typeof users.$inferSelect;
-export type NewUser = typeof users.$inferInsert;
+export const employeeTypeRelations = relations(employeeType, ({ many }) => ({
+    employees: many(employee),
+}));
+
+export type Employee = typeof employee.$inferSelect;
+export type NewEmployee = typeof employee.$inferInsert;
+export type EmployeeType = typeof employeeType.$inferSelect;
+export type NewEmployeeType = typeof employeeType.$inferInsert;

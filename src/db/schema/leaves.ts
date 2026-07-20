@@ -11,7 +11,7 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Enums
 export const leaveStatusEnum = pgEnum('leave_status', [
@@ -25,7 +25,7 @@ export const leaveStatusEnum = pgEnum('leave_status', [
 export const halfDayPeriodEnum = pgEnum('half_day_period', ['morning', 'evening']);
 
 // Leave Types Table
-export const leaveTypes = pgTable('leave_types', {
+export const leaveTypes = pgTable('tbl_leave_types', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 50 }).notNull(),
     description: text('description'),
@@ -35,9 +35,9 @@ export const leaveTypes = pgTable('leave_types', {
 });
 
 // Employee Leave Balance Table
-export const employeeLeaveBalance = pgTable('employee_leave_balance', {
+export const employeeLeaveBalance = pgTable('tbl_employee_leave_balance', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     totalDays: decimal('total_days', { precision: 5, scale: 2 }).default('0'),
     usedDays: decimal('used_days', { precision: 5, scale: 2 }).default('0'),
@@ -48,9 +48,9 @@ export const employeeLeaveBalance = pgTable('employee_leave_balance', {
 });
 
 // Leave Requests Table
-export const leaveRequests = pgTable('leave_requests', {
+export const leaveRequests = pgTable('tbl_leave_requests', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     startDate: date('start_date').notNull(),
     endDate: date('end_date').notNull(),
@@ -68,14 +68,14 @@ export const leaveRequests = pgTable('leave_requests', {
 });
 
 // Leave Calendar Table
-export const leaveCalendar = pgTable('leave_calendar', {
+export const leaveCalendar = pgTable('tbl_leave_calendar', {
     id: serial('id').primaryKey(),
     date: date('date').notNull().unique(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
     isRecurring: boolean('is_recurring').default(false),
     year: integer('year'),
-    createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
+    createdBy: integer('created_by').references(() => employee.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });
@@ -87,9 +87,9 @@ export const leaveTypesRelations = relations(leaveTypes, ({ many }) => ({
 }));
 
 export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ one }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [employeeLeaveBalance.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
     leaveType: one(leaveTypes, {
         fields: [employeeLeaveBalance.leaveTypeId],
@@ -98,9 +98,9 @@ export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ 
 }));
 
 export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [leaveRequests.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
     leaveType: one(leaveTypes, {
         fields: [leaveRequests.leaveTypeId],
@@ -109,9 +109,9 @@ export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
 }));
 
 export const leaveCalendarRelations = relations(leaveCalendar, ({ one }) => ({
-    creator: one(users, {
+    creator: one(employee, {
         fields: [leaveCalendar.createdBy],
-        references: [users.id],
+        references: [employee.id],
     }),
 }));
 

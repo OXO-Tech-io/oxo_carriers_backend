@@ -1,27 +1,49 @@
 import { Request, Response } from 'express';
-import { EmployeeModel } from '../models/User';
+import { EmployeeModel } from '../models/Employee';
 import { UserRole } from '../types';
 import pool from '../config/database';
-import crypto from 'crypto';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { generateSecureTemporaryPassword } from '../utils/password';
 import { logger } from '../lib/logger';
-import { sendEmailVerificationEmail, sendPasswordSetupEmail } from '../config/email';
 
 const log = (req: Request) => req.log ?? logger;
 
 /** All valid role values accepted by the API */
 const VALID_ROLES: string[] = Object.values(UserRole);
 
+/**
+ * GET /users
+ *
+ * Returns the actual Keycloak-provisioned accounts (cross-referenced against
+ * the local employee table by email), rather than re-querying the employee
+ * table the way employeeController.getAllEmployees already does - otherwise
+ * this endpoint is just a duplicate of that one.
+ */
 export const getAllUsers = async (req: Request, res: Response) => {
   try {
-    const { role, department, search } = req.query;
-    
-    const users = await EmployeeModel.getAll({
-      role: role as UserRole,
-      department: department as string,
-      search: search as string
+    const { search } = req.query;
+
+    const [kcUsers, employees] = await Promise.all([
+      keycloakAdminService.listUsers({ search: search as string | undefined }),
+      EmployeeModel.getAll({ search: search as string }),
+    ]);
+
+    const employeesByEmail = new Map(employees.map(e => [e.email.toLowerCase(), e]));
+
+    const users = kcUsers.map(kc => {
+      const employee = employeesByEmail.get(kc.email?.toLowerCase());
+      return {
+        keycloakId: kc.id,
+        email: kc.email,
+        firstName: kc.firstName,
+        lastName: kc.lastName,
+        enabled: kc.enabled,
+        emailVerified: kc.emailVerified,
+        requiredActions: kc.requiredActions ?? [],
+        employee: employee ?? null,
+      };
     });
 
     res.json({ success: true, users });
@@ -124,8 +146,6 @@ export const createUser = async (req: Request, res: Response) => {
 
     const userRole = (role as UserRole) || UserRole.EMPLOYEE;
 
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-
     const user = await EmployeeModel.create({
       employee_id: employeeId,
       email,
@@ -143,14 +163,13 @@ export const createUser = async (req: Request, res: Response) => {
       bank_branch: bank_branch || null,
       company_name: null,
       contact_number: null,
-      email_verification_token: verificationToken,
     });
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
       const currentYear = new Date().getFullYear();
-      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
+      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true');
       const types = leaveTypesResult.rows as any[];
 
       const hireDateVal = user.hireDate || (user as any).hire_date;
@@ -166,7 +185,7 @@ export const createUser = async (req: Request, res: Response) => {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
         await pool.query(
-          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+          'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
           [user.id, type.id, totalDays, totalDays, currentYear]
         );
       }
@@ -184,7 +203,7 @@ export const createUser = async (req: Request, res: Response) => {
       ];
       for (const permission of defaultPermissions) {
         await pool.query(
-          `INSERT INTO user_permissions (user_id, permission_key, access_level)
+          `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level)
            VALUES ($1, $2, $3)`,
           [user.id, permission, 'read']
         );
@@ -266,7 +285,16 @@ export const deleteUser = async (req: Request, res: Response) => {
       return res.status(400).json({ success: false, message: 'Cannot delete your own account' });
     }
 
+    const user = await EmployeeModel.findById(userId);
     await EmployeeModel.delete(userId);
+
+    if (user?.keycloakSub) {
+      try {
+        await keycloakAdminService.deleteUser(user.keycloakSub);
+      } catch (kcError: any) {
+        log(req).error({ err: kcError, userId }, 'Failed to delete Keycloak user after user deletion');
+      }
+    }
 
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (error: any) {
@@ -334,7 +362,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
 export const getDepartments = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      'SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department'
+      'SELECT DISTINCT department FROM tbl_employee WHERE department IS NOT NULL ORDER BY department'
     );
     const departments = (result.rows as any[]).map(row => row.department);
     res.json({ success: true, departments });
@@ -403,48 +431,11 @@ export const updateUserRole = async (req: Request, res: Response) => {
   }
 };
 
-/** Generates a password satisfying standard Keycloak security policies:
- * - Minimum 12 characters
- * - At least one uppercase letter
- * - At least one lowercase letter
- * - At least one digit
- * - At least one special character
- */
-const generateSecureTemporaryPassword = (): string => {
-  const lowercase = 'abcdefghijklmnopqrstuvwxyz';
-  const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
-  const numbers = '0123456789';
-  const special = '!@#$%^&*()_+-=[]{}|;:,.<>?';
-
-  const getRandomChar = (charset: string) => charset[crypto.randomInt(0, charset.length)];
-
-  const passwordChars = [
-    getRandomChar(lowercase),
-    getRandomChar(uppercase),
-    getRandomChar(numbers),
-    getRandomChar(special),
-  ];
-
-  const allChars = lowercase + uppercase + numbers + special;
-  for (let i = 4; i < 12; i++) {
-    passwordChars.push(getRandomChar(allChars));
-  }
-
-  // Shuffle the array using Fisher-Yates algorithm
-  for (let i = passwordChars.length - 1; i > 0; i--) {
-    const j = crypto.randomInt(0, i + 1);
-    const temp = passwordChars[i];
-    passwordChars[i] = passwordChars[j];
-    passwordChars[j] = temp;
-  }
-
-  return passwordChars.join('');
-};
-
 /**
  * POST /users/:id/keycloak
- * 
- * Provisions user in Keycloak and sends password setup email.
+ *
+ * Provisions user in Keycloak and sends a Keycloak-hosted email so they can
+ * verify their address and set their own password (no local reset tokens).
  */
 export const provisionKeycloakUser = async (req: Request, res: Response): Promise<void> => {
   try {
@@ -472,17 +463,6 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
     }
 
     const tempPassword = generateSecureTemporaryPassword();
-    const verificationToken = crypto.randomBytes(32).toString('hex');
-
-    // Save the verification token in local DB if it doesn't exist
-    let emailVerificationToken = user.emailVerificationToken;
-    if (!emailVerificationToken) {
-      emailVerificationToken = verificationToken;
-      await pool.query(
-        'UPDATE hris.users SET email_verification_token = $1 WHERE id = $2',
-        [emailVerificationToken, user.id]
-      );
-    }
 
     log(req).info({ userId, email: user.email }, 'Provisioning user in Keycloak...');
 
@@ -498,27 +478,20 @@ export const provisionKeycloakUser = async (req: Request, res: Response): Promis
     await EmployeeModel.linkKeycloakSub(user.id, kcSub);
     log(req).info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
 
-    // Send onboarding/password setup email using EmailJS now that Keycloak is configured
     let onboardingEmailSent = true;
     try {
-      log(req).info({ email: user.email }, 'Sending EmailJS password setup email');
-      await sendPasswordSetupEmail(
-        user.email,
-        emailVerificationToken,
-        user.firstName,
-        user.employeeId || ''
-      );
-      log(req).info({ email: user.email }, 'EmailJS password setup email sent');
+      await keycloakAdminService.sendRequiredActionsEmail(kcSub, ['VERIFY_EMAIL', 'UPDATE_PASSWORD']);
+      log(req).info({ email: user.email }, 'Keycloak onboarding email sent');
     } catch (emailError: any) {
       onboardingEmailSent = false;
-      log(req).error({ err: emailError }, 'Failed to send EmailJS password setup email');
+      log(req).error({ err: emailError }, 'Failed to send Keycloak onboarding email');
     }
 
     res.status(200).json({
       success: true,
       message: onboardingEmailSent
-        ? 'User provisioned in Keycloak successfully. A password setup email has been sent.'
-        : 'User provisioned in Keycloak successfully, but the password setup email could not be sent.',
+        ? 'User provisioned in Keycloak successfully. An onboarding email has been sent.'
+        : 'User provisioned in Keycloak successfully, but the onboarding email could not be sent.',
       keycloakSub: kcSub,
       onboardingEmailSent,
     });

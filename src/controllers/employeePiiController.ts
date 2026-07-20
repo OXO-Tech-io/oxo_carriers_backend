@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import { EmployeePiiModel } from '../models/EmployeePii';
-import { EmployeeModel } from '../models/User';
+import { EmployeeModel } from '../models/Employee';
 import { UserRole } from '../types';
 import { logger } from '../lib/logger';
 

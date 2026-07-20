@@ -5,19 +5,19 @@
 
 // User Queries
 export const USER_QUERIES = {
-    FIND_BY_EMAIL: 'SELECT * FROM users WHERE email = $1',
-    FIND_BY_ID: 'SELECT * FROM users WHERE id = $1',
-    FIND_BY_EMPLOYEE_ID: 'SELECT id FROM users WHERE employee_id = $1',
-    SELECT_ID_AND_NAME_BY_ID: 'SELECT id, first_name, last_name FROM users WHERE id = $1',
-    SELECT_ALL_USERS_FOR_PERMISSIONS: 'SELECT id, email, first_name, last_name, role FROM users ORDER BY first_name, last_name',
+    FIND_BY_EMAIL: 'SELECT * FROM tbl_employee WHERE email = $1',
+    FIND_BY_ID: 'SELECT * FROM tbl_employee WHERE id = $1',
+    FIND_BY_EMPLOYEE_ID: 'SELECT id FROM tbl_employee WHERE employee_id = $1',
+    SELECT_ID_AND_NAME_BY_ID: 'SELECT id, first_name, last_name FROM tbl_employee WHERE id = $1',
+    SELECT_ALL_USERS_FOR_PERMISSIONS: 'SELECT id, email, first_name, last_name, role FROM tbl_employee ORDER BY first_name, last_name',
 } as const;
 
 // Permission Queries
 export const PERMISSION_QUERIES = {
-    GET_USER_PERMISSIONS: 'SELECT permission_key, access_level FROM user_permissions WHERE user_id = $1',
-    GET_ALL_USER_PERMISSIONS: 'SELECT user_id, permission_key, access_level FROM user_permissions ORDER BY user_id',
+    GET_USER_PERMISSIONS: 'SELECT permission_key, access_level FROM tbl_user_permissions WHERE user_id = $1',
+    GET_ALL_USER_PERMISSIONS: 'SELECT user_id, permission_key, access_level FROM tbl_user_permissions ORDER BY user_id',
     CHECK_PERMISSION: `SELECT 1
-     FROM user_permissions
+     FROM tbl_user_permissions
      WHERE user_id = $1
        AND permission_key = $2
        AND (
@@ -29,48 +29,48 @@ export const PERMISSION_QUERIES = {
 
 // Vendor Queries
 export const VENDOR_QUERIES = {
-    FIND_BY_EMAIL: 'SELECT * FROM vendors WHERE email = $1',
-    FIND_BY_ID: 'SELECT * FROM vendors WHERE id = $1',
+    FIND_BY_EMAIL: 'SELECT * FROM tbl_vendors WHERE email = $1',
+    FIND_BY_ID: 'SELECT * FROM tbl_vendors WHERE id = $1',
 } as const;
 
 // Leave Queries
 export const LEAVE_QUERIES = {
-    GET_ACTIVE_LEAVE_TYPES: 'SELECT * FROM leave_types WHERE is_active = true ORDER BY name',
-    GET_LEAVE_TYPES_WITH_MAX_DAYS: 'SELECT id, name, max_days FROM leave_types WHERE is_active = true',
+    GET_ACTIVE_LEAVE_TYPES: 'SELECT * FROM tbl_leave_types WHERE is_active = true ORDER BY name',
+    GET_LEAVE_TYPES_WITH_MAX_DAYS: 'SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true',
 } as const;
 
 // Leave Calendar Queries
 export const LEAVE_CALENDAR_QUERIES = {
     // Commonly used queries for leave calendar operations
-    FIND_BY_ID: 'SELECT * FROM leave_calendar WHERE id = $1',
-    DELETE_BY_ID: 'DELETE FROM leave_calendar WHERE id = $1',
+    FIND_BY_ID: 'SELECT * FROM tbl_leave_calendar WHERE id = $1',
+    DELETE_BY_ID: 'DELETE FROM tbl_leave_calendar WHERE id = $1',
 } as const;
 
 // Facility Queries
 export const FACILITY_QUERIES = {
-    FIND_BY_ID: 'SELECT * FROM facilities WHERE id = $1',
-    DELETE_BY_ID: 'DELETE FROM facilities WHERE id = $1',
+    FIND_BY_ID: 'SELECT * FROM tbl_facilities WHERE id = $1',
+    DELETE_BY_ID: 'DELETE FROM tbl_facilities WHERE id = $1',
 } as const;
 
 // Facility Booking Queries
 export const FACILITY_BOOKING_QUERIES = {
-    UPDATE_STATUS: 'UPDATE facility_bookings SET status = $1 WHERE id = $2',
-    DELETE_BY_ID: 'DELETE FROM facility_bookings WHERE id = $1',
+    UPDATE_STATUS: 'UPDATE tbl_facility_bookings SET status = $1 WHERE id = $2',
+    DELETE_BY_ID: 'DELETE FROM tbl_facility_bookings WHERE id = $1',
 } as const;
 
 // Salary Queries
 export const SALARY_QUERIES = {
-    GET_ACTIVE_COMPONENTS: 'SELECT * FROM salary_components WHERE is_active = true ORDER BY type, name',
-    FIND_BY_ID: 'SELECT * FROM monthly_salaries WHERE id = $1',
-    UPDATE_STATUS: 'UPDATE monthly_salaries SET status = $1 WHERE id = $2',
-    UPDATE_PDF_URL: 'UPDATE monthly_salaries SET pdf_url = $1 WHERE id = $2',
-    DELETE_SALARY_SLIP_DETAILS: 'DELETE FROM salary_slip_details WHERE salary_id = $1',
+    GET_ACTIVE_COMPONENTS: 'SELECT * FROM tbl_salary_components WHERE is_active = true ORDER BY type, name',
+    FIND_BY_ID: 'SELECT * FROM tbl_monthly_salaries WHERE id = $1',
+    UPDATE_STATUS: 'UPDATE tbl_monthly_salaries SET status = $1 WHERE id = $2',
+    UPDATE_PDF_URL: 'UPDATE tbl_monthly_salaries SET pdf_url = $1 WHERE id = $2',
+    DELETE_SALARY_SLIP_DETAILS: 'DELETE FROM tbl_salary_slip_details WHERE salary_id = $1',
     FIND_COMPONENT_BY_NAME: (componentName: string) =>
-        `SELECT id FROM salary_components WHERE name = '${componentName}' LIMIT 1`,
+        `SELECT id FROM tbl_salary_components WHERE name = '${componentName}' LIMIT 1`,
     CHECK_COLUMN_EXISTS: `
-    SELECT column_name 
-    FROM information_schema.columns 
-    WHERE table_name = 'monthly_salaries'
+    SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name = 'tbl_monthly_salaries'
   `,
 } as const;
 

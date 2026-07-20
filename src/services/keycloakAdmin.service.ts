@@ -73,6 +73,11 @@ interface KcUser {
   id: string;
   username: string;
   email: string;
+  firstName?: string;
+  lastName?: string;
+  enabled?: boolean;
+  emailVerified?: boolean;
+  requiredActions?: string[];
 }
 
 const findUserByEmail = async (email: string): Promise<KcUser | null> => {
@@ -253,6 +258,37 @@ export const keycloakAdminService = {
     if (!res.ok) {
       const text = await res.text();
       throw new AppError(`Keycloak update password failed (${res.status}): ${text}`, 502);
+    }
+  },
+
+  /**
+   * Lists Keycloak realm users (paginated, `first`/`max` map straight to the
+   * admin API's own pagination params). Used by the "users" listing so it
+   * reflects actual Keycloak-provisioned accounts rather than re-querying the
+   * local employee table (which is what `EmployeeModel.getAll` already does).
+   */
+  async listUsers(options: { first?: number; max?: number; search?: string } = {}): Promise<KcUser[]> {
+    const params = new URLSearchParams();
+    params.set('first', String(options.first ?? 0));
+    params.set('max', String(options.max ?? 200));
+    if (options.search) params.set('search', options.search);
+    const res = await adminFetch(`/users?${params.toString()}`);
+    if (!res.ok) {
+      const text = await res.text();
+      throw new AppError(`Keycloak list users failed (${res.status}): ${text}`, 502);
+    }
+    return (await res.json()) as KcUser[];
+  },
+
+  /**
+   * Deletes the Keycloak user. Tolerates 404 (already gone) so callers can
+   * call this unconditionally as part of employee deletion cleanup.
+   */
+  async deleteUser(userId: string): Promise<void> {
+    const res = await adminFetch(`/users/${userId}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) {
+      const text = await res.text();
+      throw new AppError(`Keycloak delete user failed (${res.status}): ${text}`, 502);
     }
   },
 };

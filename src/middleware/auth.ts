@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { JwtPayload, UserRole } from "../types";
-import { EmployeeModel } from "../models/User";
+import { EmployeeModel } from "../models/Employee";
 import { verifyKeycloakToken } from "./keycloakAuth";
 import { logger as baseLogger } from "../lib/logger";
 
@@ -107,6 +107,7 @@ export const authenticate = async (
 
     req.employee = {
       userId: user.id,
+      employeeId: user.employeeId ?? null,
       email: user.email,
       role: user.role as UserRole,
       sub: claims.sub,

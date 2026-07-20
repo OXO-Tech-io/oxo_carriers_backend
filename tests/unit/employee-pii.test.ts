@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "../../src/db";
-import { EmployeeModel } from "../../src/models/User";
+import { EmployeeModel } from "../../src/models/Employee";
 import { EmployeePiiModel } from "../../src/models/EmployeePii";
-import { employeePii, users } from "../../src/db/schema";
+import { employeePii, employee } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
 import { UserRole } from "../../src/types";
 
@@ -127,12 +127,12 @@ describe("Employee PII Encryption Integration Test", () => {
     // 2. Fetch directly from the database (raw table state) to prove it is ENCRYPTED
     const rawUser = await db
       .select({
-        hourlyRate: users.hourlyRate,
-        bankName: users.bankName,
-        accountNumber: users.accountNumber,
+        hourlyRate: employee.hourlyRate,
+        bankName: employee.bankName,
+        accountNumber: employee.accountNumber,
       })
-      .from(users)
-      .where(eq(users.id, testUser.id))
+      .from(employee)
+      .where(eq(employee.id, testUser.id))
       .then(rows => rows[0]);
 
     expect(rawUser).toBeDefined();

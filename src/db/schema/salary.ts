@@ -10,14 +10,14 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Enums
 export const componentTypeEnum = pgEnum('component_type', ['earning', 'deduction']);
 export const salaryStatusEnum = pgEnum('salary_status', ['generated', 'paid', 'pending']);
 
 // Salary Components Table
-export const salaryComponents = pgTable('salary_components', {
+export const salaryComponents = pgTable('tbl_salary_components', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     type: componentTypeEnum('type').notNull(),
@@ -27,9 +27,9 @@ export const salaryComponents = pgTable('salary_components', {
 });
 
 // Employee Salary Structure Table
-export const employeeSalaryStructure = pgTable('employee_salary_structure', {
+export const employeeSalaryStructure = pgTable('tbl_employee_salary_structure', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
     amount: varchar('amount', { length: 500 }).notNull(),
     isPercentage: boolean('is_percentage').default(false),
@@ -40,9 +40,9 @@ export const employeeSalaryStructure = pgTable('employee_salary_structure', {
 });
 
 // Monthly Salaries Table
-export const monthlySalaries = pgTable('monthly_salaries', {
+export const monthlySalaries = pgTable('tbl_monthly_salaries', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     monthYear: date('month_year').notNull(),
     basicSalary: varchar('basic_salary', { length: 500 }).notNull(),
     localSalary: varchar('local_salary', { length: 500 }).default('0'),
@@ -51,14 +51,14 @@ export const monthlySalaries = pgTable('monthly_salaries', {
     totalDeductions: varchar('total_deductions', { length: 500 }).notNull(),
     netSalary: varchar('net_salary', { length: 500 }).notNull(),
     status: salaryStatusEnum('status').default('generated'),
-    generatedBy: integer('generated_by').references(() => users.id, { onDelete: 'set null' }),
+    generatedBy: integer('generated_by').references(() => employee.id, { onDelete: 'set null' }),
     paidDate: date('paid_date'),
     pdfUrl: varchar('pdf_url', { length: 500 }),
     createdAt: timestamp('created_at').defaultNow(),
 });
 
 // Salary Slip Details Table
-export const salarySlipDetails = pgTable('salary_slip_details', {
+export const salarySlipDetails = pgTable('tbl_salary_slip_details', {
     id: serial('id').primaryKey(),
     salaryId: integer('salary_id').notNull().references(() => monthlySalaries.id, { onDelete: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
@@ -73,9 +73,9 @@ export const salaryComponentsRelations = relations(salaryComponents, ({ many }) 
 }));
 
 export const employeeSalaryStructureRelations = relations(employeeSalaryStructure, ({ one }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [employeeSalaryStructure.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
     component: one(salaryComponents, {
         fields: [employeeSalaryStructure.componentId],
@@ -84,13 +84,13 @@ export const employeeSalaryStructureRelations = relations(employeeSalaryStructur
 }));
 
 export const monthlySalariesRelations = relations(monthlySalaries, ({ one, many }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [monthlySalaries.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
-    generator: one(users, {
+    generator: one(employee, {
         fields: [monthlySalaries.generatedBy],
-        references: [users.id],
+        references: [employee.id],
     }),
     details: many(salarySlipDetails),
 }));

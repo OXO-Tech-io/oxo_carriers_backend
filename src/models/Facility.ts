@@ -4,7 +4,7 @@ import { FacilityBookingModel } from './FacilityBooking';
 
 export class FacilityModel {
   static async getAll(filters?: { type?: FacilityType; is_active?: boolean }): Promise<Facility[]> {
-    let query = 'SELECT * FROM facilities WHERE 1=1';
+    let query = 'SELECT * FROM tbl_facilities WHERE 1=1';
     const params: any[] = [];
 
     if (filters?.type) {
@@ -22,7 +22,7 @@ export class FacilityModel {
   }
 
   static async findById(id: number): Promise<Facility | null> {
-    const result = await pool.query('SELECT * FROM facilities WHERE id = $1', [id]);
+    const result = await pool.query('SELECT * FROM tbl_facilities WHERE id = $1', [id]);
     const facilities = result.rows as Facility[];
     return facilities[0] || null;
   }
@@ -37,7 +37,7 @@ export class FacilityModel {
       facilityData.is_active !== undefined ? facilityData.is_active : true
     ];
     const result = await pool.query(
-      'INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
+      'INSERT INTO tbl_facilities (name, type, description, facilities, capacity, is_active) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id',
       params
     );
 
@@ -63,13 +63,13 @@ export class FacilityModel {
     if (fields.length === 0) return await this.findById(id);
 
     values.push(id);
-    await pool.query(`UPDATE facilities SET ${fields.join(', ')} WHERE id = $${values.length}`, values);
+    await pool.query(`UPDATE tbl_facilities SET ${fields.join(', ')} WHERE id = $${values.length}`, values);
 
     return await this.findById(id);
   }
 
   static async delete(id: number): Promise<void> {
-    await pool.query('DELETE FROM facilities WHERE id = $1', [id]);
+    await pool.query('DELETE FROM tbl_facilities WHERE id = $1', [id]);
   }
 
   /** Get facilities of a given type that are available for the time range (no overlapping confirmed bookings). */

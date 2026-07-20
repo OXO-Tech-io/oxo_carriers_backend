@@ -5,19 +5,19 @@ import { logger } from '../lib/logger';
 
 const log = (req: Request) => req.log ?? logger;
 
+// Required-field presence (project/tech/total_hours) and employeeId are
+// enforced by requireEmployeeId/validateRequiredFields middleware (see routes).
 export const submit = async (req: Request, res: Response) => {
   try {
     const employeeId = (req as any).employee?.employeeId;
-    const userId = (req as any).employee?.userId;
     const role = (req as any).employee?.role;
-    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can submit work' });
     }
 
     const { project, tech, total_hours, comment } = req.body;
-    if (!project?.trim() || !tech?.trim() || total_hours == null || isNaN(parseFloat(total_hours))) {
-      return res.status(400).json({ success: false, message: 'Project, tech, and total hours are required' });
+    if (isNaN(parseFloat(total_hours))) {
+      return res.status(400).json({ success: false, message: 'Total hours must be a number' });
     }
     const hours = parseFloat(total_hours);
     if (hours <= 0) return res.status(400).json({ success: false, message: 'Total hours must be greater than 0' });
@@ -27,7 +27,7 @@ export const submit = async (req: Request, res: Response) => {
     const log_sheet_url = `/uploads/documents/${file.filename}`;
 
     const submission = await ConsultantWorkSubmissionModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       project: project.trim(),
       tech: tech.trim(),
       total_hours: hours,
@@ -45,10 +45,9 @@ export const submit = async (req: Request, res: Response) => {
 export const getMySubmissions = async (req: Request, res: Response) => {
   try {
     const employeeId = (req as any).employee?.employeeId;
-    const userId = (req as any).employee?.userId;
-    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
+    if (!employeeId) return res.status(400).json({ success: false, message: 'Employee ID not found on this account' });
     const status = req.query.status as ConsultantSubmissionStatus | undefined;
-    const submissions = await ConsultantWorkSubmissionModel.findByUserId(userId, { status });
+    const submissions = await ConsultantWorkSubmissionModel.findByEmployeeId(employeeId, { status });
     res.json({ success: true, submissions });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get my consultant submissions failed');
@@ -67,6 +66,7 @@ export const getAll = async (req: Request, res: Response) => {
   }
 };
 
+// Single list endpoint - branches on role so the frontend only calls one route
 export const getSubmissions = async (req: Request, res: Response) => {
   const role = (req as any).employee?.role;
   if (role === UserRole.HR_MANAGER || role === UserRole.HR_EXECUTIVE) {
@@ -79,13 +79,12 @@ export const getSubmissionById = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
     const employeeId = (req as any).employee?.employeeId;
-    const userId = (req as any).employee?.userId;
     const role = (req as any).employee?.role;
 
     const submission = await ConsultantWorkSubmissionModel.findById(id);
     if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
 
-    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE && submission.user_id !== userId) {
+    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE && submission.employee_id !== employeeId) {
       return res.status(403).json({ success: false, message: 'Forbidden' });
     }
 
@@ -96,65 +95,64 @@ export const getSubmissionById = async (req: Request, res: Response) => {
   }
 };
 
-export const approve = async (req: Request, res: Response) => {
+// Single decision endpoint - approve or reject, chosen via body.action
+export const decideSubmission = async (req: Request, res: Response) => {
   try {
     const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
+    const { action, admin_comment } = req.body;
     const role = (req as any).employee?.role;
     const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR can approve consultant submissions' });
+      return res.status(403).json({ success: false, message: 'Only HR can review consultant submissions' });
     }
 
-    const submission = await ConsultantWorkSubmissionModel.findById(id);
-    if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
-    if (submission.status !== ConsultantSubmissionStatus.PENDING) {
-      return res.status(400).json({ success: false, message: 'Submission is not pending' });
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({ success: false, message: "action must be 'approve' or 'reject'" });
     }
 
-    const updated = await ConsultantWorkSubmissionModel.updateStatus(id, ConsultantSubmissionStatus.APPROVED, userId!, null);
-    res.json({ success: true, message: 'Submission approved', submission: updated });
-  } catch (error: any) {
-    log(req).error({ err: error }, 'Approve consultant submission failed');
-    res.status(500).json({ success: false, message: 'Failed to approve', error: error.message });
-  }
-};
-
-export const reject = async (req: Request, res: Response) => {
-  try {
-    const id = parseInt(Array.isArray(req.params.id) ? req.params.id[0] : req.params.id);
-    const { admin_comment } = req.body;
-    const role = (req as any).employee?.role;
-    const userId = (req as any).employee?.userId;
-
-    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR can reject consultant submissions' });
-    }
-
-    const submission = await ConsultantWorkSubmissionModel.findById(id);
-    if (!submission) return res.status(404).json({ success: false, message: 'Submission not found' });
-    if (submission.status !== ConsultantSubmissionStatus.PENDING) {
-      return res.status(400).json({ success: false, message: 'Submission is not pending' });
-    }
-
-    if (!admin_comment || typeof admin_comment !== 'string' || !admin_comment.trim()) {
+    if (action === 'reject' && (!admin_comment || typeof admin_comment !== 'string' || !admin_comment.trim())) {
       return res.status(400).json({ success: false, message: 'Admin comment is required for rejection' });
     }
 
-    const updated = await ConsultantWorkSubmissionModel.updateStatus(id, ConsultantSubmissionStatus.REJECTED, userId!, admin_comment.trim());
-    res.json({ success: true, message: 'Submission rejected', submission: updated });
+    const existing = await ConsultantWorkSubmissionModel.findById(id);
+    if (!existing) return res.status(404).json({ success: false, message: 'Submission not found' });
+
+    const newStatus = action === 'approve' ? ConsultantSubmissionStatus.APPROVED : ConsultantSubmissionStatus.REJECTED;
+
+    let updated;
+    try {
+      updated = await ConsultantWorkSubmissionModel.updateStatusTransactional(
+        id,
+        ConsultantSubmissionStatus.PENDING,
+        newStatus,
+        userId!,
+        action === 'reject' ? admin_comment.trim() : null
+      );
+    } catch (err: any) {
+      if (err.message === 'SUBMISSION_NOT_PENDING') {
+        return res.status(400).json({ success: false, message: 'Submission is not pending' });
+      }
+      throw err;
+    }
+
+    if (!updated) return res.status(404).json({ success: false, message: 'Submission not found' });
+
+    res.json({
+      success: true,
+      message: action === 'approve' ? 'Submission approved' : 'Submission rejected',
+      submission: updated
+    });
   } catch (error: any) {
-    log(req).error({ err: error }, 'Reject consultant submission failed');
-    res.status(500).json({ success: false, message: 'Failed to reject', error: error.message });
+    log(req).error({ err: error }, 'Review consultant submission failed');
+    res.status(500).json({ success: false, message: 'Failed to review submission', error: error.message });
   }
 };
 
 export const resubmit = async (req: Request, res: Response) => {
   try {
     const employeeId = (req as any).employee?.employeeId;
-    const userId = (req as any).employee?.userId;
     const role = (req as any).employee?.role;
-    if (!employeeId) return res.status(401).json({ success: false, message: 'Unauthorized' });
     if (role !== UserRole.CONSULTANT) {
       return res.status(403).json({ success: false, message: 'Only consultants can resubmit' });
     }
@@ -163,7 +161,7 @@ export const resubmit = async (req: Request, res: Response) => {
     const { project, tech, total_hours, comment } = req.body;
     const original = await ConsultantWorkSubmissionModel.findById(id);
     if (!original) return res.status(404).json({ success: false, message: 'Original submission not found' });
-    if (original.user_id !== userId) return res.status(403).json({ success: false, message: 'Forbidden' });
+    if (original.employee_id !== employeeId) return res.status(403).json({ success: false, message: 'Forbidden' });
     if (original.status !== ConsultantSubmissionStatus.REJECTED) {
       return res.status(400).json({ success: false, message: 'Only rejected submissions can be resubmitted' });
     }
@@ -178,7 +176,7 @@ export const resubmit = async (req: Request, res: Response) => {
     const log_sheet_url = `/uploads/documents/${file.filename}`;
 
     const submission = await ConsultantWorkSubmissionModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       project: projectVal,
       tech: techVal,
       total_hours: hoursVal,

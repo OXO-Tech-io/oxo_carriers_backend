@@ -8,7 +8,7 @@ import {
   PermissionKey,
 } from "../constants/permissions";
 import { getUserPermissionAssignments } from "../middleware/permissions";
-import { EmployeeModel } from "../models/User";
+import { EmployeeModel } from "../models/Employee";
 import { ERROR_MESSAGES, HTTP_STATUS, PERMISSION_ERRORS, USER_ERRORS } from "../constants/errorMessages";
 import { USER_QUERIES, PERMISSION_QUERIES } from "../constants/dbQueries";
 
@@ -232,7 +232,7 @@ export const replaceUserPermissions = async (req: Request, res: Response) => {
     }
 
     await client.query("BEGIN");
-    await client.query("DELETE FROM user_permissions WHERE user_id = $1", [
+    await client.query("DELETE FROM tbl_user_permissions WHERE user_id = $1", [
       userId,
     ]);
 
@@ -247,7 +247,7 @@ export const replaceUserPermissions = async (req: Request, res: Response) => {
         );
       });
       await client.query(
-        `INSERT INTO user_permissions (user_id, permission_key, access_level, assigned_by) VALUES ${placeholders.join(", ")}`,
+        `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level, assigned_by) VALUES ${placeholders.join(", ")}`,
         values,
       );
     }

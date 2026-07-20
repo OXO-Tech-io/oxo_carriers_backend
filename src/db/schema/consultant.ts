@@ -9,15 +9,17 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Enums
 export const submissionStatusEnum = pgEnum('submission_status', ['pending', 'approved', 'rejected']);
 
 // Consultant Work Submissions Table
-export const consultantWorkSubmissions = pgTable('consultant_work_submissions', {
+export const consultantWorkSubmissions = pgTable('tbl_consultant_work_submissions', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     project: varchar('project', { length: 255 }).notNull(),
     tech: varchar('tech', { length: 255 }).notNull(),
     totalHours: decimal('total_hours', { precision: 10, scale: 2 }).notNull(),
@@ -25,7 +27,7 @@ export const consultantWorkSubmissions = pgTable('consultant_work_submissions', 
     logSheetUrl: varchar('log_sheet_url', { length: 500 }).notNull(),
     status: submissionStatusEnum('status').default('pending'),
     adminComment: text('admin_comment'),
-    reviewedBy: integer('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedBy: integer('reviewed_by').references(() => employee.id, { onDelete: 'set null' }),
     reviewedAt: timestamp('reviewed_at'),
     resubmissionOf: integer('resubmission_of'),
     createdAt: timestamp('created_at').defaultNow(),
@@ -34,13 +36,13 @@ export const consultantWorkSubmissions = pgTable('consultant_work_submissions', 
 
 // Relations
 export const consultantWorkSubmissionsRelations = relations(consultantWorkSubmissions, ({ one }) => ({
-    user: one(users, {
-        fields: [consultantWorkSubmissions.userId],
-        references: [users.id],
+    employee: one(employee, {
+        fields: [consultantWorkSubmissions.employeeId],
+        references: [employee.employeeId],
     }),
-    reviewer: one(users, {
+    reviewer: one(employee, {
         fields: [consultantWorkSubmissions.reviewedBy],
-        references: [users.id],
+        references: [employee.id],
     }),
 }));
 

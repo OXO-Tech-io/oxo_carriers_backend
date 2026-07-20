@@ -6,7 +6,7 @@ async function seed() {
 
     try {
         // Check if super admin already exists
-        const existingAdmin = await db.query.users.findFirst({
+        const existingAdmin = await db.query.employee.findFirst({
             where: (users, { eq }) => eq(users.email, 'admin@oxocarriers.com'),
         });
 
@@ -16,7 +16,7 @@ async function seed() {
         }
 
         // Create default super admin
-        const [admin] = await db.insert(schema.users).values({
+        const [admin] = await db.insert(schema.employee).values({
             employeeId: 'EMP001',
             email: 'admin@oxocarriers.com',
             firstName: 'Super',

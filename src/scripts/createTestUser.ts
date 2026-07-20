@@ -9,7 +9,7 @@ async function createTestUser() {
 
     // Check if user already exists
     const existing = await pool.query(
-      'SELECT id FROM users WHERE email = $1',
+      'SELECT id FROM tbl_employee WHERE email = $1',
       [email]
     );
     const existingUsers = existing.rows as any[];
@@ -20,7 +20,7 @@ async function createTestUser() {
       // Create new user
       const employeeId = `EMP${new Date().getFullYear()}0001`;
       await pool.query(
-        `INSERT INTO users (employee_id, email, first_name, last_name, role)
+        `INSERT INTO tbl_employee (employee_id, email, first_name, last_name, role)
          VALUES ($1, $2, $3, $4, 'hr_manager')`,
         [employeeId, email, 'Test', 'User']
       );

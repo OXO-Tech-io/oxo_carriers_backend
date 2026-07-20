@@ -30,7 +30,7 @@ async function run() {
   try {
     // Check if user already exists
     const existing = await client.query<{ id: number; role: string }>(
-      'SELECT id, role FROM users WHERE email = $1 LIMIT 1',
+      'SELECT id, role FROM tbl_employee WHERE email = $1 LIMIT 1',
       [email]
     );
 
@@ -42,7 +42,7 @@ async function run() {
       }
       // Upgrade existing user to super_admin
       await client.query(
-        "UPDATE users SET role = 'super_admin' WHERE id = $1",
+        "UPDATE tbl_employee SET role = 'super_admin' WHERE id = $1",
         [user.id]
       );
       console.log(`[Seed] ✅ Upgraded existing user (id=${user.id}) to super_admin.`);
@@ -50,7 +50,7 @@ async function run() {
     }
 
     const result = await client.query<{ id: number }>(
-      `INSERT INTO users
+      `INSERT INTO tbl_employee
          (employee_id, email, first_name, last_name, role, email_verified)
        VALUES ($1, $2, $3, $4, 'super_admin', true)
        RETURNING id`,

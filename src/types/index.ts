@@ -301,7 +301,7 @@ export enum ConsultantSubmissionStatus {
 
 export interface ConsultantWorkSubmission {
   id: number;
-  user_id: number;
+  employee_id: string;
   project: string;
   tech: string;
   total_hours: number;
@@ -326,6 +326,7 @@ export interface ConsultantWorkSubmission {
 
 export interface JwtPayload {
   userId: number;
+  employeeId: string | null;
   email: string;
   role: UserRole;
   sub?: string;

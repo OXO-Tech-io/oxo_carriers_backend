@@ -144,7 +144,7 @@ export const leaveService = {
 
     if (approvedBy === 'team_leader') {
       const result = await pool.query(
-        'SELECT manager_id FROM users WHERE id = $1',
+        'SELECT manager_id FROM tbl_employee WHERE id = $1',
         [request.user_id]
       );
       const requester = (result.rows as Array<{ manager_id: number | null }>)[0];

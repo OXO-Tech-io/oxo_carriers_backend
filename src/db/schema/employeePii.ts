@@ -6,7 +6,7 @@ import {
     customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Custom type for PostgreSQL bytea (binary data)
 export const bytea = customType<{ data: Buffer; driverData: string | Buffer }>({
@@ -33,7 +33,7 @@ export const employeePii = pgTable('tbl_employee_pii', {
     employeeId: varchar('employee_id', { length: 50 })
         .notNull()
         .unique()
-        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     passportNumber: bytea('passport_number'),
     nationalId: bytea('national_id'),
     address: bytea('address'),
@@ -44,9 +44,9 @@ export const employeePii = pgTable('tbl_employee_pii', {
 });
 
 export const employeePiiRelations = relations(employeePii, ({ one }) => ({
-    employee: one(users, {
+    employee: one(employee, {
         fields: [employeePii.employeeId],
-        references: [users.employeeId],
+        references: [employee.employeeId],
     }),
 }));
 

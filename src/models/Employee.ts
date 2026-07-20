@@ -1,10 +1,10 @@
 import { db } from '../db';
-import { users, userPermissions, type User as DrizzleUser } from '../db/schema';
+import { employee, userPermissions, type Employee as DrizzleEmployee } from '../db/schema';
 import { User, UserRole } from '../types';
 import { eq, like, or, and, sql } from 'drizzle-orm';
 import { encryptPII, decryptPII } from '../utils/encryption';
 
-function decryptUser(user: DrizzleUser | null): DrizzleUser | null {
+function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
   if (!user) return null;
   return {
     ...user,
@@ -19,32 +19,32 @@ function decryptUser(user: DrizzleUser | null): DrizzleUser | null {
 }
 
 export class EmployeeModel {
-  static async findByEmail(email: string): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
-      where: eq(users.email, email),
+  static async findByEmail(email: string): Promise<DrizzleEmployee | null> {
+    const user = await db.query.employee.findFirst({
+      where: eq(employee.email, email),
     });
     return decryptUser(user || null);
   }
 
-  static async findById(id: number): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
-      where: eq(users.id, id),
+  static async findById(id: number): Promise<DrizzleEmployee | null> {
+    const user = await db.query.employee.findFirst({
+      where: eq(employee.id, id),
     });
     return decryptUser(user || null);
   }
 
-  static async findByKeycloakSub(sub: string): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
-      where: eq(users.keycloakSub, sub),
+  static async findByKeycloakSub(sub: string): Promise<DrizzleEmployee | null> {
+    const user = await db.query.employee.findFirst({
+      where: eq(employee.keycloakSub, sub),
     });
     return decryptUser(user || null);
   }
 
   static async linkKeycloakSub(userId: number, sub: string): Promise<void> {
     await db
-      .update(users)
+      .update(employee)
       .set({ keycloakSub: sub })
-      .where(eq(users.id, userId));
+      .where(eq(employee.id, userId));
   }
 
   static async findOrCreateFromKeycloak(claims: {
@@ -53,7 +53,7 @@ export class EmployeeModel {
     first_name: string;
     last_name: string;
     role: UserRole;
-  }): Promise<DrizzleUser> {
+  }): Promise<DrizzleEmployee> {
     const bySub = await this.findByKeycloakSub(claims.sub);
     if (bySub) return bySub;
 
@@ -65,7 +65,7 @@ export class EmployeeModel {
 
     const employeeId = await this.generateEmployeeId();
     const [insertedUser] = await db
-      .insert(users)
+      .insert(employee)
       .values({
         employeeId,
         email: claims.email,
@@ -98,31 +98,31 @@ export class EmployeeModel {
       }
     }
 
-    return decryptUser(insertedUser) as DrizzleUser;
+    return decryptUser(insertedUser) as DrizzleEmployee;
   }
 
-  static async findByEmployeeId(employeeId: string): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
-      where: eq(users.employeeId, employeeId),
+  static async findByEmployeeId(employeeId: string): Promise<DrizzleEmployee | null> {
+    const user = await db.query.employee.findFirst({
+      where: eq(employee.employeeId, employeeId),
     });
     return decryptUser(user || null);
   }
 
-  static async findByVerificationToken(token: string): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
-      where: eq(users.emailVerificationToken, token),
+  static async findByVerificationToken(token: string): Promise<DrizzleEmployee | null> {
+    const user = await db.query.employee.findFirst({
+      where: eq(employee.emailVerificationToken, token),
     });
     return decryptUser(user || null);
   }
 
   static async verifyEmail(userId: number): Promise<void> {
     await db
-      .update(users)
+      .update(employee)
       .set({
         emailVerified: true,
         emailVerificationToken: null,
       })
-      .where(eq(users.id, userId));
+      .where(eq(employee.id, userId));
   }
 
   static async create(userData: {
@@ -131,6 +131,7 @@ export class EmployeeModel {
     first_name: string;
     last_name: string;
     role: UserRole;
+    employee_type_id?: number | null;
     department?: string;
     position?: string;
     hire_date?: Date;
@@ -143,15 +144,16 @@ export class EmployeeModel {
     company_name?: string | null;
     contact_number?: string | null;
     email_verification_token?: string;
-  }): Promise<DrizzleUser> {
+  }): Promise<DrizzleEmployee> {
     const [insertedUser] = await db
-      .insert(users)
+      .insert(employee)
       .values({
         employeeId: userData.employee_id,
         email: userData.email,
         firstName: userData.first_name,
         lastName: userData.last_name,
         role: userData.role,
+        employeeTypeId: userData.employee_type_id ?? null,
         department: userData.department || null,
         position: userData.position || null,
         hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
@@ -171,10 +173,10 @@ export class EmployeeModel {
     if (!insertedUser) {
       throw new Error('Failed to create user');
     }
-    return decryptUser(insertedUser) as DrizzleUser;
+    return decryptUser(insertedUser) as DrizzleEmployee;
   }
 
-  static async update(id: number, updates: Partial<DrizzleUser>): Promise<DrizzleUser | null> {
+  static async update(id: number, updates: Partial<DrizzleEmployee>): Promise<DrizzleEmployee | null> {
     // Filter out undefined values and restricted fields
     const filteredUpdates: any = {};
     const piiFields = [
@@ -201,9 +203,9 @@ export class EmployeeModel {
     }
 
     await db
-      .update(users)
+      .update(employee)
       .set(filteredUpdates)
-      .where(eq(users.id, id));
+      .where(eq(employee.id, id));
 
     return await this.findById(id);
   }
@@ -212,39 +214,39 @@ export class EmployeeModel {
     role?: UserRole;
     department?: string;
     search?: string;
-  }): Promise<DrizzleUser[]> {
+  }): Promise<DrizzleEmployee[]> {
     const conditions = [];
 
     if (filters?.role) {
-      conditions.push(eq(users.role, filters.role));
+      conditions.push(eq(employee.role, filters.role));
     }
 
     if (filters?.department) {
-      conditions.push(eq(users.department, filters.department));
+      conditions.push(eq(employee.department, filters.department));
     }
 
     if (filters?.search) {
       const searchTerm = `%${filters.search}%`;
       conditions.push(
         or(
-          like(users.firstName, searchTerm),
-          like(users.lastName, searchTerm),
-          like(users.email, searchTerm),
-          like(users.employeeId, searchTerm)
+          like(employee.firstName, searchTerm),
+          like(employee.lastName, searchTerm),
+          like(employee.email, searchTerm),
+          like(employee.employeeId, searchTerm)
         )
       );
     }
 
-    const allUsers = await db.query.users.findMany({
+    const allUsers = await db.query.employee.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
-      orderBy: (users, { desc }) => [desc(users.createdAt)],
+      orderBy: (employee, { desc }) => [desc(employee.createdAt)],
     });
 
-    return allUsers.map(user => decryptUser(user)) as DrizzleUser[];
+    return allUsers.map(user => decryptUser(user)) as DrizzleEmployee[];
   }
 
   static async delete(id: number): Promise<void> {
-    await db.delete(users).where(eq(users.id, id));
+    await db.delete(employee).where(eq(employee.id, id));
   }
 
   static async generateEmployeeId(): Promise<string> {
@@ -253,8 +255,8 @@ export class EmployeeModel {
 
     const result = await db
       .select({ count: sql<number>`count(*)` })
-      .from(users)
-      .where(like(users.employeeId, pattern));
+      .from(employee)
+      .where(like(employee.employeeId, pattern));
 
     const count = result[0]?.count || 0;
     const sequence = String(Number(count) + 1).padStart(4, '0');

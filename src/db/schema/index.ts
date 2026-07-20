@@ -1,5 +1,5 @@
 // Export all schemas
-export * from './users';
+export * from './employee';
 export * from './employeePii';
 export * from './permissions';
 export * from './leaves';

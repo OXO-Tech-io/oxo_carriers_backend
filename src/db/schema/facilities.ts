@@ -9,7 +9,7 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Enums
 export const facilityTypeEnum = pgEnum('facility_type', [
@@ -27,7 +27,7 @@ export const bookingStatusEnum = pgEnum('booking_status', [
 ]);
 
 // Facilities Table
-export const facilities = pgTable('facilities', {
+export const facilities = pgTable('tbl_facilities', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     type: facilityTypeEnum('type').notNull(),
@@ -40,10 +40,10 @@ export const facilities = pgTable('facilities', {
 });
 
 // Facility Bookings Table
-export const facilityBookings = pgTable('facility_bookings', {
+export const facilityBookings = pgTable('tbl_facility_bookings', {
     id: serial('id').primaryKey(),
     facilityId: integer('facility_id').notNull().references(() => facilities.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     startTime: timestamp('start_time').notNull(),
     endTime: timestamp('end_time').notNull(),
     purpose: text('purpose'),
@@ -62,9 +62,9 @@ export const facilityBookingsRelations = relations(facilityBookings, ({ one }) =
         fields: [facilityBookings.facilityId],
         references: [facilities.id],
     }),
-    user: one(users, {
+    user: one(employee, {
         fields: [facilityBookings.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
 }));
 

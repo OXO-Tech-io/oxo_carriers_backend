@@ -14,7 +14,7 @@ export class LeaveCalendarModel {
     created_by?: number;
   }): Promise<LeaveCalendar> {
     const result = await pool.query(
-      `INSERT INTO leave_calendar (date, name, description, is_recurring, year, created_by)
+      `INSERT INTO tbl_leave_calendar (date, name, description, is_recurring, year, created_by)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
       [
         calendar.date,
@@ -39,7 +39,7 @@ export class LeaveCalendarModel {
    */
   static async findById(id: number): Promise<LeaveCalendar | null> {
     const result = await pool.query(
-      `SELECT * FROM leave_calendar WHERE id = $1`,
+      `SELECT * FROM tbl_leave_calendar WHERE id = $1`,
       [id]
     );
 
@@ -64,7 +64,7 @@ export class LeaveCalendarModel {
    */
   static async getByYear(year: number): Promise<LeaveCalendar[]> {
     const result = await pool.query(
-      `SELECT * FROM leave_calendar
+      `SELECT * FROM tbl_leave_calendar
        WHERE year = $1 OR (is_recurring = true AND (year IS NULL OR year = $2))
        ORDER BY date ASC`,
       [year, year]
@@ -88,7 +88,7 @@ export class LeaveCalendarModel {
    */
   static async getByDateRange(startDate: Date, endDate: Date): Promise<LeaveCalendar[]> {
     const result = await pool.query(
-      `SELECT * FROM leave_calendar
+      `SELECT * FROM tbl_leave_calendar
        WHERE date BETWEEN $1 AND $2
        ORDER BY date ASC`,
       [startDate, endDate]
@@ -112,7 +112,7 @@ export class LeaveCalendarModel {
    */
   static async getAll(): Promise<LeaveCalendar[]> {
     const result = await pool.query(
-      `SELECT * FROM leave_calendar ORDER BY date ASC`
+      `SELECT * FROM tbl_leave_calendar ORDER BY date ASC`
     );
 
     return (result.rows as any[]).map(row => ({
@@ -136,7 +136,7 @@ export class LeaveCalendarModel {
     const year = date.getFullYear();
 
     const result = await pool.query(
-      `SELECT COUNT(*) as count FROM leave_calendar
+      `SELECT COUNT(*) as count FROM tbl_leave_calendar
        WHERE date::date = $1
        AND (year = $2 OR (is_recurring = true AND (year IS NULL OR year = $3)))`,
       [dateStr, year, year]
@@ -152,7 +152,7 @@ export class LeaveCalendarModel {
    */
   static async getHolidayCount(startDate: Date, endDate: Date): Promise<number> {
     const result = await pool.query(
-      `SELECT COUNT(*) as count FROM leave_calendar
+      `SELECT COUNT(*) as count FROM tbl_leave_calendar
        WHERE date BETWEEN $1 AND $2
        AND EXTRACT(DOW FROM date) NOT IN (0, 6)`,
       [startDate, endDate]
@@ -167,7 +167,7 @@ export class LeaveCalendarModel {
    */
   static async getHolidaysInRange(startDate: Date, endDate: Date): Promise<LeaveCalendar[]> {
     const result = await pool.query(
-      `SELECT * FROM leave_calendar
+      `SELECT * FROM tbl_leave_calendar
        WHERE date BETWEEN $1 AND $2
        ORDER BY date ASC`,
       [startDate, endDate]
@@ -228,7 +228,7 @@ export class LeaveCalendarModel {
 
     values.push(id);
     await pool.query(
-      `UPDATE leave_calendar SET ${fields.join(', ')} WHERE id = $${values.length}`,
+      `UPDATE tbl_leave_calendar SET ${fields.join(', ')} WHERE id = $${values.length}`,
       values
     );
 
@@ -244,7 +244,7 @@ export class LeaveCalendarModel {
    */
   static async delete(id: number): Promise<boolean> {
     const result = await pool.query(
-      `DELETE FROM leave_calendar WHERE id = $1`,
+      `DELETE FROM tbl_leave_calendar WHERE id = $1`,
       [id]
     );
 

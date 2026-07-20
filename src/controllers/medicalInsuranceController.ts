@@ -151,104 +151,83 @@ export const getClaimById = async (req: Request, res: Response) => {
   }
 };
 
-export const approve = async (req: Request, res: Response) => {
+// Single decision endpoint - approve or reject, chosen via body.action
+export const decideClaim = async (req: Request, res: Response) => {
   try {
     const idParam = req.params.id;
     const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
+    const { action, admin_comment } = req.body;
     const role = (req as any).employee?.role;
     const userId = (req as any).employee?.userId;
 
     if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR can approve medical claims' });
+      return res.status(403).json({ success: false, message: 'Only HR can review medical claims' });
     }
 
-    const claim = await MedicalInsuranceModel.findById(id);
-    if (!claim) {
-      return res.status(404).json({ success: false, message: 'Claim not found' });
-    }
-    if (claim.status !== MedicalClaimStatus.PENDING) {
-      return res.status(400).json({ success: false, message: 'Claim is not pending' });
+    if (action !== 'approve' && action !== 'reject') {
+      return res.status(400).json({ success: false, message: "action must be 'approve' or 'reject'" });
     }
 
-    const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.APPROVED, userId!, null);
-    res.json({ success: true, message: 'Claim approved', claim: updated });
-
-    // Send approval email to employee (non-blocking)
-    try {
-      const employeeName = updated?.user
-        ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
-        : 'Employee';
-      const employeeEmail = updated?.user?.email;
-      if (employeeEmail && updated) {
-        await sendMedicalClaimApprovedEmail(employeeEmail, {
-          employeeName,
-          claimId: `CLM-${updated.id}`,
-          claimType: updated.type,
-          claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
-          approvedAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
-          approvalDate: new Date().toLocaleDateString('en-GB'),
-          settlementInfo: 'Bank Direct Deposit',
-          processingTimeline: '2-4 Business Days',
-        });
-      }
-    } catch (emailErr: any) {
-      log(req).error({ err: emailErr }, 'Failed to send medical claim approved email');
-    }
-  } catch (error: any) {
-    log(req).error({ err: error }, 'Approve medical claim failed');
-    res.status(500).json({ success: false, message: 'Failed to approve claim', error: error.message });
-  }
-};
-
-export const reject = async (req: Request, res: Response) => {
-  try {
-    const idParam = req.params.id;
-    const id = parseInt(Array.isArray(idParam) ? idParam[0] : idParam);
-    const { admin_comment } = req.body;
-    const role = (req as any).employee?.role;
-    const userId = (req as any).employee?.userId;
-
-    if (role !== UserRole.HR_MANAGER && role !== UserRole.HR_EXECUTIVE) {
-      return res.status(403).json({ success: false, message: 'Only HR can reject medical claims' });
-    }
-
-    const claim = await MedicalInsuranceModel.findById(id);
-    if (!claim) {
-      return res.status(404).json({ success: false, message: 'Claim not found' });
-    }
-    if (claim.status !== MedicalClaimStatus.PENDING) {
-      return res.status(400).json({ success: false, message: 'Claim is not pending' });
-    }
-
-    if (!admin_comment || typeof admin_comment !== 'string' || !admin_comment.trim()) {
+    if (action === 'reject' && (!admin_comment || typeof admin_comment !== 'string' || !admin_comment.trim())) {
       return res.status(400).json({ success: false, message: 'Admin comment is required for rejection' });
     }
 
-    const updated = await MedicalInsuranceModel.updateStatus(id, MedicalClaimStatus.REJECTED, userId!, admin_comment.trim());
-    res.json({ success: true, message: 'Claim rejected', claim: updated });
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      return res.status(404).json({ success: false, message: 'Claim not found' });
+    }
+    if (claim.status !== MedicalClaimStatus.PENDING) {
+      return res.status(400).json({ success: false, message: 'Claim is not pending' });
+    }
 
-    // Send rejection email to employee (non-blocking)
+    const newStatus = action === 'approve' ? MedicalClaimStatus.APPROVED : MedicalClaimStatus.REJECTED;
+    const updated = await MedicalInsuranceModel.updateStatus(
+      id,
+      newStatus,
+      userId!,
+      action === 'reject' ? admin_comment.trim() : null
+    );
+    res.json({
+      success: true,
+      message: action === 'approve' ? 'Claim approved' : 'Claim rejected',
+      claim: updated
+    });
+
+    // Send decision email to employee (non-blocking)
     try {
       const employeeName = updated?.user
         ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
         : 'Employee';
       const employeeEmail = updated?.user?.email;
       if (employeeEmail && updated) {
-        await sendMedicalClaimRejectedEmail(employeeEmail, {
-          employeeName,
-          claimId: `CLM-${updated.id}`,
-          claimType: updated.type,
-          claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
-          rejectionReason: admin_comment.trim(),
-          requiredCorrections: 'Please review the rejection reason and resubmit with corrected documentation.',
-        });
+        if (action === 'approve') {
+          await sendMedicalClaimApprovedEmail(employeeEmail, {
+            employeeName,
+            claimId: `CLM-${updated.id}`,
+            claimType: updated.type,
+            claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            approvedAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            approvalDate: new Date().toLocaleDateString('en-GB'),
+            settlementInfo: 'Bank Direct Deposit',
+            processingTimeline: '2-4 Business Days',
+          });
+        } else {
+          await sendMedicalClaimRejectedEmail(employeeEmail, {
+            employeeName,
+            claimId: `CLM-${updated.id}`,
+            claimType: updated.type,
+            claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            rejectionReason: admin_comment.trim(),
+            requiredCorrections: 'Please review the rejection reason and resubmit with corrected documentation.',
+          });
+        }
       }
     } catch (emailErr: any) {
-      log(req).error({ err: emailErr }, 'Failed to send medical claim rejected email');
+      log(req).error({ err: emailErr }, 'Failed to send medical claim decision email');
     }
   } catch (error: any) {
-    log(req).error({ err: error }, 'Reject medical claim failed');
-    res.status(500).json({ success: false, message: 'Failed to reject claim', error: error.message });
+    log(req).error({ err: error }, 'Review medical claim failed');
+    res.status(500).json({ success: false, message: 'Failed to review claim', error: error.message });
   }
 };
 

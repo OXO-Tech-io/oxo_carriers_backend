@@ -1,9 +1,14 @@
 import { Request, Response } from 'express';
-import { EmployeeModel } from '../models/User';
+import { EmployeeModel } from '../models/Employee';
 import { EmployeePiiModel } from '../models/EmployeePii';
 import { UserRole } from '../types';
 import { logger } from '../lib/logger';
 import { isSuperAdmin } from '../middleware/auth';
+import { db } from '../db';
+import { employee as employeeTable, employeePii as employeePiiTable } from '../db/schema';
+import { eq } from 'drizzle-orm';
+import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { generateSecureTemporaryPassword } from '../utils/password';
 
 const log = (req: Request) => req.log ?? logger;
 const VALID_ROLES = Object.values(UserRole);
@@ -60,6 +65,7 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
       first_name,
       last_name,
       role,
+      employee_type_id,
       department,
       position,
       hire_date,
@@ -97,6 +103,7 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
       first_name,
       last_name,
       role: role || UserRole.EMPLOYEE,
+      employee_type_id: employee_type_id ? parseInt(employee_type_id) : null,
       department,
       position,
       hire_date: hire_date ? new Date(hire_date) : undefined,
@@ -110,7 +117,36 @@ export const createEmployee = async (req: Request, res: Response): Promise<void>
       contact_number,
     });
 
-    res.status(201).json({ success: true, message: 'Employee created successfully', employee: newEmployee });
+    // Auto-provision the employee in Keycloak so HR never has to do it as a
+    // separate manual step. Best-effort: the employee record is already
+    // created, so a Keycloak hiccup is reported back but doesn't roll back
+    // the employee creation.
+    let keycloakProvisioned = false;
+    let keycloakError: string | null = null;
+    try {
+      const kcSub = await keycloakAdminService.createUser({
+        email: newEmployee.email,
+        firstName: newEmployee.firstName,
+        lastName: newEmployee.lastName,
+        password: generateSecureTemporaryPassword(),
+        temporaryPassword: true,
+        role: newEmployee.role as UserRole,
+      });
+      await EmployeeModel.linkKeycloakSub(newEmployee.id, kcSub);
+      await keycloakAdminService.sendRequiredActionsEmail(kcSub, ['VERIFY_EMAIL', 'UPDATE_PASSWORD']);
+      keycloakProvisioned = true;
+    } catch (kcError: any) {
+      keycloakError = kcError.message;
+      log(req).error({ err: kcError, employeeId: newEmployee.employeeId }, 'Keycloak auto-provisioning failed for new employee');
+    }
+
+    res.status(201).json({
+      success: true,
+      message: 'Employee created successfully',
+      employee: keycloakProvisioned ? await EmployeeModel.findById(newEmployee.id) : newEmployee,
+      keycloakProvisioned,
+      keycloakError,
+    });
   } catch (error: any) {
     log(req).error({ err: error }, 'Create employee failed');
     res.status(500).json({ success: false, message: 'Failed to create employee', error: error.message });
@@ -191,11 +227,21 @@ export const deleteEmployee = async (req: Request, res: Response): Promise<void>
       return;
     }
 
-    // Always delete the PII table record first as requested
-    await EmployeePiiModel.delete(employeeId as string);
+    // Delete the PII row and the employee row atomically so we never end up
+    // with an orphaned PII record if the second delete fails.
+    await db.transaction(async (tx) => {
+      await tx.delete(employeePiiTable).where(eq(employeePiiTable.employeeId, employeeId as string));
+      await tx.delete(employeeTable).where(eq(employeeTable.id, employee.id));
+    });
 
-    // Delete employee
-    await EmployeeModel.delete(employee.id);
+    // Best-effort Keycloak cleanup after the DB transaction has committed.
+    if (employee.keycloakSub) {
+      try {
+        await keycloakAdminService.deleteUser(employee.keycloakSub);
+      } catch (kcError: any) {
+        log(req).error({ err: kcError, employeeId }, 'Failed to delete Keycloak user after employee deletion');
+      }
+    }
 
     res.json({ success: true, message: 'Employee deleted successfully' });
   } catch (error: any) {

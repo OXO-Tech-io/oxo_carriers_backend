@@ -9,16 +9,16 @@ import {
     pgEnum,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { users } from './users';
+import { employee } from './employee';
 
 // Enums
 export const claimTypeEnum = pgEnum('claim_type', ['IN', 'OPD']);
 export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected']);
 
 // Medical Insurance Claims Table
-export const medicalInsuranceClaims = pgTable('medical_insurance_claims', {
+export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
     type: claimTypeEnum('type').notNull(),
     quarter: varchar('quarter', { length: 10 }).notNull(),
     amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
@@ -26,7 +26,7 @@ export const medicalInsuranceClaims = pgTable('medical_insurance_claims', {
     supportiveDocumentUrl: varchar('supportive_document_url', { length: 500 }).notNull(),
     relevantDocumentUrl: varchar('relevant_document_url', { length: 500 }),
     adminComment: text('admin_comment'),
-    reviewedBy: integer('reviewed_by').references(() => users.id, { onDelete: 'set null' }),
+    reviewedBy: integer('reviewed_by').references(() => employee.id, { onDelete: 'set null' }),
     reviewedAt: timestamp('reviewed_at'),
     resubmissionOf: integer('resubmission_of'),
     createdAt: timestamp('created_at').defaultNow(),
@@ -35,13 +35,13 @@ export const medicalInsuranceClaims = pgTable('medical_insurance_claims', {
 
 // Relations
 export const medicalInsuranceClaimsRelations = relations(medicalInsuranceClaims, ({ one }) => ({
-    user: one(users, {
+    user: one(employee, {
         fields: [medicalInsuranceClaims.userId],
-        references: [users.id],
+        references: [employee.id],
     }),
-    reviewer: one(users, {
+    reviewer: one(employee, {
         fields: [medicalInsuranceClaims.reviewedBy],
-        references: [users.id],
+        references: [employee.id],
     }),
 }));
 
