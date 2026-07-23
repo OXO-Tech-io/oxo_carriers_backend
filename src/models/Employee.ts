@@ -1,13 +1,16 @@
 import { db } from '../db';
 import { employee, userPermissions, type Employee as DrizzleEmployee } from '../db/schema';
 import { User, UserRole } from '../types';
-import { eq, like, or, and, sql, inArray } from 'drizzle-orm';
-import { encryptPII, decryptPII } from '../utils/encryption';
+import { eq, like, and, sql, inArray } from 'drizzle-orm';
+import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
 
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
   if (!user) return null;
   return {
     ...user,
+    email: user.email ? decryptPII(user.email)! : user.email,
+    firstName: user.firstName ? decryptPII(user.firstName)! : user.firstName,
+    lastName: user.lastName ? decryptPII(user.lastName)! : user.lastName,
     hourlyRate: user.hourlyRate ? decryptPII(user.hourlyRate) : null,
     bankName: user.bankName ? decryptPII(user.bankName) : null,
     accountHolderName: user.accountHolderName ? decryptPII(user.accountHolderName) : null,
@@ -21,7 +24,7 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
 export class EmployeeModel {
   static async findByEmail(email: string): Promise<DrizzleEmployee | null> {
     const user = await db.query.employee.findFirst({
-      where: eq(employee.email, email),
+      where: eq(employee.emailHash, hashEmail(email)),
     });
     return decryptUser(user || null);
   }
@@ -68,10 +71,11 @@ export class EmployeeModel {
       .insert(employee)
       .values({
         employeeId,
-        email: claims.email,
+        email: encryptPII(claims.email)!,
+        emailHash: hashEmail(claims.email),
         keycloakSub: claims.sub,
-        firstName: claims.first_name || claims.email.split('@')[0],
-        lastName: claims.last_name || '',
+        firstName: encryptPII(claims.first_name || claims.email.split('@')[0])!,
+        lastName: encryptPII(claims.last_name || '')!,
         role: claims.role,
       })
       .returning();
@@ -122,6 +126,25 @@ export class EmployeeModel {
     return users.map(user => decryptUser(user)) as DrizzleEmployee[];
   }
 
+  /** Bulk lookup by business employeeId, returned as a Map for O(1) stitching.
+   * Since first_name/last_name/email are encrypted, any raw-SQL join that
+   * used to select them straight off tbl_employee must instead select only
+   * employee_id from the join, batch-resolve the distinct ids through here,
+   * and merge the decrypted name/email back onto each row. */
+  static async findByEmployeeIds(employeeIds: Array<string | null | undefined>): Promise<Map<string, DrizzleEmployee>> {
+    const unique = [...new Set(employeeIds.filter((id): id is string => !!id))];
+    if (!unique.length) return new Map();
+    const users = await db.query.employee.findMany({
+      where: inArray(employee.employeeId, unique),
+    });
+    const map = new Map<string, DrizzleEmployee>();
+    for (const user of users) {
+      const decrypted = decryptUser(user) as DrizzleEmployee;
+      if (decrypted.employeeId) map.set(decrypted.employeeId, decrypted);
+    }
+    return map;
+  }
+
   static async create(userData: {
     employee_id: string;
     email: string;
@@ -147,9 +170,10 @@ export class EmployeeModel {
       .insert(employee)
       .values({
         employeeId: userData.employee_id,
-        email: userData.email,
-        firstName: userData.first_name,
-        lastName: userData.last_name,
+        email: encryptPII(userData.email)!,
+        emailHash: hashEmail(userData.email),
+        firstName: encryptPII(userData.first_name)!,
+        lastName: encryptPII(userData.last_name)!,
         role: userData.role,
         employeeTypeId: userData.employee_type_id ?? null,
         department: userData.department || null,
@@ -178,6 +202,9 @@ export class EmployeeModel {
     // Filter out undefined values and restricted fields
     const filteredUpdates: any = {};
     const piiFields = [
+      'email',
+      'firstName',
+      'lastName',
       'hourlyRate',
       'bankName',
       'accountHolderName',
@@ -197,6 +224,13 @@ export class EmployeeModel {
         }
       }
     });
+
+    // email is not nullable and its uniqueness is enforced via emailHash, not
+    // the (now non-deterministic) ciphertext column - recompute the hash
+    // whenever the plaintext email is changing.
+    if (typeof updates.email === 'string') {
+      filteredUpdates.emailHash = hashEmail(updates.email);
+    }
 
     if (Object.keys(filteredUpdates).length === 0) {
       return await this.findById(id);
@@ -229,24 +263,28 @@ export class EmployeeModel {
       conditions.push(eq(employee.department, filters.department));
     }
 
-    if (filters?.search) {
-      const searchTerm = `%${filters.search}%`;
-      conditions.push(
-        or(
-          like(employee.firstName, searchTerm),
-          like(employee.lastName, searchTerm),
-          like(employee.email, searchTerm),
-          like(employee.employeeId, searchTerm)
-        )
-      );
-    }
-
+    // firstName/lastName/email are encrypted (non-deterministic ciphertext),
+    // so a SQL-level LIKE can't match them - the whole `search` filter
+    // (including employeeId, for consistency) is applied below in
+    // application code, after decrypting each row.
     const allUsers = await db.query.employee.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
       orderBy: (employee, { desc }) => [desc(employee.createdAt)],
     });
 
-    return allUsers.map(user => decryptUser(user)) as DrizzleEmployee[];
+    const decrypted = allUsers.map(user => decryptUser(user)) as DrizzleEmployee[];
+
+    if (!filters?.search) {
+      return decrypted;
+    }
+
+    const term = filters.search.toLowerCase();
+    return decrypted.filter(user =>
+      user.firstName?.toLowerCase().includes(term) ||
+      user.lastName?.toLowerCase().includes(term) ||
+      user.email?.toLowerCase().includes(term) ||
+      user.employeeId?.toLowerCase().includes(term)
+    );
   }
 
   static async delete(id: number): Promise<void> {

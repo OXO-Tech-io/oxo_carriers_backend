@@ -57,21 +57,37 @@ export class GroupModel {
   // tbl_group_members stores the business employee_id (varchar) FK, but the
   // API/DTOs surface the numeric tbl_employee.id everywhere else, so the
   // join resolves back to `users.id` here to keep that contract unchanged.
+  // firstName/lastName/email are encrypted - can't be selected or sorted in
+  // SQL, so only non-PII columns are selected here; names are batch-resolved
+  // and the final order applied in application code below.
   static async listMembers(groupId: number): Promise<GroupMemberWithUser[]> {
-    return db
+    const rows = await db
       .select({
         id: groupMembers.id,
         userId: users.id,
-        firstName: users.firstName,
-        lastName: users.lastName,
-        email: users.email,
+        employeeId: users.employeeId,
         role: users.role,
         addedAt: groupMembers.addedAt,
       })
       .from(groupMembers)
       .innerJoin(users, eq(groupMembers.employeeId, users.employeeId))
-      .where(eq(groupMembers.groupId, groupId))
-      .orderBy(users.firstName);
+      .where(eq(groupMembers.groupId, groupId));
+
+    const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map((r) => r.employeeId).filter((id): id is string => !!id));
+    const withNames = rows.map((row) => {
+      const emp = row.employeeId ? employeeMap.get(row.employeeId) : undefined;
+      return {
+        id: row.id,
+        userId: row.userId,
+        firstName: emp?.firstName ?? '',
+        lastName: emp?.lastName ?? '',
+        email: emp?.email ?? '',
+        role: row.role,
+        addedAt: row.addedAt,
+      };
+    });
+    withNames.sort((a, b) => a.firstName.localeCompare(b.firstName));
+    return withNames;
   }
 
   static async rename(id: number, name: string): Promise<DrizzleGroup | null> {

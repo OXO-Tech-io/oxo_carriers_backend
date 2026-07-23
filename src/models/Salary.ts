@@ -2,6 +2,7 @@ import pool from '../config/database';
 import { MonthlySalary, SalaryComponent, EmployeeSalaryStructure, EmployeeSalaryStructureWithComponent, SalaryStatus, ComponentType } from '../types';
 import { logger as baseLogger } from '../lib/logger';
 import { decryptSalary, encryptSalary } from '../utils/encryption';
+import { EmployeeModel } from './Employee';
 
 const log = baseLogger.child({ module: 'salary-model' });
 
@@ -189,7 +190,7 @@ export class SalaryModel {
     status?: SalaryStatus;
   }): Promise<any[]> {
     let query = `
-      SELECT ms.*, u.first_name, u.last_name, u.employee_id, u.department
+      SELECT ms.*, u.employee_id, u.department
       FROM tbl_monthly_salaries ms
       JOIN tbl_employee u ON ms.employee_id = u.employee_id
       WHERE 1=1
@@ -221,10 +222,23 @@ export class SalaryModel {
       query += ` AND ms.status = $${params.length}`;
     }
 
-    query += ' ORDER BY ms.month_year DESC, u.first_name';
+    // first_name is encrypted (non-deterministic ciphertext) - can't sort in
+    // SQL. month_year DESC still works there; the first_name tie-break moves
+    // to application code after decrypting.
+    query += ' ORDER BY ms.month_year DESC';
 
     const result = await pool.query(query, params);
-    return result.rows.map(row => this.decryptMonthlySalary(row)) as any[];
+    const decrypted = result.rows.map(row => this.decryptMonthlySalary(row)) as any[];
+    const employeeMap = await EmployeeModel.findByEmployeeIds(decrypted.map(r => r.employee_id));
+    const withNames = decrypted.map(row => {
+      const emp = employeeMap.get(row.employee_id);
+      return { ...row, first_name: emp?.firstName, last_name: emp?.lastName };
+    });
+    withNames.sort((a, b) => {
+      const monthDiff = new Date(b.month_year).getTime() - new Date(a.month_year).getTime();
+      return monthDiff !== 0 ? monthDiff : (a.first_name || '').localeCompare(b.first_name || '');
+    });
+    return withNames;
   }
 
   static async getSlipDetails(salaryId: number): Promise<any[]> {

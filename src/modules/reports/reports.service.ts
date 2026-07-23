@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import pool from '../../config/database';
+import { EmployeeModel } from '../../models/Employee';
 
 @Injectable()
 export class ReportsService {
@@ -9,12 +10,10 @@ export class ReportsService {
       SELECT
         lr.*,
         u.employee_id,
-        u.first_name,
-        u.last_name,
         u.department,
         lt.name as leave_type_name
       FROM tbl_leave_requests lr
-      JOIN tbl_employee u ON lr.user_id = u.id
+      JOIN tbl_employee u ON lr.employee_id = u.employee_id
       JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
       WHERE 1=1
     `;
@@ -39,7 +38,17 @@ export class ReportsService {
     query += ' ORDER BY lr.created_at DESC';
 
     const result = await pool.query(query, params);
-    return result.rows as any[];
+    return this.withEmployeeNames(result.rows as any[]);
+  }
+
+  /** first_name/last_name are encrypted on tbl_employee - batch-resolve and
+   * attach the decrypted values instead of selecting them in the join. */
+  private async withEmployeeNames(rows: any[]): Promise<any[]> {
+    const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
+    return rows.map(row => {
+      const emp = employeeMap.get(row.employee_id);
+      return { ...row, first_name: emp?.firstName, last_name: emp?.lastName };
+    });
   }
 
   buildLeaveReportWorkbook(data: any[]) {
@@ -82,11 +91,9 @@ export class ReportsService {
       SELECT
         ms.*,
         u.employee_id,
-        u.first_name,
-        u.last_name,
         u.department
       FROM tbl_monthly_salaries ms
-      JOIN tbl_employee u ON ms.user_id = u.id
+      JOIN tbl_employee u ON ms.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -103,10 +110,17 @@ export class ReportsService {
       params.push(filters.month);
       query += ` AND EXTRACT(MONTH FROM ms.month_year) = $${params.length}`;
     }
-    query += ' ORDER BY ms.month_year DESC, u.first_name';
+    // first_name is encrypted - can't sort in SQL. month_year DESC still
+    // works there; the first_name tie-break moves to application code below.
+    query += ' ORDER BY ms.month_year DESC';
 
     const result = await pool.query(query, params);
-    return result.rows as any[];
+    const withNames = await this.withEmployeeNames(result.rows as any[]);
+    withNames.sort((a, b) => {
+      const monthDiff = new Date(b.month_year).getTime() - new Date(a.month_year).getTime();
+      return monthDiff !== 0 ? monthDiff : (a.first_name || '').localeCompare(b.first_name || '');
+    });
+    return withNames;
   }
 
   buildSalaryReportWorkbook(data: any[]) {
@@ -172,7 +186,7 @@ export class ReportsService {
     const deptLeavesResult = await pool.query(
       `SELECT u.department, COUNT(*) as count
        FROM tbl_leave_requests lr
-       JOIN tbl_employee u ON lr.user_id = u.id
+       JOIN tbl_employee u ON lr.employee_id = u.employee_id
        WHERE EXTRACT(YEAR FROM lr.created_at) = $1
        GROUP BY u.department`,
       [currentYear],

@@ -1,5 +1,27 @@
 import pool from '../config/database';
 import { PaymentVoucher, VoucherStatus } from '../types';
+import { EmployeeModel } from './Employee';
+
+/** created_by/reviewed_by are numeric tbl_employee.id FKs (actor-tracking
+ * columns, not converted to employee_id) - first_name/last_name are
+ * encrypted, so they can't be selected directly off the join; resolve them
+ * via EmployeeModel.findByIds instead. */
+async function withActorNames(rows: any[]): Promise<any[]> {
+  const ids = rows.flatMap(r => [r.created_by, r.reviewed_by]).filter((id): id is number => typeof id === 'number');
+  const employees = await EmployeeModel.findByIds(ids);
+  const byId = new Map(employees.map(e => [e.id, e]));
+  return rows.map(row => {
+    const creator = byId.get(row.created_by);
+    const reviewer = byId.get(row.reviewed_by);
+    return {
+      ...row,
+      created_by_first_name: creator?.firstName,
+      created_by_last_name: creator?.lastName,
+      reviewed_by_first_name: reviewer?.firstName,
+      reviewed_by_last_name: reviewer?.lastName,
+    };
+  });
+}
 
 export class PaymentVoucherModel {
   static async generateVoucherNumber(): Promise<string> {
@@ -46,27 +68,22 @@ export class PaymentVoucherModel {
   static async findById(id: number): Promise<any | null> {
     const result = await pool.query(
       `SELECT pv.id, pv.voucher_number, pv.created_by, pv.vendor_id, pv.amount, pv.vat, pv.description, pv.invoice_url, pv.status, pv.executive_comment, pv.reviewed_by, pv.reviewed_at, pv.resubmitted_at, pv.bank_upload_by, pv.bank_upload_at, pv.paid_by, pv.paid_at, pv.created_at, pv.updated_at,
-        creator.first_name AS created_by_first_name, creator.last_name AS created_by_last_name,
-        v.company_name AS sp_company_name, v.email AS sp_email,
-        reviewer.first_name AS reviewed_by_first_name, reviewer.last_name AS reviewed_by_last_name
+        v.company_name AS sp_company_name, v.email AS sp_email
       FROM tbl_payment_vouchers pv
-      LEFT JOIN tbl_employee creator ON pv.created_by = creator.id
       LEFT JOIN tbl_vendors v ON pv.vendor_id = v.id
-      LEFT JOIN tbl_employee reviewer ON pv.reviewed_by = reviewer.id
       WHERE pv.id = $1`,
       [id]
     );
     const list = result.rows as any[];
-    return list[0] || null;
+    if (list.length === 0) return null;
+    return (await withActorNames(list))[0];
   }
 
   static async getAll(filters?: { status?: VoucherStatus }): Promise<any[]> {
     let query = `
       SELECT pv.*,
-        creator.first_name AS created_by_first_name, creator.last_name AS created_by_last_name,
         v.company_name AS sp_company_name
       FROM tbl_payment_vouchers pv
-      LEFT JOIN tbl_employee creator ON pv.created_by = creator.id
       LEFT JOIN tbl_vendors v ON pv.vendor_id = v.id
       WHERE 1=1
     `;
@@ -77,7 +94,7 @@ export class PaymentVoucherModel {
     }
     query += ' ORDER BY pv.created_at DESC';
     const result = await pool.query(query, params);
-    return result.rows as any[];
+    return withActorNames(result.rows as any[]);
   }
 
   static async updateStatus(

@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { communicationRecipients, communications, employee as users, type CommunicationRecipient as DrizzleRecipient } from '../db/schema';
 import { and, desc, eq } from 'drizzle-orm';
+import { EmployeeModel } from './Employee';
 
 export class CommunicationRecipientModel {
   static async createMany(communicationId: number, employeeIds: string[]): Promise<DrizzleRecipient[]> {
@@ -56,14 +57,14 @@ export class CommunicationRecipientModel {
       .where(eq(communicationRecipients.id, id));
   }
 
-  /** Joined rows for the HR Manager Excel report. */
+  /** Joined rows for the HR Manager Excel report. firstName/lastName/email
+   * are encrypted - can't be selected in SQL, so they're batch-resolved and
+   * stitched in afterward. */
   static async getReportRows(communicationId?: number) {
     const rows = await db
       .select({
         title: communications.title,
-        recipientName: users.firstName,
-        recipientLastName: users.lastName,
-        recipientEmail: users.email,
+        employeeId: users.employeeId,
         emailSentAt: communicationRecipients.emailSentAt,
         respondedAt: communicationRecipients.respondedAt,
       })
@@ -71,6 +72,18 @@ export class CommunicationRecipientModel {
       .innerJoin(communications, eq(communicationRecipients.communicationId, communications.id))
       .innerJoin(users, eq(communicationRecipients.employeeId, users.employeeId))
       .where(communicationId ? eq(communicationRecipients.communicationId, communicationId) : undefined);
-    return rows;
+
+    const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map((r) => r.employeeId));
+    return rows.map((row) => {
+      const emp = row.employeeId ? employeeMap.get(row.employeeId) : undefined;
+      return {
+        title: row.title,
+        recipientName: emp?.firstName ?? '',
+        recipientLastName: emp?.lastName ?? '',
+        recipientEmail: emp?.email ?? '',
+        emailSentAt: row.emailSentAt,
+        respondedAt: row.respondedAt,
+      };
+    });
   }
 }

@@ -7,7 +7,7 @@ import {
   PermissionAssignment,
   PermissionKey,
 } from '../../constants/permissions';
-import { PERMISSION_QUERIES, USER_QUERIES } from '../../constants/dbQueries';
+import { PERMISSION_QUERIES } from '../../constants/dbQueries';
 import { getUserPermissionAssignments } from '../../middleware/permissions';
 import { EmployeeModel } from '../../models/Employee';
 
@@ -17,9 +17,16 @@ export class PermissionsService {
     return PERMISSION_CATALOG;
   }
 
+  // first_name/last_name/email are encrypted - the old raw SQL
+  // (USER_QUERIES.SELECT_ALL_USERS_FOR_PERMISSIONS) can no longer select or
+  // sort by them, so this goes through EmployeeModel (which already
+  // decrypts) instead, remapped to the same flat snake_case shape the
+  // frontend expects.
   async getManageableUsers() {
-    const result = await pool.query(USER_QUERIES.SELECT_ALL_USERS_FOR_PERMISSIONS);
-    return result.rows;
+    const employees = await EmployeeModel.getAll();
+    return employees
+      .map((e) => ({ id: e.id, email: e.email, first_name: e.firstName, last_name: e.lastName, role: e.role }))
+      .sort((a, b) => a.first_name.localeCompare(b.first_name) || a.last_name.localeCompare(b.last_name));
   }
 
   async getMyPermissions(userId: number) {

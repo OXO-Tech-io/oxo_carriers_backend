@@ -5,6 +5,7 @@ import {
 } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
 import type { ProfileChangeItem } from '../validators/profileChangeRequest.validator';
+import { decryptPII } from '../utils/encryption';
 
 export type ProfileChangeRequestCreateInput = {
   employeeId: string;
@@ -31,6 +32,32 @@ export type ProfileChangeRequestWithRelations = DrizzleProfileChangeRequest & {
 const employeeColumns = { id: true, firstName: true, lastName: true, email: true, employeeId: true } as const;
 const reviewerColumns = { id: true, firstName: true, lastName: true } as const;
 
+// Drizzle's relational `with:` query returns the joined employee/reviewer
+// columns as-is - firstName/lastName/email are encrypted at rest, so they
+// need decrypting here the same way EmployeeModel's decryptUser does.
+function decryptRelations<T extends { employee?: MinimalEmployee | null; reviewer?: MinimalReviewer | null }>(
+  record: T
+): T {
+  return {
+    ...record,
+    employee: record.employee
+      ? {
+          ...record.employee,
+          firstName: decryptPII(record.employee.firstName) ?? record.employee.firstName,
+          lastName: decryptPII(record.employee.lastName) ?? record.employee.lastName,
+          email: decryptPII(record.employee.email) ?? record.employee.email,
+        }
+      : record.employee,
+    reviewer: record.reviewer
+      ? {
+          ...record.reviewer,
+          firstName: decryptPII(record.reviewer.firstName) ?? record.reviewer.firstName,
+          lastName: decryptPII(record.reviewer.lastName) ?? record.reviewer.lastName,
+        }
+      : record.reviewer,
+  };
+}
+
 export class ProfileChangeRequestModel {
   static async create(data: ProfileChangeRequestCreateInput): Promise<DrizzleProfileChangeRequest> {
     const [inserted] = await db
@@ -56,7 +83,7 @@ export class ProfileChangeRequestModel {
         reviewer: { columns: reviewerColumns },
       },
     });
-    return record ?? null;
+    return record ? decryptRelations(record) : null;
   }
 
   static async listByEmployeeId(
@@ -67,7 +94,7 @@ export class ProfileChangeRequestModel {
     if (filters?.status) {
       conditions.push(eq(profileChangeRequests.status, filters.status));
     }
-    return db.query.profileChangeRequests.findMany({
+    const records = await db.query.profileChangeRequests.findMany({
       where: and(...conditions),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
       with: {
@@ -75,10 +102,11 @@ export class ProfileChangeRequestModel {
         reviewer: { columns: reviewerColumns },
       },
     });
+    return records.map(decryptRelations);
   }
 
   static async listAll(filters?: ProfileChangeRequestListFilters): Promise<ProfileChangeRequestWithRelations[]> {
-    return db.query.profileChangeRequests.findMany({
+    const records = await db.query.profileChangeRequests.findMany({
       where: filters?.status ? eq(profileChangeRequests.status, filters.status) : undefined,
       orderBy: (t, { desc }) => [desc(t.createdAt)],
       with: {
@@ -86,6 +114,7 @@ export class ProfileChangeRequestModel {
         reviewer: { columns: reviewerColumns },
       },
     });
+    return records.map(decryptRelations);
   }
 
   static async updateStatus(

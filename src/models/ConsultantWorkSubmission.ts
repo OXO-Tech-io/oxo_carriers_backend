@@ -1,6 +1,7 @@
 import pool from '../config/database';
 import { ConsultantWorkSubmission as CWS, ConsultantSubmissionStatus } from '../types';
 import { decryptPII } from '../utils/encryption';
+import { EmployeeModel } from './Employee';
 
 // drizzle/0009_tbl_prefix_and_employee_type.sql renamed consultant_work_submissions
 // -> tbl_consultant_work_submissions and users -> tbl_employee, and swapped this
@@ -40,7 +41,7 @@ export class ConsultantWorkSubmissionModel {
 
   static async findById(id: number): Promise<CWS | null> {
     const result = await pool.query(
-      `SELECT c.*, u.id AS employee_pk, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+      `SELECT c.*, u.id AS employee_pk, u.hourly_rate
        FROM tbl_consultant_work_submissions c
        LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
        WHERE c.id = $1`,
@@ -48,12 +49,12 @@ export class ConsultantWorkSubmissionModel {
     );
     const rowsArray = result.rows as any[];
     if (rowsArray.length === 0) return null;
-    return this.mapRow(rowsArray[0]);
+    return (await this.mapRows(rowsArray))[0];
   }
 
   static async findByEmployeeId(employeeId: string, filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
-      SELECT c.*, u.id AS employee_pk, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+      SELECT c.*, u.id AS employee_pk, u.hourly_rate
       FROM tbl_consultant_work_submissions c
       LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
       WHERE c.employee_id = $1
@@ -65,12 +66,12 @@ export class ConsultantWorkSubmissionModel {
     }
     query += ' ORDER BY c.created_at DESC';
     const result = await pool.query(query, params);
-    return (result.rows as any[]).map(this.mapRow);
+    return this.mapRows(result.rows as any[]);
   }
 
   static async getAll(filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
-      SELECT c.*, u.id AS employee_pk, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+      SELECT c.*, u.id AS employee_pk, u.hourly_rate
       FROM tbl_consultant_work_submissions c
       LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
       WHERE 1=1
@@ -82,7 +83,7 @@ export class ConsultantWorkSubmissionModel {
     }
     query += ' ORDER BY c.created_at DESC';
     const result = await pool.query(query, params);
-    return (result.rows as any[]).map(this.mapRow);
+    return this.mapRows(result.rows as any[]);
   }
 
   static async updateStatus(
@@ -140,32 +141,36 @@ export class ConsultantWorkSubmissionModel {
     return this.findById(id);
   }
 
-  private static mapRow(row: any): CWS {
-    return {
-      id: row.id,
-      employee_id: row.employee_id,
-      project: row.project,
-      tech: row.tech,
-      total_hours: parseFloat(row.total_hours) || row.total_hours,
-      comment: row.comment,
-      log_sheet_url: row.log_sheet_url,
-      status: row.status,
-      admin_comment: row.admin_comment,
-      reviewed_by: row.reviewed_by,
-      reviewed_at: row.reviewed_at,
-      resubmission_of: row.resubmission_of,
-      created_at: row.created_at,
-      updated_at: row.updated_at,
-      user: row.first_name
-        ? {
-            id: row.employee_pk,
-            first_name: row.first_name,
-            last_name: row.last_name,
-            email: row.email,
-            employee_id: row.employee_id,
-            hourly_rate: row.hourly_rate != null ? parseFloat(decryptPII(row.hourly_rate) || '0') : null
-          }
-        : undefined
-    };
+  private static async mapRows(rows: any[]): Promise<CWS[]> {
+    const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
+    return rows.map(row => {
+      const emp = employeeMap.get(row.employee_id);
+      return {
+        id: row.id,
+        employee_id: row.employee_id,
+        project: row.project,
+        tech: row.tech,
+        total_hours: parseFloat(row.total_hours) || row.total_hours,
+        comment: row.comment,
+        log_sheet_url: row.log_sheet_url,
+        status: row.status,
+        admin_comment: row.admin_comment,
+        reviewed_by: row.reviewed_by,
+        reviewed_at: row.reviewed_at,
+        resubmission_of: row.resubmission_of,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+        user: emp
+          ? {
+              id: row.employee_pk,
+              first_name: emp.firstName,
+              last_name: emp.lastName,
+              email: emp.email,
+              employee_id: row.employee_id,
+              hourly_rate: row.hourly_rate != null ? parseFloat(decryptPII(row.hourly_rate) || '0') : null
+            }
+          : undefined,
+      };
+    });
   }
 }

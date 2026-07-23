@@ -35,10 +35,16 @@ export const employeeType = pgTable('tbl_employee_type', {
 export const employee = pgTable('tbl_employee', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 }).unique(),
-    email: varchar('email', { length: 100 }).notNull().unique(),
+    // email/firstName/lastName are encrypted at rest (encryptPII) - widened to
+    // fit ciphertext, same as the other PII columns below. Encryption is
+    // non-deterministic (random IV per call), so equality lookups can't use
+    // this column directly - emailHash (deterministic, keyed HMAC) is the
+    // lookup/uniqueness key instead. See EmployeeModel.findByEmail/hashEmail.
+    email: varchar('email', { length: 500 }).notNull(),
+    emailHash: varchar('email_hash', { length: 64 }).notNull().unique(),
     keycloakSub: varchar('keycloak_sub', { length: 255 }),
-    firstName: varchar('first_name', { length: 100 }).notNull(),
-    lastName: varchar('last_name', { length: 100 }).notNull(),
+    firstName: varchar('first_name', { length: 500 }).notNull(),
+    lastName: varchar('last_name', { length: 500 }).notNull(),
     role: userRoleEnum('role').notNull(),
     title: userTitleEnum('title'),
     employeeTypeId: integer('employee_type_id').references(() => employeeType.id),

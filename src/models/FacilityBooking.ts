@@ -1,5 +1,14 @@
 import pool from "../config/database";
 import { FacilityBooking, BookingStatus } from "../types";
+import { EmployeeModel } from "./Employee";
+
+async function withEmployeeNames(rows: any[]): Promise<any[]> {
+  const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
+  return rows.map(row => {
+    const emp = employeeMap.get(row.employee_id);
+    return { ...row, first_name: emp?.firstName, last_name: emp?.lastName };
+  });
+}
 
 export class FacilityBookingModel {
   static async getAll(filters?: {
@@ -10,11 +19,9 @@ export class FacilityBookingModel {
     end_date?: string;
   }): Promise<any[]> {
     let query = `
-      SELECT fb.*, f.name as facility_name, f.type as facility_type,
-             u.first_name, u.last_name
+      SELECT fb.*, f.name as facility_name, f.type as facility_type
       FROM tbl_facility_bookings fb
       JOIN tbl_facilities f ON fb.facility_id = f.id
-      JOIN tbl_employee u ON fb.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -47,23 +54,22 @@ export class FacilityBookingModel {
     query += " ORDER BY fb.start_time DESC";
 
     const result = await pool.query(query, params);
-    return result.rows as any[];
+    return withEmployeeNames(result.rows as any[]);
   }
 
   static async findById(id: number): Promise<any | null> {
     const result = await pool.query(
       `
-      SELECT fb.*, f.name as facility_name, f.type as facility_type,
-             u.first_name, u.last_name
+      SELECT fb.*, f.name as facility_name, f.type as facility_type
       FROM tbl_facility_bookings fb
       JOIN tbl_facilities f ON fb.facility_id = f.id
-      JOIN tbl_employee u ON fb.employee_id = u.employee_id
       WHERE fb.id = $1
     `,
       [id],
     );
     const bookings = result.rows as any[];
-    return bookings[0] || null;
+    if (bookings.length === 0) return null;
+    return (await withEmployeeNames(bookings))[0];
   }
 
   static async checkAvailability(

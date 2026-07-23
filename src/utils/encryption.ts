@@ -95,6 +95,20 @@ export function encryptPII(value: string | number | null | undefined): string | 
 }
 
 /**
+ * Deterministic, keyed lookup hash for an email address - encryptPII/decryptPII
+ * use a random IV per call, so encrypted email can't be used for equality
+ * lookups or a UNIQUE constraint directly. This HMAC (keyed with the same PII
+ * encryption key, so it can't be reverse-engineered by guessing common emails
+ * the way an unkeyed SHA-256 could) is the actual lookup/uniqueness key -
+ * see tbl_employee.email_hash and EmployeeModel.findByEmail.
+ * Normalizes (trim + lowercase) so lookups aren't sensitive to input casing.
+ */
+export function hashEmail(email: string): string {
+  const key = getPiiKeyBuffer();
+  return crypto.createHmac('sha256', key).update(email.trim().toLowerCase()).digest('hex');
+}
+
+/**
  * Decrypts a colon-separated AES-256-CBC cipher text string using the PII encryption key.
  * Returns the decrypted plaintext as a string.
  */

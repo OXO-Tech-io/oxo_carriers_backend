@@ -1,6 +1,24 @@
 import pool from '../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../types';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
+import { EmployeeModel } from './Employee';
+
+/** first_name/last_name/email are encrypted on tbl_employee - the join can
+ * still filter/select non-PII columns (e.g. department), but must not select
+ * the encrypted columns directly. This batch-resolves and attaches the
+ * decrypted `user` object after the fact (also correct for a single row). */
+async function withUsers<T extends { employee_id: string }>(rows: T[]): Promise<Array<T & { user?: any }>> {
+  const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
+  return rows.map(row => {
+    const emp = employeeMap.get(row.employee_id);
+    return {
+      ...row,
+      user: emp
+        ? { id: emp.id, first_name: emp.firstName, last_name: emp.lastName, email: emp.email, employee_id: row.employee_id }
+        : undefined,
+    };
+  });
+}
 
 export class LeaveModel {
   static async createRequest(request: {
@@ -42,11 +60,9 @@ export class LeaveModel {
     const result = await pool.query(
       `SELECT lr.*,
               lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
-              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
-              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
+              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
        FROM tbl_leave_requests lr
        LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
-       LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
        WHERE lr.id = $1`,
       [id]
     );
@@ -54,6 +70,7 @@ export class LeaveModel {
     if (rowsArray.length === 0) return null;
 
     const row = rowsArray[0];
+    const [withUser] = await withUsers([row]);
     return {
       id: row.id,
       employee_id: row.employee_id,
@@ -77,13 +94,7 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: row.first_name ? {
-        id: row.user_id_full,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        email: row.email,
-        employee_id: row.employee_id
-      } : undefined
+      user: withUser.user
     } as LeaveRequest;
   }
 
@@ -94,11 +105,9 @@ export class LeaveModel {
     let query = `
       SELECT lr.*,
              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
-             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
-             u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
+             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
       FROM tbl_leave_requests lr
       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
-      LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
       WHERE lr.employee_id = $1
     `;
     const params: any[] = [employeeId];
@@ -116,7 +125,8 @@ export class LeaveModel {
     query += ' ORDER BY lr.created_at DESC';
 
     const result = await pool.query(query, params);
-    return (result.rows as any[]).map((row: any) => ({
+    const withUserRows = await withUsers(result.rows as any[]);
+    return withUserRows.map((row: any) => ({
       id: row.id,
       employee_id: row.employee_id,
       leave_type_id: row.leave_type_id,
@@ -141,13 +151,7 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: row.first_name ? {
-        id: row.user_id_full,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        email: row.email,
-        employee_id: row.employee_id
-      } : undefined
+      user: row.user
     })) as LeaveRequest[];
   }
 
@@ -160,8 +164,7 @@ export class LeaveModel {
     let query = `
       SELECT lr.*,
              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
-             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
-             u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id, u.department
+             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
       FROM tbl_leave_requests lr
       LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
@@ -192,7 +195,8 @@ export class LeaveModel {
     query += ' ORDER BY lr.created_at DESC';
 
     const result = await pool.query(query, params);
-    return (result.rows as any[]).map((row: any) => ({
+    const withUserRows = await withUsers(result.rows as any[]);
+    return withUserRows.map((row: any) => ({
       id: row.id,
       employee_id: row.employee_id,
       leave_type_id: row.leave_type_id,
@@ -217,13 +221,7 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: row.first_name ? {
-        id: row.user_id_full,
-        first_name: row.first_name,
-        last_name: row.last_name,
-        email: row.email,
-        employee_id: row.employee_id
-      } : undefined
+      user: row.user
     })) as LeaveRequest[];
   }
 

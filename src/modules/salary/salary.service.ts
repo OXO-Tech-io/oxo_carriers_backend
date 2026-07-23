@@ -74,13 +74,11 @@ export class SalaryService {
   }
 
   private async sendPayslipEmail(userId: number, monthYear: Date, salary: any) {
-    const userResult = await pool.query('SELECT first_name, last_name, email FROM tbl_employee WHERE id = $1', [userId]);
-    const userRows = userResult.rows as any[];
-    const employeeUser = userRows[0];
+    const employeeUser = await EmployeeModel.findById(userId);
     if (!employeeUser?.email) return;
     const payPeriod = monthYear.toLocaleDateString('en-GB', { year: 'numeric', month: 'long' });
     await sendPayslipAvailableEmail(employeeUser.email, {
-      employeeName: `${employeeUser.first_name} ${employeeUser.last_name}`.trim(),
+      employeeName: `${employeeUser.firstName} ${employeeUser.lastName}`.trim(),
       payPeriod,
       netSalary: `${parseFloat(String(salary.net_salary)).toLocaleString()}`,
       grossEarnings: `${parseFloat(String(salary.total_earnings)).toLocaleString()}`,
@@ -130,10 +128,14 @@ export class SalaryService {
     }
 
     const details = await SalaryModel.getSlipDetails(id);
-    const userResult = await pool.query('SELECT * FROM tbl_employee WHERE employee_id = $1', [salary.employee_id]);
-    const users = userResult.rows as any[];
-    const user = users[0];
-    if (!user) throw new NotFoundException('User not found');
+    const employee = await EmployeeModel.findByEmployeeId(salary.employee_id);
+    if (!employee) throw new NotFoundException('User not found');
+    const user = {
+      employee_id: employee.employeeId ?? undefined,
+      first_name: employee.firstName,
+      last_name: employee.lastName,
+      position: employee.position ?? undefined,
+    };
 
     let pdfBuffer: Buffer;
     try {
@@ -181,13 +183,11 @@ export class SalaryService {
   }
 
   private async sendPaidEmail(updated: any) {
-    const userResult = await pool.query('SELECT first_name, last_name, email FROM tbl_employee WHERE employee_id = $1', [updated.employee_id]);
-    const userRows = userResult.rows as any[];
-    const employeeUser = userRows[0];
+    const employeeUser = await EmployeeModel.findByEmployeeId(updated.employee_id);
     if (!employeeUser?.email) return;
     const payPeriod = new Date(updated.month_year).toLocaleDateString('en-GB', { year: 'numeric', month: 'long' });
     await sendPayslipAvailableEmail(employeeUser.email, {
-      employeeName: `${employeeUser.first_name} ${employeeUser.last_name}`.trim(),
+      employeeName: `${employeeUser.firstName} ${employeeUser.lastName}`.trim(),
       payPeriod,
       netSalary: `${parseFloat(String(updated.net_salary)).toLocaleString()}`,
       grossEarnings: `${parseFloat(String(updated.total_earnings)).toLocaleString()}`,
@@ -370,7 +370,7 @@ export class SalaryService {
           continue;
         }
 
-        const userResult2 = await pool.query('SELECT id, employee_id, first_name, last_name FROM tbl_employee WHERE id = $1', [userId]);
+        const userResult2 = await pool.query('SELECT id, employee_id FROM tbl_employee WHERE id = $1', [userId]);
         const usersFound = userResult2.rows as any[];
         if (usersFound.length === 0 || !usersFound[0].employee_id) {
           results.failed++;

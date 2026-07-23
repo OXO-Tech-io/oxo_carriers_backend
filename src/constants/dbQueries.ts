@@ -3,15 +3,6 @@
  * Centralized SQL queries for consistent database operations
  */
 
-// User Queries
-export const USER_QUERIES = {
-    FIND_BY_EMAIL: 'SELECT * FROM tbl_employee WHERE email = $1',
-    FIND_BY_ID: 'SELECT * FROM tbl_employee WHERE id = $1',
-    FIND_BY_EMPLOYEE_ID: 'SELECT id FROM tbl_employee WHERE employee_id = $1',
-    SELECT_ID_AND_NAME_BY_ID: 'SELECT id, first_name, last_name FROM tbl_employee WHERE id = $1',
-    SELECT_ALL_USERS_FOR_PERMISSIONS: 'SELECT id, email, first_name, last_name, role FROM tbl_employee ORDER BY first_name, last_name',
-} as const;
-
 // Permission Queries
 // tbl_user_permissions.user_id was renamed to a business employee_id (varchar)
 // FK referencing tbl_employee.employee_id - GET_ALL_USER_PERMISSIONS still

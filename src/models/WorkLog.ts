@@ -1,6 +1,7 @@
 import { db } from '../db';
 import { workLogs, employee as users, type WorkLog as DrizzleWorkLog } from '../db/schema';
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { EmployeeModel } from './Employee';
 
 export type WorkLogInput = {
   employeeId: string;
@@ -58,6 +59,9 @@ export class WorkLogModel {
     });
   }
 
+  // firstName/lastName are encrypted - can't be selected, grouped, or sorted
+  // in SQL, so only non-PII columns are grouped here; names are batch
+  // resolved and the final order applied in application code below.
   static async summaryByUser(filters?: { from?: string; to?: string }): Promise<WorkLogUserSummary[]> {
     const conditions = [];
     if (filters?.from) conditions.push(gte(workLogs.workDate, filters.from));
@@ -67,24 +71,27 @@ export class WorkLogModel {
       .select({
         userId: users.id,
         employeeId: workLogs.employeeId,
-        firstName: users.firstName,
-        lastName: users.lastName,
         totalHours: sql<string>`SUM(${workLogs.hoursSpent})`,
         entryCount: sql<string>`COUNT(*)`,
       })
       .from(workLogs)
       .innerJoin(users, eq(workLogs.employeeId, users.employeeId))
       .where(conditions.length ? and(...conditions) : undefined)
-      .groupBy(users.id, workLogs.employeeId, users.firstName, users.lastName)
-      .orderBy(users.firstName, users.lastName);
+      .groupBy(users.id, workLogs.employeeId);
 
-    return rows.map(row => ({
-      userId: row.userId,
-      employeeId: row.employeeId,
-      firstName: row.firstName,
-      lastName: row.lastName,
-      totalHours: Number(row.totalHours),
-      entryCount: Number(row.entryCount),
-    }));
+    const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map((r) => r.employeeId));
+    const summaries = rows.map(row => {
+      const emp = employeeMap.get(row.employeeId);
+      return {
+        userId: row.userId,
+        employeeId: row.employeeId,
+        firstName: emp?.firstName ?? '',
+        lastName: emp?.lastName ?? '',
+        totalHours: Number(row.totalHours),
+        entryCount: Number(row.entryCount),
+      };
+    });
+    summaries.sort((a, b) => a.firstName.localeCompare(b.firstName) || a.lastName.localeCompare(b.lastName));
+    return summaries;
   }
 }
