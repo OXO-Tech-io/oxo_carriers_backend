@@ -43,4 +43,4 @@ EXPOSE 5000
 # Default CMD runs the Node.js app directly
 # When running in Cloud Run with Cloud SQL, the Cloud Run environment
 # handles the Cloud SQL connection via the service account
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/main.js"]
