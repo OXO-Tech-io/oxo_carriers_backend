@@ -5,7 +5,7 @@ export class PaymentVoucherModel {
   static async generateVoucherNumber(): Promise<string> {
     const year = new Date().getFullYear();
     const result = await pool.query(
-      'SELECT COUNT(*) as count FROM payment_vouchers WHERE voucher_number LIKE $1',
+      'SELECT COUNT(*) as count FROM tbl_payment_vouchers WHERE voucher_number LIKE $1',
       [`VOU-${year}-%`]
     );
     const rows = result.rows as any[];
@@ -24,7 +24,7 @@ export class PaymentVoucherModel {
   }): Promise<PaymentVoucher> {
     const voucherNumber = await this.generateVoucherNumber();
     const result = await pool.query(
-      `INSERT INTO payment_vouchers (voucher_number, created_by, vendor_id, amount, vat, description, invoice_url, status)
+      `INSERT INTO tbl_payment_vouchers (voucher_number, created_by, vendor_id, amount, vat, description, invoice_url, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
       [
         voucherNumber,
@@ -49,10 +49,10 @@ export class PaymentVoucherModel {
         creator.first_name AS created_by_first_name, creator.last_name AS created_by_last_name,
         v.company_name AS sp_company_name, v.email AS sp_email,
         reviewer.first_name AS reviewed_by_first_name, reviewer.last_name AS reviewed_by_last_name
-      FROM payment_vouchers pv
-      LEFT JOIN users creator ON pv.created_by = creator.id
-      LEFT JOIN vendors v ON pv.vendor_id = v.id
-      LEFT JOIN users reviewer ON pv.reviewed_by = reviewer.id
+      FROM tbl_payment_vouchers pv
+      LEFT JOIN tbl_employee creator ON pv.created_by = creator.id
+      LEFT JOIN tbl_vendors v ON pv.vendor_id = v.id
+      LEFT JOIN tbl_employee reviewer ON pv.reviewed_by = reviewer.id
       WHERE pv.id = $1`,
       [id]
     );
@@ -65,9 +65,9 @@ export class PaymentVoucherModel {
       SELECT pv.*,
         creator.first_name AS created_by_first_name, creator.last_name AS created_by_last_name,
         v.company_name AS sp_company_name
-      FROM payment_vouchers pv
-      LEFT JOIN users creator ON pv.created_by = creator.id
-      LEFT JOIN vendors v ON pv.vendor_id = v.id
+      FROM tbl_payment_vouchers pv
+      LEFT JOIN tbl_employee creator ON pv.created_by = creator.id
+      LEFT JOIN tbl_vendors v ON pv.vendor_id = v.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -130,7 +130,7 @@ export class PaymentVoucherModel {
     }
     values.push(id);
     await pool.query(
-      `UPDATE payment_vouchers SET ${updates.join(', ')} WHERE id = $${values.length}`,
+      `UPDATE tbl_payment_vouchers SET ${updates.join(', ')} WHERE id = $${values.length}`,
       values
     );
   }

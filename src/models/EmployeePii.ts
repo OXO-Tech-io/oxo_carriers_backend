@@ -2,6 +2,7 @@ import { db } from '../db';
 import { employeePii } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { env } from '../config/env';
+import { pgpDecrypt, pgpEncrypt } from '../utils/pgpCrypto';
 
 type DbExecutor = Pick<typeof db, 'select' | 'insert' | 'delete'>;
 
@@ -31,6 +32,23 @@ export class EmployeePiiModel {
         emergencyContactName: sql<string | null>`CASE WHEN ${employeePii.emergencyContactName} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactName}, ${key}) END`,
         emergencyContactPhone: sql<string | null>`CASE WHEN ${employeePii.emergencyContactPhone} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactPhone}, ${key}) END`,
         emergencyContactRelationship: sql<string | null>`CASE WHEN ${employeePii.emergencyContactRelationship} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactRelationship}, ${key}) END`,
+        // Tab 1 (statutory) fields
+        fullNameAsNic: pgpDecrypt(employeePii.fullNameAsNic),
+        nameWithInitials: pgpDecrypt(employeePii.nameWithInitials),
+        dateOfBirth: employeePii.dateOfBirth,
+        birthPlace: pgpDecrypt(employeePii.birthPlace),
+        sex: employeePii.sex,
+        maritalStatus: employeePii.maritalStatus,
+        nationality: employeePii.nationality,
+        spouseName: pgpDecrypt(employeePii.spouseName),
+        motherName: pgpDecrypt(employeePii.motherName),
+        fatherName: pgpDecrypt(employeePii.fatherName),
+        // Tab B (remittance/correspondence) fields
+        residingAddressLine1: pgpDecrypt(employeePii.residingAddressLine1),
+        residingAddressLine2: pgpDecrypt(employeePii.residingAddressLine2),
+        residingCity: pgpDecrypt(employeePii.residingCity),
+        residingDistrict: pgpDecrypt(employeePii.residingDistrict),
+        landlineNumber: pgpDecrypt(employeePii.landlineNumber),
         createdAt: employeePii.createdAt,
         updatedAt: employeePii.updatedAt,
       })
@@ -54,6 +72,21 @@ export class EmployeePiiModel {
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
       emergencyContactRelationship?: string | null;
+      fullNameAsNic?: string | null;
+      nameWithInitials?: string | null;
+      birthPlace?: string | null;
+      spouseName?: string | null;
+      motherName?: string | null;
+      fatherName?: string | null;
+      residingAddressLine1?: string | null;
+      residingAddressLine2?: string | null;
+      residingCity?: string | null;
+      residingDistrict?: string | null;
+      landlineNumber?: string | null;
+      dateOfBirth?: string | null;
+      sex?: 'male' | 'female' | null;
+      maritalStatus?: 'married' | 'single' | null;
+      nationality?: string | null;
     },
     executor: DbExecutor = db
   ) {
@@ -76,11 +109,32 @@ export class EmployeePiiModel {
       'emergencyContactName',
       'emergencyContactPhone',
       'emergencyContactRelationship',
+      'fullNameAsNic',
+      'nameWithInitials',
+      'birthPlace',
+      'spouseName',
+      'motherName',
+      'fatherName',
+      'residingAddressLine1',
+      'residingAddressLine2',
+      'residingCity',
+      'residingDistrict',
+      'landlineNumber',
     ];
     for (const field of encryptedFields) {
-      const value = data[field];
+      const value = data[field] as string | null | undefined;
       if (value !== undefined) {
         valuesToInsert[field] = value === null ? null : sql`pgp_sym_encrypt(${value}, ${key})`;
+      }
+    }
+
+    // Plain (unencrypted) fields - not identity/contact secrets, and
+    // dateOfBirth/maritalStatus need to be queryable (age calc, Tab C gating).
+    const plainFields: (keyof typeof data)[] = ['dateOfBirth', 'sex', 'maritalStatus', 'nationality'];
+    for (const field of plainFields) {
+      const value = data[field];
+      if (value !== undefined) {
+        valuesToInsert[field] = value;
       }
     }
 

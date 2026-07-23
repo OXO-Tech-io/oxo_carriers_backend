@@ -26,7 +26,10 @@ export const userRoleEnum = pgEnum('user_role', [
 export const userTitleEnum = pgEnum('user_title', ['mr', 'ms', 'mrs', 'dr', 'prof']);
 
 // Users Table
-export const users = pgTable('users', {
+// Table renamed users -> tbl_employee by drizzle/0009_tbl_prefix_and_employee_type.sql;
+// the JS binding stays `users` (every consumer imports it that way), only the
+// literal DB table name changes.
+export const users = pgTable('tbl_employee', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 }).unique(),
     email: varchar('email', { length: 100 }).notNull().unique(),
@@ -45,6 +48,8 @@ export const users = pgTable('users', {
     accountHolderName: varchar('account_holder_name', { length: 150 }),
     accountNumber: varchar('account_number', { length: 80 }),
     bankBranch: varchar('bank_branch', { length: 150 }),
+    bankBranchCode: varchar('bank_branch_code', { length: 500 }),
+    swiftCode: varchar('swift_code', { length: 500 }),
     companyName: varchar('company_name', { length: 200 }),
     contactNumber: varchar('contact_number', { length: 30 }),
     hireDate: date('hire_date'),

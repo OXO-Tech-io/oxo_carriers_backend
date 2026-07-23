@@ -3,15 +3,26 @@ import { CommunicationModel } from '../models/Communication';
 import { CommunicationRecipientModel } from '../models/CommunicationRecipient';
 import { AttachmentModel, type AttachmentFileInput } from '../models/Attachment';
 import { UserModel } from '../models/User';
+import { groupService } from './group.service';
 import { NotFoundError, ForbiddenError } from '../utils/AppError';
 import { sendCommunicationEmail } from '../config/email';
 import { notificationService } from './notification.service';
 import { logger } from '../lib/logger';
 
 export const communicationService = {
-  async create(title: string, body: string, recipientUserIds: number[], createdBy: number, files: AttachmentFileInput[]) {
+  async create(
+    title: string,
+    body: string,
+    recipientUserIds: number[],
+    recipientGroupIds: number[],
+    createdBy: number,
+    files: AttachmentFileInput[]
+  ) {
+    const groupMemberIds = await groupService.resolveMemberUserIds(recipientGroupIds);
+    const resolvedUserIds = [...new Set([...recipientUserIds, ...groupMemberIds])];
+
     const communication = await CommunicationModel.create({ title, body, createdBy });
-    const recipients = await CommunicationRecipientModel.createMany(communication.id, recipientUserIds);
+    const recipients = await CommunicationRecipientModel.createMany(communication.id, resolvedUserIds);
     if (files.length) {
       await AttachmentModel.createMany('communication', communication.id, files, createdBy);
     }

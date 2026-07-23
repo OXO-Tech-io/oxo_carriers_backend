@@ -14,8 +14,14 @@ import { users } from './users';
 // Enums
 export const submissionStatusEnum = pgEnum('submission_status', ['pending', 'approved', 'rejected']);
 
-// Consultant Work Submissions Table
-export const consultantWorkSubmissions = pgTable('consultant_work_submissions', {
+// Renamed consultant_work_submissions -> tbl_consultant_work_submissions by
+// drizzle/0009_tbl_prefix_and_employee_type.sql, which ALSO dropped userId in
+// favor of a business `employee_id` FK - this schema's `userId` column below
+// no longer matches the live table shape. The real read/write path
+// (ConsultantWorkSubmission.ts / consultantSubmissionController.ts) uses raw
+// SQL and bypasses this Drizzle schema entirely, so that column-level drift
+// is tracked and fixed separately, not here.
+export const consultantWorkSubmissions = pgTable('tbl_consultant_work_submissions', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     project: varchar('project', { length: 255 }).notNull(),

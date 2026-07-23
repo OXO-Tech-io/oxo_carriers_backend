@@ -29,11 +29,11 @@ async function addProfileEnhancementFields() {
       console.log('  ✓ user_title enum already exists');
     }
 
-    if (!(await columnExists('users', 'title'))) {
-      await pool.query(`ALTER TABLE users ADD COLUMN title user_title`);
-      console.log('  ✓ Added users.title');
+    if (!(await columnExists('tbl_employee', 'title'))) {
+      await pool.query(`ALTER TABLE tbl_employee ADD COLUMN title user_title`);
+      console.log('  ✓ Added tbl_employee.title');
     } else {
-      console.log('  ✓ users.title already exists');
+      console.log('  ✓ tbl_employee.title already exists');
     }
 
     const piiColumns: [string, string][] = [

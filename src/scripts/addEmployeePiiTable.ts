@@ -24,7 +24,7 @@ async function addEmployeePiiTable() {
         CREATE TABLE tbl_employee_pii (
           id serial PRIMARY KEY,
           employee_id varchar(50) NOT NULL UNIQUE
-            REFERENCES users(employee_id) ON DELETE CASCADE ON UPDATE CASCADE,
+            REFERENCES tbl_employee(employee_id) ON DELETE CASCADE ON UPDATE CASCADE,
           passport_number bytea,
           national_id bytea,
           address bytea,

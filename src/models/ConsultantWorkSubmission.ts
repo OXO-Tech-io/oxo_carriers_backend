@@ -1,6 +1,13 @@
 import pool from '../config/database';
 import { ConsultantWorkSubmission as CWS, ConsultantSubmissionStatus } from '../types';
 
+// drizzle/0009_tbl_prefix_and_employee_type.sql renamed consultant_work_submissions
+// -> tbl_consultant_work_submissions and users -> tbl_employee, and swapped this
+// table's FK from a numeric user_id to a business employee_id (varchar, FK to
+// tbl_employee.employee_id) - user_id no longer exists as a column. To avoid
+// rippling that change through the controller/types/frontend (which all deal
+// in numeric user ids), every query here still accepts/returns numeric
+// user_id, resolving to/from employee_id internally via the tbl_employee join.
 export class ConsultantWorkSubmissionModel {
   static async create(data: {
     user_id: number;
@@ -12,8 +19,10 @@ export class ConsultantWorkSubmissionModel {
     resubmission_of?: number | null;
   }): Promise<CWS> {
     const result = await pool.query(
-      `INSERT INTO consultant_work_submissions (user_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
+      `INSERT INTO tbl_consultant_work_submissions (employee_id, project, tech, total_hours, comment, log_sheet_url, resubmission_of, status)
+       SELECT e.employee_id, $2, $3, $4, $5, $6, $7, 'pending'
+       FROM tbl_employee e WHERE e.id = $1
+       RETURNING id`,
       [
         data.user_id,
         data.project,
@@ -32,9 +41,9 @@ export class ConsultantWorkSubmissionModel {
 
   static async findById(id: number): Promise<CWS | null> {
     const result = await pool.query(
-      `SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-       FROM consultant_work_submissions c
-       LEFT JOIN users u ON c.user_id = u.id
+      `SELECT c.*, u.id AS user_id, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+       FROM tbl_consultant_work_submissions c
+       LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
        WHERE c.id = $1`,
       [id]
     );
@@ -45,10 +54,10 @@ export class ConsultantWorkSubmissionModel {
 
   static async findByUserId(userId: number, filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
-      SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-      FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
-      WHERE c.user_id = $1
+      SELECT c.*, u.id AS user_id, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+      FROM tbl_consultant_work_submissions c
+      LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
+      WHERE u.id = $1
     `;
     const params: any[] = [userId];
     if (filters?.status) {
@@ -62,9 +71,9 @@ export class ConsultantWorkSubmissionModel {
 
   static async getAll(filters?: { status?: ConsultantSubmissionStatus }): Promise<CWS[]> {
     let query = `
-      SELECT c.*, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
-      FROM consultant_work_submissions c
-      LEFT JOIN users u ON c.user_id = u.id
+      SELECT c.*, u.id AS user_id, u.first_name, u.last_name, u.email, u.employee_id, u.hourly_rate
+      FROM tbl_consultant_work_submissions c
+      LEFT JOIN tbl_employee u ON c.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -84,7 +93,7 @@ export class ConsultantWorkSubmissionModel {
     adminComment?: string | null
   ): Promise<CWS | null> {
     await pool.query(
-      `UPDATE consultant_work_submissions SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
+      `UPDATE tbl_consultant_work_submissions SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
       [status, adminComment ?? null, reviewedBy, id]
     );
     return this.findById(id);

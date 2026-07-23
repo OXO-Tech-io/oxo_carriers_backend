@@ -28,6 +28,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
     employee = await EmployeeModel.create({
       employee_id: employeeIdTag,
       email: "test_pcr_employee@example.com",
+      password: "Test1234!",
       first_name: "Perry",
       last_name: "Candidate",
       role: UserRole.EMPLOYEE,
@@ -37,6 +38,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
     hrManager = await EmployeeModel.create({
       employee_id: hrIdTag,
       email: "test_pcr_hr@example.com",
+      password: "Test1234!",
       first_name: "Helen",
       last_name: "Reviewer",
       role: UserRole.HR_MANAGER,

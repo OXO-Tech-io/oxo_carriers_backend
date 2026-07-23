@@ -20,9 +20,15 @@ export const createFormSchema = z.object({
 });
 export type CreateFormInput = z.infer<typeof createFormSchema>;
 
-export const distributeFormSchema = z.object({
-  userIds: z.array(z.coerce.number().int().positive()).min(1, 'At least one employee is required'),
-});
+export const distributeFormSchema = z
+  .object({
+    userIds: z.array(z.coerce.number().int().positive()).optional().default([]),
+    groupIds: z.array(z.coerce.number().int().positive()).optional().default([]),
+  })
+  .refine((data) => data.userIds.length > 0 || data.groupIds.length > 0, {
+    message: 'At least one employee or group is required',
+    path: ['userIds'],
+  });
 export type DistributeFormInput = z.infer<typeof distributeFormSchema>;
 
 const answerSchema = z.object({

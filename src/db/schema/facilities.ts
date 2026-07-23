@@ -26,8 +26,9 @@ export const bookingStatusEnum = pgEnum('booking_status', [
     'completed',
 ]);
 
-// Facilities Table
-export const facilities = pgTable('facilities', {
+// Renamed facilities -> tbl_facilities, facility_bookings -> tbl_facility_bookings
+// by drizzle/0009_tbl_prefix_and_employee_type.sql.
+export const facilities = pgTable('tbl_facilities', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),
     type: facilityTypeEnum('type').notNull(),
@@ -40,7 +41,7 @@ export const facilities = pgTable('facilities', {
 });
 
 // Facility Bookings Table
-export const facilityBookings = pgTable('facility_bookings', {
+export const facilityBookings = pgTable('tbl_facility_bookings', {
     id: serial('id').primaryKey(),
     facilityId: integer('facility_id').notNull().references(() => facilities.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

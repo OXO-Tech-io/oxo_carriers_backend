@@ -40,4 +40,29 @@ router.put(
   asyncHandler(profileChangeRequestController.decide)
 );
 
+// Aliases for /:id/decision - the frontend calls these dedicated paths
+// (sending { decision, reviewerComments } in the body, same as /decision)
+// rather than the generic decision endpoint.
+router.put(
+  '/:id/approve',
+  requireHR,
+  validate(profileChangeRequestIdParamSchema, 'params'),
+  validate(decideProfileChangeRequestSchema, 'body'),
+  asyncHandler(profileChangeRequestController.decide)
+);
+router.put(
+  '/:id/reject',
+  requireHR,
+  validate(profileChangeRequestIdParamSchema, 'params'),
+  validate(decideProfileChangeRequestSchema, 'body'),
+  asyncHandler(profileChangeRequestController.decide)
+);
+router.put(
+  '/:id/return',
+  requireHR,
+  validate(profileChangeRequestIdParamSchema, 'params'),
+  validate(decideProfileChangeRequestSchema, 'body'),
+  asyncHandler(profileChangeRequestController.decide)
+);
+
 export default router;

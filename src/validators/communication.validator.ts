@@ -1,13 +1,28 @@
 import { z } from 'zod';
 
-export const createCommunicationSchema = z.object({
-  title: z.string().min(1, 'Title is required').max(255),
-  body: z.string().min(1, 'Body is required'),
-  recipientUserIds: z
-    .union([z.array(z.coerce.number().int().positive()), z.string()])
-    .transform((v) => (Array.isArray(v) ? v : JSON.parse(v)))
-    .pipe(z.array(z.coerce.number().int().positive()).min(1, 'At least one recipient is required')),
-});
+// Accepts either a real array (JSON body) or a JSON-encoded string (multipart
+// form-data, required for file attachments) - same shape for both
+// recipientUserIds and recipientGroupIds.
+const idArrayField = z
+  .union([z.array(z.coerce.number().int().positive()), z.string()])
+  .optional()
+  .transform((v) => {
+    if (v === undefined || v === '') return [];
+    return Array.isArray(v) ? v : JSON.parse(v);
+  })
+  .pipe(z.array(z.coerce.number().int().positive()));
+
+export const createCommunicationSchema = z
+  .object({
+    title: z.string().min(1, 'Title is required').max(255),
+    body: z.string().min(1, 'Body is required'),
+    recipientUserIds: idArrayField,
+    recipientGroupIds: idArrayField,
+  })
+  .refine((data) => data.recipientUserIds.length > 0 || data.recipientGroupIds.length > 0, {
+    message: 'At least one recipient or group is required',
+    path: ['recipientUserIds'],
+  });
 export type CreateCommunicationInput = z.infer<typeof createCommunicationSchema>;
 
 export const respondCommunicationSchema = z.object({

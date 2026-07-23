@@ -7,6 +7,8 @@ import crypto from 'crypto';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { employeeProfileCreationService } from '../services/employeeProfileCreation.service';
+import { createEmployeeProfileSchema } from '../validators/employeeProfileCreation.validator';
 import { logger } from '../lib/logger';
 import { sendEmailVerificationEmail, sendPasswordSetupEmail } from '../config/email';
 
@@ -87,8 +89,11 @@ export const createUser = async (req: Request, res: Response) => {
       account_holder_name,
       account_number,
       bank_branch,
+      bank_branch_code,
+      swift_code,
       company_name,
       contact_number,
+      profile,
     } = req.body;
 
     const userRoleInput = (role as UserRole) || UserRole.EMPLOYEE;
@@ -109,6 +114,21 @@ export const createUser = async (req: Request, res: Response) => {
 
     if (role === UserRole.CONSULTANT && (hourly_rate == null || hourly_rate === '' || isNaN(parseFloat(hourly_rate)))) {
       return res.status(400).json({ success: false, message: 'Hourly rate is required for Consultant role' });
+    }
+
+    let profileInput: ReturnType<typeof createEmployeeProfileSchema.parse> | undefined;
+    if (profile !== undefined) {
+      const profileParse = createEmployeeProfileSchema.safeParse(profile);
+      if (!profileParse.success) {
+        return res.status(400).json({
+          success: false,
+          message: profileParse.error.issues[0]?.message || 'Invalid profile data',
+        });
+      }
+      if (profileParse.data.dependents?.length && profileParse.data.statutory?.maritalStatus !== 'married') {
+        return res.status(400).json({ success: false, message: 'Dependents can only be added for married employees' });
+      }
+      profileInput = profileParse.data;
     }
 
     const existingUser = await UserModel.findByEmail(email);
@@ -150,16 +170,25 @@ export const createUser = async (req: Request, res: Response) => {
       account_holder_name: account_holder_name || null,
       account_number: account_number || null,
       bank_branch: bank_branch || null,
+      bank_branch_code: bank_branch_code || null,
+      swift_code: swift_code || null,
       company_name: null,
-      contact_number: null,
+      contact_number: contact_number || null,
       email_verification_token: verificationToken,
     });
+
+    if (profileInput) {
+      await employeeProfileCreationService.applyToNewEmployee(
+        { id: user.id, employeeId: user.employeeId! },
+        profileInput
+      );
+    }
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
     if (isLeaveEligible) {
       const currentYear = new Date().getFullYear();
-      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM leave_types WHERE is_active = true');
+      const leaveTypesResult = await pool.query('SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true');
       const types = leaveTypesResult.rows as any[];
 
       const hireDateVal = user.hireDate || (user as any).hire_date;
@@ -175,7 +204,7 @@ export const createUser = async (req: Request, res: Response) => {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
         await pool.query(
-          'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+          'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
           [user.id, type.id, totalDays, totalDays, currentYear]
         );
       }
@@ -196,7 +225,7 @@ export const createUser = async (req: Request, res: Response) => {
       ];
       for (const permission of defaultPermissions) {
         await pool.query(
-          `INSERT INTO user_permissions (user_id, permission_key, access_level)
+          `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level)
            VALUES ($1, $2, $3)`,
           [user.id, permission, 'read']
         );
@@ -348,7 +377,7 @@ export const resetUserPassword = async (req: Request, res: Response) => {
 export const getDepartments = async (req: Request, res: Response) => {
   try {
     const result = await pool.query(
-      'SELECT DISTINCT department FROM users WHERE department IS NOT NULL ORDER BY department'
+      'SELECT DISTINCT department FROM tbl_employee WHERE department IS NOT NULL ORDER BY department'
     );
     const departments = (result.rows as any[]).map(row => row.department);
     res.json({ success: true, departments });

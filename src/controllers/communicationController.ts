@@ -6,9 +6,16 @@ import { CreateCommunicationInput, RespondCommunicationInput, CommunicationIdPar
 
 export const create = async (req: Request, res: Response) => {
   if (!req.user) throw new UnauthorizedError();
-  const { title, body, recipientUserIds } = req.body as CreateCommunicationInput;
+  const { title, body, recipientUserIds, recipientGroupIds } = req.body as CreateCommunicationInput;
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
-  const communication = await communicationService.create(title, body, recipientUserIds, req.user.userId, files);
+  const communication = await communicationService.create(
+    title,
+    body,
+    recipientUserIds,
+    recipientGroupIds,
+    req.user.userId,
+    files
+  );
   created(res, communication, 'Communication sent');
 };
 

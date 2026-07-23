@@ -24,8 +24,10 @@ export const leaveStatusEnum = pgEnum('leave_status', [
 
 export const halfDayPeriodEnum = pgEnum('half_day_period', ['morning', 'evening']);
 
+// Renamed leave_types/employee_leave_balance/leave_requests/leave_calendar to
+// their tbl_ equivalents by drizzle/0009_tbl_prefix_and_employee_type.sql.
 // Leave Types Table
-export const leaveTypes = pgTable('leave_types', {
+export const leaveTypes = pgTable('tbl_leave_types', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 50 }).notNull(),
     description: text('description'),
@@ -35,7 +37,7 @@ export const leaveTypes = pgTable('leave_types', {
 });
 
 // Employee Leave Balance Table
-export const employeeLeaveBalance = pgTable('employee_leave_balance', {
+export const employeeLeaveBalance = pgTable('tbl_employee_leave_balance', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
@@ -48,7 +50,7 @@ export const employeeLeaveBalance = pgTable('employee_leave_balance', {
 });
 
 // Leave Requests Table
-export const leaveRequests = pgTable('leave_requests', {
+export const leaveRequests = pgTable('tbl_leave_requests', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
@@ -68,7 +70,7 @@ export const leaveRequests = pgTable('leave_requests', {
 });
 
 // Leave Calendar Table
-export const leaveCalendar = pgTable('leave_calendar', {
+export const leaveCalendar = pgTable('tbl_leave_calendar', {
     id: serial('id').primaryKey(),
     date: date('date').notNull().unique(),
     name: varchar('name', { length: 255 }).notNull(),

@@ -1,7 +1,8 @@
 import { pgTable, serial, varchar, timestamp, text } from 'drizzle-orm/pg-core';
 
 // Vendors Table (service providers separate from users)
-export const vendors = pgTable('vendors', {
+// Renamed vendors -> tbl_vendors by drizzle/0009_tbl_prefix_and_employee_type.sql.
+export const vendors = pgTable('tbl_vendors', {
     id: serial('id').primaryKey(),
     email: varchar('email', { length: 255 }).notNull(),
     companyName: varchar('company_name', { length: 200 }).notNull(),

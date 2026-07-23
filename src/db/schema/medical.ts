@@ -16,7 +16,9 @@ export const claimTypeEnum = pgEnum('claim_type', ['IN', 'OPD']);
 export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected']);
 
 // Medical Insurance Claims Table
-export const medicalInsuranceClaims = pgTable('medical_insurance_claims', {
+// Renamed medical_insurance_claims -> tbl_medical_insurance_claims by
+// drizzle/0009_tbl_prefix_and_employee_type.sql.
+export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     type: claimTypeEnum('type').notNull(),

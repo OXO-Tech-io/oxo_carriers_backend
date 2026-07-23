@@ -96,7 +96,7 @@ export const generateSalary = async (req: Request, res: Response) => {
     // Send payslip notification email to employee (non-blocking)
     try {
       const userResult = await pool.query(
-        'SELECT first_name, last_name, email FROM users WHERE id = $1',
+        'SELECT first_name, last_name, email FROM tbl_employee WHERE id = $1',
         [parseInt(userId)]
       );
       const userRows = userResult.rows as any[];
@@ -205,7 +205,7 @@ export const generateSalarySlipPDF = async (req: Request, res: Response) => {
     }
 
     const details = await SalaryModel.getSlipDetails(parseInt(id as string));
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [salary.user_id]);
+    const userResult = await pool.query('SELECT * FROM tbl_employee WHERE id = $1', [salary.user_id]);
     const users = userResult.rows as any[];
     const user = users[0];
 
@@ -426,7 +426,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
           userId = parsedId;
         } else {
           // Try to find by employee_id
-          const empResult = await pool.query('SELECT id FROM users WHERE employee_id = $1', [idValue]);
+          const empResult = await pool.query('SELECT id FROM tbl_employee WHERE employee_id = $1', [idValue]);
           const empUsers = empResult.rows as any[];
           if (empUsers.length > 0) {
             userId = empUsers[0].id;
@@ -440,7 +440,7 @@ export const uploadBulkSalaries = async (req: Request, res: Response) => {
         }
 
         // Verify user exists
-        const userResult2 = await pool.query('SELECT id, first_name, last_name FROM users WHERE id = $1', [userId]);
+        const userResult2 = await pool.query('SELECT id, first_name, last_name FROM tbl_employee WHERE id = $1', [userId]);
         const users = userResult2.rows as any[];
         if (users.length === 0) {
           results.failed++;
@@ -592,7 +592,7 @@ export const updateSalaryStatus = async (req: Request, res: Response) => {
     if (status === SalaryStatus.PAID && updated) {
       try {
         const userResult = await pool.query(
-          'SELECT first_name, last_name, email FROM users WHERE id = $1',
+          'SELECT first_name, last_name, email FROM tbl_employee WHERE id = $1',
           [updated.user_id]
         );
         const userRows = userResult.rows as any[];

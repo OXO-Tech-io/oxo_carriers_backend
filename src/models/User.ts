@@ -136,6 +136,8 @@ export class UserModel {
     account_holder_name?: string | null;
     account_number?: string | null;
     bank_branch?: string | null;
+    bank_branch_code?: string | null;
+    swift_code?: string | null;
     company_name?: string | null;
     contact_number?: string | null;
     email_verification_token?: string;
@@ -160,6 +162,8 @@ export class UserModel {
         accountHolderName: userData.account_holder_name ?? null,
         accountNumber: userData.account_number ?? null,
         bankBranch: userData.bank_branch ?? null,
+        bankBranchCode: userData.bank_branch_code ?? null,
+        swiftCode: userData.swift_code ?? null,
         companyName: userData.company_name ?? null,
         contactNumber: userData.contact_number ?? null,
         mustChangePassword: true,
@@ -270,3 +274,8 @@ export class UserModel {
     return `EMP${year}${sequence}`;
   }
 }
+
+// Alias matching the "tbl_employee" naming this model's underlying table was
+// renamed to (drizzle/0009_tbl_prefix_and_employee_type.sql) - several test
+// files already import this name.
+export { UserModel as EmployeeModel };

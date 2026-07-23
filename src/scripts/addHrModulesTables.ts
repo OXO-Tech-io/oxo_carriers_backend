@@ -26,8 +26,8 @@ async function addHrModulesTables() {
       await pool.query(`
         CREATE TABLE employee_notes (
           id serial PRIMARY KEY,
-          employee_user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          author_user_id integer REFERENCES users(id) ON DELETE SET NULL,
+          employee_user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
+          author_user_id integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           content text NOT NULL,
           created_at timestamp DEFAULT now(),
           updated_at timestamp DEFAULT now()
@@ -44,7 +44,7 @@ async function addHrModulesTables() {
           id serial PRIMARY KEY,
           title varchar(255) NOT NULL,
           body text NOT NULL,
-          created_by integer REFERENCES users(id) ON DELETE SET NULL,
+          created_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           created_at timestamp DEFAULT now()
         )
       `);
@@ -58,7 +58,7 @@ async function addHrModulesTables() {
         CREATE TABLE communication_recipients (
           id serial PRIMARY KEY,
           communication_id integer NOT NULL REFERENCES communications(id) ON DELETE CASCADE,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           email_sent_at timestamp,
           responded_at timestamp,
           response_text text
@@ -77,7 +77,7 @@ async function addHrModulesTables() {
           description text,
           event_date timestamp NOT NULL,
           location varchar(255),
-          created_by integer REFERENCES users(id) ON DELETE SET NULL,
+          created_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           created_at timestamp DEFAULT now()
         )
       `);
@@ -91,9 +91,9 @@ async function addHrModulesTables() {
         CREATE TABLE event_participants (
           id serial PRIMARY KEY,
           event_id integer NOT NULL REFERENCES events(id) ON DELETE CASCADE,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           participated boolean NOT NULL DEFAULT false,
-          recorded_by integer REFERENCES users(id) ON DELETE SET NULL,
+          recorded_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           recorded_at timestamp DEFAULT now()
         )
       `);
@@ -123,7 +123,7 @@ async function addHrModulesTables() {
           title varchar(255) NOT NULL,
           description text,
           status form_status NOT NULL DEFAULT 'draft',
-          created_by integer REFERENCES users(id) ON DELETE SET NULL,
+          created_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           created_at timestamp DEFAULT now(),
           updated_at timestamp DEFAULT now()
         )
@@ -155,7 +155,7 @@ async function addHrModulesTables() {
         CREATE TABLE form_distributions (
           id serial PRIMARY KEY,
           form_id integer NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           distributed_at timestamp DEFAULT now()
         )
       `);
@@ -169,7 +169,7 @@ async function addHrModulesTables() {
         CREATE TABLE form_responses (
           id serial PRIMARY KEY,
           form_id integer NOT NULL REFERENCES forms(id) ON DELETE CASCADE,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           submitted_at timestamp DEFAULT now()
         )
       `);
@@ -196,7 +196,7 @@ async function addHrModulesTables() {
       await pool.query(`
         CREATE TABLE work_logs (
           id serial PRIMARY KEY,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           work_date date NOT NULL,
           task_description text NOT NULL,
           hours_spent numeric(5, 2) NOT NULL,

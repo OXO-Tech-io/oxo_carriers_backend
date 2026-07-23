@@ -31,12 +31,18 @@ import permissionRoutes from './routes/permissionRoutes';
 import profileChangeRequestRoutes from './routes/profileChangeRequestRoutes';
 import employeeEducationRoutes from './routes/employeeEducationRoutes';
 import employeeWorkHistoryRoutes from './routes/employeeWorkHistoryRoutes';
+import employeePiiRoutes from './routes/employeePiiRoutes';
+import employeeNomineeRoutes from './routes/employeeNomineeRoutes';
+import employeeDependentRoutes from './routes/employeeDependentRoutes';
+import employeeEmergencyContactRoutes from './routes/employeeEmergencyContactRoutes';
+import employeeWelfareInfoRoutes from './routes/employeeWelfareInfoRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import employeeNoteRoutes from './routes/employeeNoteRoutes';
 import communicationRoutes from './routes/communicationRoutes';
 import eventRoutes from './routes/eventRoutes';
 import formRoutes from './routes/formRoutes';
 import workLogRoutes from './routes/workLogRoutes';
+import groupRoutes from './routes/groupRoutes';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -217,12 +223,18 @@ app.use('/api/permissions', permissionRoutes);
 app.use('/api/profile-change-requests', profileChangeRequestRoutes);
 app.use('/api/employees/:employeeId/educations', employeeEducationRoutes);
 app.use('/api/employees/:employeeId/work-histories', employeeWorkHistoryRoutes);
+app.use('/api/employee-pii', employeePiiRoutes);
+app.use('/api/employees/:employeeId/nominees', employeeNomineeRoutes);
+app.use('/api/employees/:employeeId/dependents', employeeDependentRoutes);
+app.use('/api/employees/:employeeId/emergency-contacts', employeeEmergencyContactRoutes);
+app.use('/api/employees/:employeeId/welfare-info', employeeWelfareInfoRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/employee-notes', employeeNoteRoutes);
 app.use('/api/communications', communicationRoutes);
 app.use('/api/events', eventRoutes);
 app.use('/api/forms', formRoutes);
 app.use('/api/work-logs', workLogRoutes);
+app.use('/api/groups', groupRoutes);
 
 // Backward-compatible mounts without the /api prefix (legacy routes only -
 // the modules above were introduced alongside these mounts and have no
@@ -426,7 +438,11 @@ app.use((req, res) => {
       'GET /api/employee-education',
       'GET /api/employee-work-history',
       'GET /api/notifications',
-      'GET /api/employee-pii/:id',
+      'GET /api/employee-pii/:userId',
+      'GET /api/employees/:employeeId/nominees',
+      'GET /api/employees/:employeeId/dependents',
+      'GET /api/employees/:employeeId/emergency-contacts',
+      'GET /api/employees/:employeeId/welfare-info',
       'POST /api/employee-notes',
       'GET /api/employee-notes/employee/:employeeUserId',
       'GET /api/communications',
@@ -477,12 +493,12 @@ const startServer = async () => {
 
         // 1. Self-seed default leave types if empty
         try {
-          const typesCountRes = await pool.query('SELECT COUNT(*) FROM leave_types');
+          const typesCountRes = await pool.query('SELECT COUNT(*) FROM tbl_leave_types');
           const count = parseInt(typesCountRes.rows[0]?.count || '0');
           if (count === 0) {
-            logger.info('🌱 Database leave_types table is empty. Inserting default leave types...');
+            logger.info('🌱 Database tbl_leave_types table is empty. Inserting default leave types...');
             await pool.query(`
-              INSERT INTO leave_types (name, description, max_days, is_active) VALUES
+              INSERT INTO tbl_leave_types (name, description, max_days, is_active) VALUES
               ('Annual Leave', 'Annual paid leave', 21, true),
               ('Sick Leave', 'Medical sick leave', 14, true),
               ('Casual Leave', 'Short notice casual leave', 7, true)
@@ -496,19 +512,19 @@ const startServer = async () => {
         // 2. Initialize missing leave balances for existing employees
         try {
           logger.info('⚙️ Checking leave balances for existing employees...');
-          const employeesRes = await pool.query("SELECT id, hire_date FROM users WHERE role = 'employee'");
+          const employeesRes = await pool.query("SELECT id, hire_date FROM tbl_employee WHERE role = 'employee'");
           const employees = employeesRes.rows || [];
-          
-          const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM leave_types WHERE is_active = true");
+
+          const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true");
           const leaveTypes = leaveTypesRes.rows || [];
-          
+
           const currentYear = new Date().getFullYear();
           let initializedBalancesCount = 0;
 
           for (const emp of employees) {
             for (const type of leaveTypes) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+                'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
                 [emp.id, type.id, currentYear]
               );
               if (checkRes.rows.length === 0) {
@@ -522,7 +538,7 @@ const startServer = async () => {
                   totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
                 }
                 await pool.query(
-                  'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
+                  'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
                   [emp.id, type.id, totalDays, currentYear]
                 );
                 initializedBalancesCount++;
@@ -541,7 +557,7 @@ const startServer = async () => {
         // 3. Assign default permissions to existing employee accounts if they don't already have them
         try {
           logger.info('⚙️ Checking default permissions for existing employees...');
-          const employeesRes = await pool.query("SELECT id FROM users WHERE role = 'employee'");
+          const employeesRes = await pool.query("SELECT id FROM tbl_employee WHERE role = 'employee'");
           const employeeIds = (employeesRes.rows || []).map((row: any) => row.id);
           const defaultPermissions = [
             'dashboard',
@@ -558,12 +574,12 @@ const startServer = async () => {
           for (const empId of employeeIds) {
             for (const permission of defaultPermissions) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+                'SELECT 1 FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
                 [empId, permission]
               );
               if (checkRes.rows.length === 0) {
                 await pool.query(
-                  'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                  'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
                   [empId, permission, 'read']
                 );
                 assignedCount++;
@@ -585,24 +601,24 @@ const startServer = async () => {
         try {
           logger.info('⚙️ Checking profile_change_requests permission for HR users...');
           const hrRes = await pool.query(
-            "SELECT id FROM users WHERE role IN ('hr_manager', 'hr_executive')"
+            "SELECT id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
           );
           const hrIds = (hrRes.rows || []).map((row: any) => row.id);
           let hrAssignedCount = 0;
           for (const hrId of hrIds) {
             const checkRes = await pool.query(
-              'SELECT access_level FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
               [hrId, 'profile_change_requests']
             );
             if (checkRes.rows.length === 0) {
               await pool.query(
-                'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
                 [hrId, 'profile_change_requests', 'write']
               );
               hrAssignedCount++;
             } else if (checkRes.rows[0].access_level !== 'write') {
               await pool.query(
-                'UPDATE user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
                 [hrId, 'profile_change_requests', 'write']
               );
               hrAssignedCount++;
@@ -623,7 +639,7 @@ const startServer = async () => {
         try {
           logger.info('⚙️ Checking HR modules permissions for HR users...');
           const hrRes = await pool.query(
-            "SELECT id, role FROM users WHERE role IN ('hr_manager', 'hr_executive')"
+            "SELECT id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
           );
           const grants: { userId: number; key: string }[] = [];
           for (const row of hrRes.rows as any[]) {
@@ -637,18 +653,18 @@ const startServer = async () => {
           let hrModuleGrantCount = 0;
           for (const grant of grants) {
             const checkRes = await pool.query(
-              'SELECT access_level FROM user_permissions WHERE user_id = $1 AND permission_key = $2',
+              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
               [grant.userId, grant.key]
             );
             if (checkRes.rows.length === 0) {
               await pool.query(
-                'INSERT INTO user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
                 [grant.userId, grant.key, 'write']
               );
               hrModuleGrantCount++;
             } else if (checkRes.rows[0].access_level !== 'write') {
               await pool.query(
-                'UPDATE user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
                 [grant.userId, grant.key, 'write']
               );
               hrModuleGrantCount++;

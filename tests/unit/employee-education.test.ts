@@ -15,6 +15,7 @@ describe("EmployeeEducationModel", () => {
     testUser = await EmployeeModel.create({
       employee_id: testEmployeeId,
       email: testEmail,
+      password: "Test1234!",
       first_name: "Test",
       last_name: "Edu User",
       role: UserRole.EMPLOYEE,

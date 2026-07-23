@@ -4,6 +4,7 @@ import { FormDistributionModel } from '../models/FormDistribution';
 import { FormResponseModel } from '../models/FormResponse';
 import { AttachmentModel, type AttachmentFileInput } from '../models/Attachment';
 import { UserModel } from '../models/User';
+import { groupService } from './group.service';
 import { notificationService } from './notification.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../utils/AppError';
 import { CreateFormInput } from '../validators/form.validator';
@@ -30,12 +31,14 @@ export const formService = {
     return form;
   },
 
-  async distribute(formId: number, userIds: number[]) {
+  async distribute(formId: number, userIds: number[], groupIds: number[] = []) {
     const form = await FormModel.findById(formId);
     if (!form) throw new NotFoundError('Form not found');
-    const distributions = await FormDistributionModel.createMany(formId, userIds);
+    const groupMemberIds = await groupService.resolveMemberUserIds(groupIds);
+    const resolvedUserIds = [...new Set([...userIds, ...groupMemberIds])];
+    const distributions = await FormDistributionModel.createMany(formId, resolvedUserIds);
     await notificationService.notifyMany(
-      userIds,
+      resolvedUserIds,
       'form',
       `New form: ${form.title}`,
       'HR has assigned you a form to fill out.',

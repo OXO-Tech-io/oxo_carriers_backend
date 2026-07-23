@@ -29,8 +29,8 @@ export const publish = async (req: Request, res: Response) => {
 
 export const distribute = async (req: Request, res: Response) => {
   const { id } = req.params as unknown as FormIdParam;
-  const { userIds } = req.body as DistributeFormInput;
-  const result = await formService.distribute(id, userIds);
+  const { userIds, groupIds } = req.body as DistributeFormInput;
+  const result = await formService.distribute(id, userIds, groupIds);
   ok(res, result, 'Form distributed');
 };
 

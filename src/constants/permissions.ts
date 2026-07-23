@@ -21,6 +21,7 @@ export const PERMISSIONS = {
   EVENTS: "events",
   FORMS: "forms",
   WORK_LOGS: "work_logs",
+  GROUPS: "groups",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -52,7 +53,8 @@ export interface PermissionDefinition {
     | "communications"
     | "events"
     | "forms"
-    | "work_logs";
+    | "work_logs"
+    | "groups";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -189,6 +191,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     label: "Work Logs",
     description: "Write access lets HR Manager view all employee work log submissions.",
     group: "work_logs",
+  },
+  {
+    key: PERMISSIONS.GROUPS,
+    label: "Groups",
+    description:
+      "Can create and manage employee groups (name, members), and use them as recipients for communications and forms.",
+    group: "groups",
   },
 ];
 

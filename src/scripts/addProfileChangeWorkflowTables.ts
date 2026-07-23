@@ -16,11 +16,11 @@ async function addProfileChangeWorkflowTables() {
     const userColRes = await pool.query(`
       SELECT column_name FROM information_schema.columns
       WHERE table_schema = current_schema()
-        AND table_name = 'users'
+        AND table_name = 'tbl_employee'
         AND column_name = 'undergraduate_degree_completion_date'
     `);
     if (userColRes.rows.length === 0) {
-      await pool.query(`ALTER TABLE users ADD COLUMN undergraduate_degree_completion_date date`);
+      await pool.query(`ALTER TABLE tbl_employee ADD COLUMN undergraduate_degree_completion_date date`);
       console.log('  ✓ Added users.undergraduate_degree_completion_date');
     } else {
       console.log('  ✓ users.undergraduate_degree_completion_date already exists');
@@ -48,7 +48,7 @@ async function addProfileChangeWorkflowTables() {
       await pool.query(`
         CREATE TABLE employee_education (
           id serial PRIMARY KEY,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           qualification_level qualification_level NOT NULL,
           qualification_title varchar(255) NOT NULL,
           awarding_institution varchar(255) NOT NULL,
@@ -72,7 +72,7 @@ async function addProfileChangeWorkflowTables() {
       await pool.query(`
         CREATE TABLE employee_work_history (
           id serial PRIMARY KEY,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           organization varchar(255) NOT NULL,
           position_held varchar(255) NOT NULL,
           start_date date NOT NULL,
@@ -108,12 +108,12 @@ async function addProfileChangeWorkflowTables() {
       await pool.query(`
         CREATE TABLE profile_change_requests (
           id serial PRIMARY KEY,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-          submitted_by integer REFERENCES users(id) ON DELETE SET NULL,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
+          submitted_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           status profile_change_status DEFAULT 'pending_approval',
           changes json NOT NULL,
           comments text,
-          reviewer_id integer REFERENCES users(id) ON DELETE SET NULL,
+          reviewer_id integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           reviewer_comments text,
           decided_at timestamp,
           previous_request_id integer,
@@ -135,7 +135,7 @@ async function addProfileChangeWorkflowTables() {
       await pool.query(`
         CREATE TABLE notifications (
           id serial PRIMARY KEY,
-          user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          user_id integer NOT NULL REFERENCES tbl_employee(id) ON DELETE CASCADE,
           type varchar(100) NOT NULL,
           title varchar(255) NOT NULL,
           message text NOT NULL,
@@ -166,7 +166,7 @@ async function addProfileChangeWorkflowTables() {
           file_name varchar(255) NOT NULL,
           mime_type varchar(150),
           file_size integer,
-          uploaded_by integer REFERENCES users(id) ON DELETE SET NULL,
+          uploaded_by integer REFERENCES tbl_employee(id) ON DELETE SET NULL,
           created_at timestamp DEFAULT now()
         )
       `);

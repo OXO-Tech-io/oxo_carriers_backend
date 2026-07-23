@@ -27,7 +27,7 @@ export class MedicalInsuranceModel {
     resubmission_of?: number | null;
   }): Promise<MedicalInsuranceClaim> {
     const result = await pool.query(
-      `INSERT INTO medical_insurance_claims (user_id, type, quarter, amount, supportive_document_url, relevant_document_url, resubmission_of, status)
+      `INSERT INTO tbl_medical_insurance_claims (user_id, type, quarter, amount, supportive_document_url, relevant_document_url, resubmission_of, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
         claim.user_id,
@@ -48,8 +48,8 @@ export class MedicalInsuranceModel {
   static async findById(id: number): Promise<MedicalInsuranceClaim | null> {
     const result = await pool.query(
       `SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
-       FROM medical_insurance_claims mc
-       LEFT JOIN users u ON mc.user_id = u.id
+       FROM tbl_medical_insurance_claims mc
+       LEFT JOIN tbl_employee u ON mc.user_id = u.id
        WHERE mc.id = $1`,
       [id]
     );
@@ -61,8 +61,8 @@ export class MedicalInsuranceModel {
   static async findByUserId(userId: number, filters?: { status?: MedicalClaimStatus }): Promise<MedicalInsuranceClaim[]> {
     let query = `
       SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
-      FROM medical_insurance_claims mc
-      LEFT JOIN users u ON mc.user_id = u.id
+      FROM tbl_medical_insurance_claims mc
+      LEFT JOIN tbl_employee u ON mc.user_id = u.id
       WHERE mc.user_id = $1
     `;
     const params: any[] = [userId];
@@ -78,8 +78,8 @@ export class MedicalInsuranceModel {
   static async getAll(filters?: { status?: MedicalClaimStatus; type?: MedicalClaimType }): Promise<MedicalInsuranceClaim[]> {
     let query = `
       SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
-      FROM medical_insurance_claims mc
-      LEFT JOIN users u ON mc.user_id = u.id
+      FROM tbl_medical_insurance_claims mc
+      LEFT JOIN tbl_employee u ON mc.user_id = u.id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -99,7 +99,7 @@ export class MedicalInsuranceModel {
   static async getUsedOPDAmountForQuarter(userId: number, quarter: string): Promise<number> {
     const result = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total
-       FROM medical_insurance_claims
+       FROM tbl_medical_insurance_claims
        WHERE user_id = $1 AND quarter = $2 AND type = 'OPD' AND status = 'approved'`,
       [userId, quarter]
     );
@@ -114,7 +114,7 @@ export class MedicalInsuranceModel {
     adminComment?: string | null
   ): Promise<MedicalInsuranceClaim | null> {
     await pool.query(
-      `UPDATE medical_insurance_claims SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
+      `UPDATE tbl_medical_insurance_claims SET status = $1, admin_comment = $2, reviewed_by = $3, reviewed_at = NOW() WHERE id = $4`,
       [status, adminComment ?? null, reviewedBy, id]
     );
     return this.findById(id);
