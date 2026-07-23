@@ -25,7 +25,10 @@
     "db:add-event-participation-intent": "ts-node src/scripts/addEventParticipationIntent.ts",
     "db:add-profile-tab-fields": "ts-node src/scripts/addProfileTabFields.ts",
     "db:widen-bank-code-columns": "ts-node src/scripts/widenBankCodeColumns.ts",
-    "db:add-groups-tables": "ts-node src/scripts/addGroupsTables.ts"
+    "db:add-groups-tables": "ts-node src/scripts/addGroupsTables.ts",
+    "db:add-form-builder-tables": "ts-node src/scripts/addFormBuilderTables.ts",
+    "db:migrate-form-fields": "ts-node src/scripts/migrateFormFieldsToQuestions.ts",
+    "db:fix-form-response-answers-field-id": "ts-node src/scripts/fixFormResponseAnswersFieldId.ts"
   },
   "keywords": [],
   "author": "",

@@ -40,6 +40,14 @@ import {
   getCommunicationEmailHtml,
   CommunicationEmailParams
 } from '../templates/communicationTemplates';
+import {
+  getFormResponseNotificationHtml,
+  getFormSubmissionConfirmationHtml,
+  getFormDistributionHtml,
+  FormResponseNotificationParams,
+  FormSubmissionConfirmationParams,
+  FormDistributionParams
+} from '../templates/formTemplates';
 
 const log = baseLogger.child({ module: 'email' });
 
@@ -360,6 +368,26 @@ export const sendProfileChangeReturnedEmail = async (email: string, params: Prof
 export const sendCommunicationEmail = async (email: string, params: CommunicationEmailParams) => {
   const html = getCommunicationEmailHtml(params);
   return sendHtmlEmail(email, params.title, html);
+};
+
+// ─── Form response email helpers ──────────────────────────────────────────────
+
+export const sendFormResponseNotificationEmail = async (email: string, params: FormResponseNotificationParams) => {
+  const html = getFormResponseNotificationHtml(params);
+  const subject = `New response - ${params.formTitle}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendFormSubmissionConfirmationEmail = async (email: string, params: FormSubmissionConfirmationParams) => {
+  const html = getFormSubmissionConfirmationHtml(params);
+  const subject = `Response Received - ${params.formTitle}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendFormDistributionEmail = async (email: string, params: FormDistributionParams) => {
+  const html = getFormDistributionHtml(params);
+  const subject = `New form to fill out - ${params.formTitle}`;
+  return sendHtmlEmail(email, subject, html);
 };
 
 // ─── Diagnostic helpers ───────────────────────────────────────────────────────

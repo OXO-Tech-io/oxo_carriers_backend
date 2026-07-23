@@ -4,38 +4,37 @@ import {
   formResponseAnswers,
   type FormResponse as DrizzleFormResponse,
   type FormResponseAnswer as DrizzleFormResponseAnswer,
-  type NewFormResponseAnswer,
 } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
 
-export type SubmitAnswerInput = {
-  fieldId: number;
+export type UpsertAnswerInput = {
+  responseId: number;
+  questionId: number;
   valueText?: string | null;
+  value?: unknown;
 };
 
 export class FormResponseModel {
-  static async create(formId: number, userId: number, answers: SubmitAnswerInput[]): Promise<DrizzleFormResponse> {
-    return db.transaction(async (tx) => {
-      const [response] = await tx.insert(formResponses).values({ formId, userId }).returning();
-      if (!response) throw new Error('Failed to create form response');
-
-      const answerRows: NewFormResponseAnswer[] = answers.map((a) => ({
-        responseId: response.id,
-        fieldId: a.fieldId,
-        valueText: a.valueText ?? null,
-      }));
-      if (answerRows.length) {
-        await tx.insert(formResponseAnswers).values(answerRows).returning();
-      }
-      return response;
-    });
+  static async createInProgress(formId: number, userId: number): Promise<DrizzleFormResponse> {
+    const [response] = await db
+      .insert(formResponses)
+      .values({ formId, userId, status: 'in_progress', startedAt: new Date() })
+      .returning();
+    if (!response) throw new Error('Failed to create form response');
+    return response;
   }
 
-  /** File-type answers are added after `create()` once the file has been saved to disk. */
-  static async addFileAnswer(responseId: number, fieldId: number): Promise<DrizzleFormResponseAnswer> {
-    const [answer] = await db.insert(formResponseAnswers).values({ responseId, fieldId, valueText: null }).returning();
-    if (!answer) throw new Error('Failed to create form response file answer');
-    return answer;
+  static async markSubmitted(id: number, completionMs: number): Promise<DrizzleFormResponse | null> {
+    await db
+      .update(formResponses)
+      .set({ status: 'submitted', submittedAt: new Date(), completionMs })
+      .where(eq(formResponses.id, id));
+    return this.findById(id);
+  }
+
+  static async findById(id: number): Promise<DrizzleFormResponse | null> {
+    const record = await db.query.formResponses.findFirst({ where: eq(formResponses.id, id) });
+    return record ?? null;
   }
 
   static async findByFormAndUser(formId: number, userId: number): Promise<DrizzleFormResponse | null> {
@@ -48,8 +47,39 @@ export class FormResponseModel {
   static async listByFormId(formId: number): Promise<DrizzleFormResponse[]> {
     return db.query.formResponses.findMany({
       where: eq(formResponses.formId, formId),
-      orderBy: (t, { desc }) => [desc(t.submittedAt)],
+      orderBy: (t, { desc }) => [desc(t.startedAt)],
     });
+  }
+
+  static async delete(id: number): Promise<void> {
+    await db.delete(formResponses).where(eq(formResponses.id, id));
+  }
+
+  /** Upserts by (responseId, questionId) - autosave/resubmit updates the same answer row in place. */
+  static async upsertAnswer(input: UpsertAnswerInput): Promise<DrizzleFormResponseAnswer> {
+    const existing = await db.query.formResponseAnswers.findFirst({
+      where: and(eq(formResponseAnswers.responseId, input.responseId), eq(formResponseAnswers.questionId, input.questionId)),
+    });
+    if (existing) {
+      const [updated] = await db
+        .update(formResponseAnswers)
+        .set({ valueText: input.valueText ?? null, value: input.value ?? {} })
+        .where(eq(formResponseAnswers.id, existing.id))
+        .returning();
+      if (!updated) throw new Error('Failed to update form response answer');
+      return updated;
+    }
+    const [inserted] = await db
+      .insert(formResponseAnswers)
+      .values({
+        responseId: input.responseId,
+        questionId: input.questionId,
+        valueText: input.valueText ?? null,
+        value: input.value ?? {},
+      })
+      .returning();
+    if (!inserted) throw new Error('Failed to create form response answer');
+    return inserted;
   }
 
   static async listAnswersByResponseId(responseId: number): Promise<DrizzleFormResponseAnswer[]> {
