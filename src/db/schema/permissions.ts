@@ -6,6 +6,8 @@ import { employee } from './employee';
 export const accessLevelEnum = pgEnum('access_level', ['read', 'write']);
 
 // User Permissions Table
+// Renamed user_permissions -> tbl_user_permissions by
+// drizzle/0009_tbl_prefix_and_employee_type.sql.
 export const userPermissions = pgTable('tbl_user_permissions', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),

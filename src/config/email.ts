@@ -29,6 +29,17 @@ import {
   getVoucherRejectedHtml,
   VoucherEmailParams
 } from '../templates/voucherTemplates';
+import {
+  getProfileChangeSubmittedEmailHtml,
+  getProfileChangeApprovedEmailHtml,
+  getProfileChangeRejectedEmailHtml,
+  getProfileChangeReturnedEmailHtml,
+  ProfileChangeEmailParams
+} from '../templates/profileChangeTemplates';
+import {
+  getCommunicationEmailHtml,
+  CommunicationEmailParams
+} from '../templates/communicationTemplates';
 
 const log = baseLogger.child({ module: 'email' });
 
@@ -316,6 +327,39 @@ export const sendVoucherRejectedEmail = async (email: string, params: VoucherEma
   const html = getVoucherRejectedHtml(params);
   const subject = `Voucher Request Rejected`;
   return sendHtmlEmail(email, subject, html);
+};
+
+// ─── Profile change request email helpers ─────────────────────────────────────
+
+export const sendProfileChangeSubmittedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeSubmittedEmailHtml(params);
+  const subject = `Profile Change Request Submitted - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeApprovedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeApprovedEmailHtml(params);
+  const subject = `Profile Change Request Approved - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeRejectedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeRejectedEmailHtml(params);
+  const subject = `Profile Change Request Rejected - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeReturnedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeReturnedEmailHtml(params);
+  const subject = `Profile Change Request Returned for Modification - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+// ─── Employee communication email helpers ─────────────────────────────────────
+
+export const sendCommunicationEmail = async (email: string, params: CommunicationEmailParams) => {
+  const html = getCommunicationEmailHtml(params);
+  return sendHtmlEmail(email, params.title, html);
 };
 
 // ─── Diagnostic helpers ───────────────────────────────────────────────────────

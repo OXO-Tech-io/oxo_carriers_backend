@@ -23,15 +23,15 @@ export function encryptSalary(amount: string | number | null | undefined): strin
   if (amount === null || amount === undefined) {
     return null;
   }
-  
+
   const textToEncrypt = String(amount);
   const key = getKeyBuffer();
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  
+
   let encrypted = cipher.update(textToEncrypt, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  
+
   return `${iv.toString('hex')}:${encrypted}`;
 }
 
@@ -55,10 +55,10 @@ export function decryptSalary(encryptedText: string | null | undefined): string 
     const encryptedHex = parts[1];
     const key = getKeyBuffer();
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    
+
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
-    
+
     return decrypted;
   } catch (error: any) {
     // Fallback if decryption fails (e.g. data wasn't encrypted or key mismatch)
@@ -82,15 +82,15 @@ export function encryptPII(value: string | number | null | undefined): string | 
   if (value === null || value === undefined) {
     return null;
   }
-  
+
   const textToEncrypt = String(value);
   const key = getPiiKeyBuffer();
   const iv = crypto.randomBytes(IV_LENGTH);
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
-  
+
   let encrypted = cipher.update(textToEncrypt, 'utf8', 'hex');
   encrypted += cipher.final('hex');
-  
+
   return `${iv.toString('hex')}:${encrypted}`;
 }
 
@@ -114,10 +114,10 @@ export function decryptPII(encryptedText: string | null | undefined): string | n
     const encryptedHex = parts[1];
     const key = getPiiKeyBuffer();
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-    
+
     let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
-    
+
     return decrypted;
   } catch (error: any) {
     // Fallback if decryption fails (e.g. data wasn't encrypted or key mismatch)

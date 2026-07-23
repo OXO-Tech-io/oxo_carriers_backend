@@ -2,6 +2,13 @@ import pool from '../config/database';
 import { ConsultantWorkSubmission as CWS, ConsultantSubmissionStatus } from '../types';
 import { decryptPII } from '../utils/encryption';
 
+// drizzle/0009_tbl_prefix_and_employee_type.sql renamed consultant_work_submissions
+// -> tbl_consultant_work_submissions and users -> tbl_employee, and swapped this
+// table's FK from a numeric user_id to a business employee_id (varchar, FK to
+// tbl_employee.employee_id) - user_id no longer exists as a column. To avoid
+// rippling that change through the controller/types/frontend (which all deal
+// in numeric user ids), every query here still accepts/returns numeric
+// user_id, resolving to/from employee_id internally via the tbl_employee join.
 export class ConsultantWorkSubmissionModel {
   static async create(data: {
     employee_id: string;

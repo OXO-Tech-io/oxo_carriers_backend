@@ -22,6 +22,8 @@ export const userRoleEnum = pgEnum('user_role', [
     'service_provider',
 ]);
 
+export const userTitleEnum = pgEnum('user_title', ['mr', 'ms', 'mrs', 'dr', 'prof']);
+
 // Employee Type Table (e.g. permanent, contract, intern)
 export const employeeType = pgTable('tbl_employee_type', {
     id: serial('id').primaryKey(),
@@ -41,6 +43,7 @@ export const employee = pgTable('tbl_employee', {
     emailVerified: boolean('email_verified').default(false),
     emailVerificationToken: varchar('email_verification_token', { length: 255 }),
     role: userRoleEnum('role').notNull(),
+    title: userTitleEnum('title'),
     employeeTypeId: integer('employee_type_id').references(() => employeeType.id),
     department: varchar('department', { length: 100 }),
     position: varchar('position', { length: 100 }),
@@ -49,8 +52,11 @@ export const employee = pgTable('tbl_employee', {
     accountHolderName: varchar('account_holder_name', { length: 500 }),
     accountNumber: varchar('account_number', { length: 500 }),
     bankBranch: varchar('bank_branch', { length: 500 }),
+    bankBranchCode: varchar('bank_branch_code', { length: 500 }),
+    swiftCode: varchar('swift_code', { length: 500 }),
     companyName: varchar('company_name', { length: 500 }),
     contactNumber: varchar('contact_number', { length: 500 }),
+    undergraduateDegreeCompletionDate: date('undergraduate_degree_completion_date'),
     hireDate: date('hire_date'),
     managerId: integer('manager_id'),
     createdAt: timestamp('created_at').defaultNow(),

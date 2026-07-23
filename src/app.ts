@@ -27,6 +27,21 @@ import consultantSubmissionRoutes from './routes/consultantSubmissionRoutes';
 import voucherRoutes from './routes/voucherRoutes';
 import vendorRoutes from './routes/vendorRoutes';
 import permissionRoutes from './routes/permissionRoutes';
+import profileChangeRequestRoutes from './routes/profileChangeRequestRoutes';
+import employeeEducationRoutes from './routes/employeeEducationRoutes';
+import employeeWorkHistoryRoutes from './routes/employeeWorkHistoryRoutes';
+import employeePiiRoutes from './routes/employeePiiRoutes';
+import employeeNomineeRoutes from './routes/employeeNomineeRoutes';
+import employeeDependentRoutes from './routes/employeeDependentRoutes';
+import employeeEmergencyContactRoutes from './routes/employeeEmergencyContactRoutes';
+import employeeWelfareInfoRoutes from './routes/employeeWelfareInfoRoutes';
+import notificationRoutes from './routes/notificationRoutes';
+import employeeNoteRoutes from './routes/employeeNoteRoutes';
+import communicationRoutes from './routes/communicationRoutes';
+import eventRoutes from './routes/eventRoutes';
+import formRoutes from './routes/formRoutes';
+import workLogRoutes from './routes/workLogRoutes';
+import groupRoutes from './routes/groupRoutes';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -203,8 +218,25 @@ app.use('/api/consultant-submissions', consultantSubmissionRoutes);
 app.use('/api/vouchers', voucherRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/permissions', permissionRoutes);
+app.use('/api/profile-change-requests', profileChangeRequestRoutes);
+app.use('/api/employees/:employeeId/educations', employeeEducationRoutes);
+app.use('/api/employees/:employeeId/work-histories', employeeWorkHistoryRoutes);
+app.use('/api/employee-pii', employeePiiRoutes);
+app.use('/api/employees/:employeeId/nominees', employeeNomineeRoutes);
+app.use('/api/employees/:employeeId/dependents', employeeDependentRoutes);
+app.use('/api/employees/:employeeId/emergency-contacts', employeeEmergencyContactRoutes);
+app.use('/api/employees/:employeeId/welfare-info', employeeWelfareInfoRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/employee-notes', employeeNoteRoutes);
+app.use('/api/communications', communicationRoutes);
+app.use('/api/events', eventRoutes);
+app.use('/api/forms', formRoutes);
+app.use('/api/work-logs', workLogRoutes);
+app.use('/api/groups', groupRoutes);
 
-// Backward-compatible mounts without the /api prefix
+// Backward-compatible mounts without the /api prefix (legacy routes only -
+// the modules above were introduced alongside these mounts and have no
+// existing non-prefixed callers, so they're intentionally not duplicated here)
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/leaves', leaveRoutes);
@@ -400,6 +432,23 @@ app.use((req, res) => {
       'GET /api/consultant-submissions',
       'GET /api/vouchers',
       'GET /api/vendors',
+      'GET /api/profile-change-requests',
+      'GET /api/employee-education',
+      'GET /api/employee-work-history',
+      'GET /api/notifications',
+      'GET /api/employee-pii/:userId',
+      'GET /api/employees/:employeeId/nominees',
+      'GET /api/employees/:employeeId/dependents',
+      'GET /api/employees/:employeeId/emergency-contacts',
+      'GET /api/employees/:employeeId/welfare-info',
+      'POST /api/employee-notes',
+      'GET /api/employee-notes/employee/:employeeUserId',
+      'GET /api/communications',
+      'GET /api/communications/mine',
+      'GET /api/events',
+      'GET /api/forms',
+      'GET /api/forms/mine',
+      'GET /api/work-logs/mine',
     ],
   });
 });
@@ -445,7 +494,7 @@ const startServer = async () => {
           const typesCountRes = await pool.query('SELECT COUNT(*) FROM tbl_leave_types');
           const count = parseInt(typesCountRes.rows[0]?.count || '0');
           if (count === 0) {
-            logger.info('🌱 Database leave_types table is empty. Inserting default leave types...');
+            logger.info('🌱 Database tbl_leave_types table is empty. Inserting default leave types...');
             await pool.query(`
               INSERT INTO tbl_leave_types (name, description, max_days, is_active) VALUES
               ('Annual Leave', 'Annual paid leave', 21, true),
@@ -466,7 +515,7 @@ const startServer = async () => {
 
           const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true");
           const leaveTypes = leaveTypesRes.rows || [];
-          
+
           const currentYear = new Date().getFullYear();
           let initializedBalancesCount = 0;
 
@@ -515,6 +564,9 @@ const startServer = async () => {
             'facilities',
             'medical_claims',
             'reports',
+            'work_logs',
+            'communications',
+            'forms',
           ];
           let assignedCount = 0;
           for (const empId of employeeIds) {
@@ -539,6 +591,90 @@ const startServer = async () => {
           }
         } catch (syncError: any) {
           logger.error({ err: syncError }, 'Failed to check/assign default employee permissions on startup');
+        }
+
+        // 4. Grant HR managers/executives write access to Profile Change Requests
+        // so the "Profile Approvals" nav item appears immediately post-deploy,
+        // without anyone needing to visit the Permissions admin screen first.
+        try {
+          logger.info('⚙️ Checking profile_change_requests permission for HR users...');
+          const hrRes = await pool.query(
+            "SELECT id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
+          );
+          const hrIds = (hrRes.rows || []).map((row: any) => row.id);
+          let hrAssignedCount = 0;
+          for (const hrId of hrIds) {
+            const checkRes = await pool.query(
+              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+              [hrId, 'profile_change_requests']
+            );
+            if (checkRes.rows.length === 0) {
+              await pool.query(
+                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                [hrId, 'profile_change_requests', 'write']
+              );
+              hrAssignedCount++;
+            } else if (checkRes.rows[0].access_level !== 'write') {
+              await pool.query(
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                [hrId, 'profile_change_requests', 'write']
+              );
+              hrAssignedCount++;
+            }
+          }
+          if (hrAssignedCount > 0) {
+            logger.info(`✅ Granted/updated profile_change_requests (write) for ${hrAssignedCount} HR users.`);
+          } else {
+            logger.info('✅ All HR users already have profile_change_requests (write).');
+          }
+        } catch (hrPermError: any) {
+          logger.error({ err: hrPermError }, 'Failed to check/assign HR profile_change_requests permission on startup');
+        }
+
+        // 5. Grant HR managers/executives write access to Communications, Events
+        // and Forms, and HR managers write access to Work Logs, so those nav
+        // items appear immediately post-deploy without a manual admin step.
+        try {
+          logger.info('⚙️ Checking HR modules permissions for HR users...');
+          const hrRes = await pool.query(
+            "SELECT id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
+          );
+          const grants: { userId: number; key: string }[] = [];
+          for (const row of hrRes.rows as any[]) {
+            for (const key of ['communications', 'events', 'forms']) {
+              grants.push({ userId: row.id, key });
+            }
+            if (row.role === 'hr_manager') {
+              grants.push({ userId: row.id, key: 'work_logs' });
+            }
+          }
+          let hrModuleGrantCount = 0;
+          for (const grant of grants) {
+            const checkRes = await pool.query(
+              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+              [grant.userId, grant.key]
+            );
+            if (checkRes.rows.length === 0) {
+              await pool.query(
+                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                [grant.userId, grant.key, 'write']
+              );
+              hrModuleGrantCount++;
+            } else if (checkRes.rows[0].access_level !== 'write') {
+              await pool.query(
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                [grant.userId, grant.key, 'write']
+              );
+              hrModuleGrantCount++;
+            }
+          }
+          if (hrModuleGrantCount > 0) {
+            logger.info(`✅ Granted/updated HR modules permissions for ${hrModuleGrantCount} assignments.`);
+          } else {
+            logger.info('✅ All HR users already have HR modules permissions.');
+          }
+        } catch (hrModuleError: any) {
+          logger.error({ err: hrModuleError }, 'Failed to check/assign HR modules permissions on startup');
         }
       } catch (error) {
         logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');

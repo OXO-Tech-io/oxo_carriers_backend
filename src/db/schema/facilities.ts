@@ -26,7 +26,8 @@ export const bookingStatusEnum = pgEnum('booking_status', [
     'completed',
 ]);
 
-// Facilities Table
+// Renamed facilities -> tbl_facilities, facility_bookings -> tbl_facility_bookings
+// by drizzle/0009_tbl_prefix_and_employee_type.sql.
 export const facilities = pgTable('tbl_facilities', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 100 }).notNull(),

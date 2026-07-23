@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { employee, userPermissions, type Employee as DrizzleEmployee } from '../db/schema';
 import { User, UserRole } from '../types';
-import { eq, like, or, and, sql } from 'drizzle-orm';
+import { eq, like, or, and, sql, inArray } from 'drizzle-orm';
 import { encryptPII, decryptPII } from '../utils/encryption';
 
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
@@ -88,6 +88,10 @@ export class EmployeeModel {
         'facilities',
         'medical_claims',
         'reports',
+        'profile_change_requests',
+        'work_logs',
+        'communications',
+        'forms',
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({
@@ -141,6 +145,8 @@ export class EmployeeModel {
     account_holder_name?: string | null;
     account_number?: string | null;
     bank_branch?: string | null;
+    bank_branch_code?: string | null;
+    swift_code?: string | null;
     company_name?: string | null;
     contact_number?: string | null;
     email_verification_token?: string;
@@ -163,6 +169,8 @@ export class EmployeeModel {
         accountHolderName: encryptPII(userData.account_holder_name) ?? null,
         accountNumber: encryptPII(userData.account_number) ?? null,
         bankBranch: encryptPII(userData.bank_branch) ?? null,
+        bankBranchCode: encryptPII(userData.bank_branch_code) ?? null,
+        swiftCode: encryptPII(userData.swift_code) ?? null,
         companyName: encryptPII(userData.company_name) ?? null,
         contactNumber: encryptPII(userData.contact_number) ?? null,
         emailVerified: false,
@@ -185,6 +193,8 @@ export class EmployeeModel {
       'accountHolderName',
       'accountNumber',
       'bankBranch',
+      'bankBranchCode',
+      'swiftCode',
       'companyName',
       'contactNumber'
     ];
@@ -211,14 +221,18 @@ export class EmployeeModel {
   }
 
   static async getAll(filters?: {
-    role?: UserRole;
+    role?: UserRole | UserRole[];
     department?: string;
     search?: string;
   }): Promise<DrizzleEmployee[]> {
     const conditions = [];
 
     if (filters?.role) {
-      conditions.push(eq(employee.role, filters.role));
+      conditions.push(
+        Array.isArray(filters.role)
+          ? inArray(employee.role, filters.role)
+          : eq(employee.role, filters.role)
+      );
     }
 
     if (filters?.department) {

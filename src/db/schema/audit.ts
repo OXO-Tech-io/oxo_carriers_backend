@@ -3,6 +3,7 @@ import { relations } from 'drizzle-orm';
 import { employee } from './employee';
 
 // Audit Logs Table
+// Renamed audit_logs -> tbl_audit_logs by drizzle/0009_tbl_prefix_and_employee_type.sql.
 export const auditLogs = pgTable('tbl_audit_logs', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').references(() => employee.id, { onDelete: 'set null' }),

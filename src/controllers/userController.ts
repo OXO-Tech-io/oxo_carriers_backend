@@ -1,11 +1,14 @@
 import { Request, Response } from 'express';
 import { EmployeeModel } from '../models/Employee';
+import { EmployeePiiModel } from '../models/EmployeePii';
 import { UserRole } from '../types';
 import pool from '../config/database';
 import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 import { isSuperAdmin } from '../middleware/auth';
 import { keycloakAdminService } from '../services/keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../utils/password';
+import { employeeProfileCreationService } from '../services/employeeProfileCreation.service';
+import { createEmployeeProfileSchema } from '../validators/employeeProfileCreation.validator';
 import { logger } from '../lib/logger';
 
 const log = (req: Request) => req.log ?? logger;
@@ -70,7 +73,11 @@ export const getUserById = async (req: Request, res: Response) => {
       return res.status(404).json({ success: false, message: 'User not found' });
     }
 
-    res.json({ success: true, user });
+    // PII is returned inline rather than through a separate endpoint so
+    // there's a single access-controlled place to view an employee's profile.
+    const pii = user.employeeId ? await EmployeePiiModel.findByEmployeeId(user.employeeId) : null;
+
+    res.json({ success: true, user: { ...user, pii } });
   } catch (error: any) {
     log(req).error({ err: error }, 'Get user failed');
     res.status(500).json({ success: false, message: 'Failed to fetch user', error: error.message });
@@ -103,8 +110,11 @@ export const createUser = async (req: Request, res: Response) => {
       account_holder_name,
       account_number,
       bank_branch,
+      bank_branch_code,
+      swift_code,
       company_name,
       contact_number,
+      profile,
     } = req.body;
 
     const userRoleInput = (role as UserRole) || UserRole.EMPLOYEE;
@@ -125,6 +135,21 @@ export const createUser = async (req: Request, res: Response) => {
 
     if (role === UserRole.CONSULTANT && (hourly_rate == null || hourly_rate === '' || isNaN(parseFloat(hourly_rate)))) {
       return res.status(400).json({ success: false, message: 'Hourly rate is required for Consultant role' });
+    }
+
+    let profileInput: ReturnType<typeof createEmployeeProfileSchema.parse> | undefined;
+    if (profile !== undefined) {
+      const profileParse = createEmployeeProfileSchema.safeParse(profile);
+      if (!profileParse.success) {
+        return res.status(400).json({
+          success: false,
+          message: profileParse.error.issues[0]?.message || 'Invalid profile data',
+        });
+      }
+      if (profileParse.data.dependents?.length && profileParse.data.statutory?.maritalStatus !== 'married') {
+        return res.status(400).json({ success: false, message: 'Dependents can only be added for married employees' });
+      }
+      profileInput = profileParse.data;
     }
 
     const existingUser = await EmployeeModel.findByEmail(email);
@@ -161,9 +186,18 @@ export const createUser = async (req: Request, res: Response) => {
       account_holder_name: account_holder_name || null,
       account_number: account_number || null,
       bank_branch: bank_branch || null,
+      bank_branch_code: bank_branch_code || null,
+      swift_code: swift_code || null,
       company_name: null,
-      contact_number: null,
+      contact_number: contact_number || null,
     });
+
+    if (profileInput) {
+      await employeeProfileCreationService.applyToNewEmployee(
+        { id: user.id, employeeId: user.employeeId! },
+        profileInput
+      );
+    }
 
     // Initialize leave balances only for employee/hr (not consultant or service_provider)
     const isLeaveEligible = userRole === UserRole.EMPLOYEE || userRole === UserRole.HR_MANAGER || userRole === UserRole.HR_EXECUTIVE;
@@ -200,6 +234,9 @@ export const createUser = async (req: Request, res: Response) => {
         'facilities',
         'medical_claims',
         'reports',
+        'work_logs',
+        'communications',
+        'forms',
       ];
       for (const permission of defaultPermissions) {
         await pool.query(

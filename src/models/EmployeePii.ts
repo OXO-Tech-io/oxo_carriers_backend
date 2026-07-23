@@ -2,27 +2,53 @@ import { db } from '../db';
 import { employeePii } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
 import { env } from '../config/env';
+import { pgpDecrypt, pgpEncrypt } from '../utils/pgpCrypto';
+
+type DbExecutor = Pick<typeof db, 'select' | 'insert' | 'delete'>;
 
 export class EmployeePiiModel {
   private static getKey(): string {
     return env.PII_ENCRYPTION_KEY;
   }
 
-  static async findByEmployeeId(employeeId: string) {
+  static async findByEmployeeId(employeeId: string, executor: DbExecutor = db) {
     const key = this.getKey();
 
     // Use SQL templates inside select to decrypt binary columns.
     // Wrap with COALESCE or CASE WHEN to handle potential nulls if needed,
     // though pgp_sym_decrypt(NULL, key) returns NULL in PostgreSQL.
-    const results = await db
+    const results = await executor
       .select({
         id: employeePii.id,
         employeeId: employeePii.employeeId,
         passportNumber: sql<string | null>`CASE WHEN ${employeePii.passportNumber} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.passportNumber}, ${key}) END`,
         nationalId: sql<string | null>`CASE WHEN ${employeePii.nationalId} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.nationalId}, ${key}) END`,
         address: sql<string | null>`CASE WHEN ${employeePii.address} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.address}, ${key}) END`,
+        addressLine1: sql<string | null>`CASE WHEN ${employeePii.addressLine1} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.addressLine1}, ${key}) END`,
+        addressLine2: sql<string | null>`CASE WHEN ${employeePii.addressLine2} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.addressLine2}, ${key}) END`,
+        city: sql<string | null>`CASE WHEN ${employeePii.city} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.city}, ${key}) END`,
+        district: sql<string | null>`CASE WHEN ${employeePii.district} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.district}, ${key}) END`,
+        bloodType: sql<string | null>`CASE WHEN ${employeePii.bloodType} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.bloodType}, ${key}) END`,
         emergencyContactName: sql<string | null>`CASE WHEN ${employeePii.emergencyContactName} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactName}, ${key}) END`,
         emergencyContactPhone: sql<string | null>`CASE WHEN ${employeePii.emergencyContactPhone} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactPhone}, ${key}) END`,
+        emergencyContactRelationship: sql<string | null>`CASE WHEN ${employeePii.emergencyContactRelationship} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactRelationship}, ${key}) END`,
+        // Tab 1 (statutory) fields
+        fullNameAsNic: pgpDecrypt(employeePii.fullNameAsNic),
+        nameWithInitials: pgpDecrypt(employeePii.nameWithInitials),
+        dateOfBirth: employeePii.dateOfBirth,
+        birthPlace: pgpDecrypt(employeePii.birthPlace),
+        sex: employeePii.sex,
+        maritalStatus: employeePii.maritalStatus,
+        nationality: employeePii.nationality,
+        spouseName: pgpDecrypt(employeePii.spouseName),
+        motherName: pgpDecrypt(employeePii.motherName),
+        fatherName: pgpDecrypt(employeePii.fatherName),
+        // Tab B (remittance/correspondence) fields
+        residingAddressLine1: pgpDecrypt(employeePii.residingAddressLine1),
+        residingAddressLine2: pgpDecrypt(employeePii.residingAddressLine2),
+        residingCity: pgpDecrypt(employeePii.residingCity),
+        residingDistrict: pgpDecrypt(employeePii.residingDistrict),
+        landlineNumber: pgpDecrypt(employeePii.landlineNumber),
         createdAt: employeePii.createdAt,
         updatedAt: employeePii.updatedAt,
       })
@@ -38,9 +64,31 @@ export class EmployeePiiModel {
       passportNumber?: string | null;
       nationalId?: string | null;
       address?: string | null;
+      addressLine1?: string | null;
+      addressLine2?: string | null;
+      city?: string | null;
+      district?: string | null;
+      bloodType?: string | null;
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
-    }
+      emergencyContactRelationship?: string | null;
+      fullNameAsNic?: string | null;
+      nameWithInitials?: string | null;
+      birthPlace?: string | null;
+      spouseName?: string | null;
+      motherName?: string | null;
+      fatherName?: string | null;
+      residingAddressLine1?: string | null;
+      residingAddressLine2?: string | null;
+      residingCity?: string | null;
+      residingDistrict?: string | null;
+      landlineNumber?: string | null;
+      dateOfBirth?: string | null;
+      sex?: 'male' | 'female' | null;
+      maritalStatus?: 'married' | 'single' | null;
+      nationality?: string | null;
+    },
+    executor: DbExecutor = db
   ) {
     const key = this.getKey();
 
@@ -49,34 +97,49 @@ export class EmployeePiiModel {
       updatedAt: new Date(),
     };
 
-    if (data.passportNumber !== undefined) {
-      valuesToInsert.passportNumber = data.passportNumber === null 
-        ? null 
-        : sql`pgp_sym_encrypt(${data.passportNumber}, ${key})`;
+    const encryptedFields: (keyof typeof data)[] = [
+      'passportNumber',
+      'nationalId',
+      'address',
+      'addressLine1',
+      'addressLine2',
+      'city',
+      'district',
+      'bloodType',
+      'emergencyContactName',
+      'emergencyContactPhone',
+      'emergencyContactRelationship',
+      'fullNameAsNic',
+      'nameWithInitials',
+      'birthPlace',
+      'spouseName',
+      'motherName',
+      'fatherName',
+      'residingAddressLine1',
+      'residingAddressLine2',
+      'residingCity',
+      'residingDistrict',
+      'landlineNumber',
+    ];
+    for (const field of encryptedFields) {
+      const value = data[field] as string | null | undefined;
+      if (value !== undefined) {
+        valuesToInsert[field] = value === null ? null : sql`pgp_sym_encrypt(${value}, ${key})`;
+      }
     }
-    if (data.nationalId !== undefined) {
-      valuesToInsert.nationalId = data.nationalId === null 
-        ? null 
-        : sql`pgp_sym_encrypt(${data.nationalId}, ${key})`;
-    }
-    if (data.address !== undefined) {
-      valuesToInsert.address = data.address === null 
-        ? null 
-        : sql`pgp_sym_encrypt(${data.address}, ${key})`;
-    }
-    if (data.emergencyContactName !== undefined) {
-      valuesToInsert.emergencyContactName = data.emergencyContactName === null 
-        ? null 
-        : sql`pgp_sym_encrypt(${data.emergencyContactName}, ${key})`;
-    }
-    if (data.emergencyContactPhone !== undefined) {
-      valuesToInsert.emergencyContactPhone = data.emergencyContactPhone === null 
-        ? null 
-        : sql`pgp_sym_encrypt(${data.emergencyContactPhone}, ${key})`;
+
+    // Plain (unencrypted) fields - not identity/contact secrets, and
+    // dateOfBirth/maritalStatus need to be queryable (age calc, Tab C gating).
+    const plainFields: (keyof typeof data)[] = ['dateOfBirth', 'sex', 'maritalStatus', 'nationality'];
+    for (const field of plainFields) {
+      const value = data[field];
+      if (value !== undefined) {
+        valuesToInsert[field] = value;
+      }
     }
 
     // Upsert using onConflictDoUpdate
-    await db
+    await executor
       .insert(employeePii)
       .values({
         ...valuesToInsert,
@@ -87,7 +150,7 @@ export class EmployeePiiModel {
         set: valuesToInsert,
       });
 
-    return this.findByEmployeeId(employeeId);
+    return this.findByEmployeeId(employeeId, executor);
   }
 
   static async delete(employeeId: string): Promise<void> {

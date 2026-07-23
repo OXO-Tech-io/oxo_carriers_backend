@@ -16,6 +16,9 @@ import { employee } from './employee';
 export const componentTypeEnum = pgEnum('component_type', ['earning', 'deduction']);
 export const salaryStatusEnum = pgEnum('salary_status', ['generated', 'paid', 'pending']);
 
+// Renamed salary_components/employee_salary_structure/monthly_salaries/
+// salary_slip_details to their tbl_ equivalents by
+// drizzle/0009_tbl_prefix_and_employee_type.sql.
 // Salary Components Table
 export const salaryComponents = pgTable('tbl_salary_components', {
     id: serial('id').primaryKey(),

@@ -24,6 +24,8 @@ export const leaveStatusEnum = pgEnum('leave_status', [
 
 export const halfDayPeriodEnum = pgEnum('half_day_period', ['morning', 'evening']);
 
+// Renamed leave_types/employee_leave_balance/leave_requests/leave_calendar to
+// their tbl_ equivalents by drizzle/0009_tbl_prefix_and_employee_type.sql.
 // Leave Types Table
 export const leaveTypes = pgTable('tbl_leave_types', {
     id: serial('id').primaryKey(),

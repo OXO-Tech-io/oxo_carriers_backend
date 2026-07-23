@@ -17,6 +17,8 @@ import { vendors } from './vendors';
 export const voucherStatusEnum = pgEnum('voucher_status', ['pending', 'approved', 'rejected', 'paid']);
 export const voucherTypeEnum = pgEnum('voucher_type', ['employee', 'vendor']);
 
+// Renamed payment_vouchers -> tbl_payment_vouchers by
+// drizzle/0009_tbl_prefix_and_employee_type.sql.
 // Payment Vouchers Table
 export const paymentVouchers = pgTable('tbl_payment_vouchers', {
     id: serial('id').primaryKey(),

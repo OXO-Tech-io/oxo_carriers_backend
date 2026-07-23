@@ -20,7 +20,12 @@
     "test:email": "ts-node src/scripts/testEmail.ts",
     "check:email-config": "ts-node src/scripts/checkEmailConfig.ts",
     "test:keycloak": "ts-node src/scripts/testKeycloak.ts",
-    "create:superadmin": "ts-node src/scripts/createSuperAdmin.ts"
+    "create:superadmin": "ts-node src/scripts/createSuperAdmin.ts",
+    "db:add-profile-enhancement-fields": "ts-node src/scripts/addProfileEnhancementFields.ts",
+    "db:add-event-participation-intent": "ts-node src/scripts/addEventParticipationIntent.ts",
+    "db:add-profile-tab-fields": "ts-node src/scripts/addProfileTabFields.ts",
+    "db:widen-bank-code-columns": "ts-node src/scripts/widenBankCodeColumns.ts",
+    "db:add-groups-tables": "ts-node src/scripts/addGroupsTables.ts"
   },
   "keywords": [],
   "author": "",
