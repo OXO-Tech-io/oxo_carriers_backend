@@ -25,6 +25,8 @@ import { ConsultantSubmissionsModule } from './modules/consultant-submissions/co
 import { VouchersModule } from './modules/vouchers/vouchers.module';
 import { LeaveCalendarModule } from './modules/leave-calendar/leave-calendar.module';
 import { EmployeeNotesModule } from './modules/employee-notes/employee-notes.module';
+import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
+import { EmployeePiiModule } from './modules/employee-pii/employee-pii.module';
 
 @Module({
   imports: [
@@ -54,6 +56,8 @@ import { EmployeeNotesModule } from './modules/employee-notes/employee-notes.mod
     VouchersModule,
     LeaveCalendarModule,
     EmployeeNotesModule,
+    ProfileChangeRequestsModule,
+    EmployeePiiModule,
   ],
 })
 export class AppModule {}
