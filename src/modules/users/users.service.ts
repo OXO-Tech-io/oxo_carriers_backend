@@ -171,13 +171,30 @@ export class UsersService {
       ];
       for (const permission of defaultPermissions) {
         await pool.query(
-          `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)`,
-          [user.id, permission, 'read'],
+          `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)`,
+          [user.employeeId, permission, 'read'],
         );
       }
     }
 
-    return user;
+    // Auto-provision the Keycloak account so HR doesn't need a separate manual
+    // step. Only a super_admin can opt an employee out (e.g. a system/shared
+    // account with no individual login) via skipKeycloakProvisioning - anyone
+    // else's flag is ignored and provisioning still happens. A Keycloak
+    // failure here doesn't roll back the already-created employee row; HR can
+    // retry via the existing manual POST /users/:id/keycloak endpoint.
+    const skipProvisioning = dto.skipKeycloakProvisioning === true && isSuperAdmin(requester);
+    let keycloak: { provisioned: boolean; onboardingEmailSent?: boolean } = { provisioned: false };
+    if (!skipProvisioning) {
+      try {
+        const result = await this.provisionKeycloak(user.id);
+        keycloak = { provisioned: true, onboardingEmailSent: result.onboardingEmailSent ?? true };
+      } catch (kcError: any) {
+        logger.error({ err: kcError, userId: user.id }, 'Failed to auto-provision Keycloak account for new employee');
+      }
+    }
+
+    return { ...user, keycloak };
   }
 
   async update(userId: number, dto: UpdateUserDto, requester: JwtPayload) {

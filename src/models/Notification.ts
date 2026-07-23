@@ -3,7 +3,7 @@ import { notifications, type Notification as DrizzleNotification } from '../db/s
 import { and, desc, eq, sql } from 'drizzle-orm';
 
 export type NotificationInput = {
-  userId: number;
+  employeeId: string;
   type: string;
   title: string;
   message: string;
@@ -18,11 +18,11 @@ export class NotificationModel {
     return inserted;
   }
 
-  static async listByUserId(
-    userId: number,
+  static async listByEmployeeId(
+    employeeId: string,
     filters?: { isRead?: boolean; limit?: number; offset?: number }
   ): Promise<DrizzleNotification[]> {
-    const conditions = [eq(notifications.userId, userId)];
+    const conditions = [eq(notifications.employeeId, employeeId)];
     if (filters?.isRead !== undefined) {
       conditions.push(eq(notifications.isRead, filters.isRead));
     }
@@ -34,25 +34,25 @@ export class NotificationModel {
     });
   }
 
-  static async countUnread(userId: number): Promise<number> {
+  static async countUnread(employeeId: string): Promise<number> {
     const result = await db
       .select({ count: sql<number>`count(*)` })
       .from(notifications)
-      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+      .where(and(eq(notifications.employeeId, employeeId), eq(notifications.isRead, false)));
     return Number(result[0]?.count ?? 0);
   }
 
-  static async markRead(id: number, userId: number): Promise<void> {
+  static async markRead(id: number, employeeId: string): Promise<void> {
     await db
       .update(notifications)
       .set({ isRead: true, readAt: new Date() })
-      .where(and(eq(notifications.id, id), eq(notifications.userId, userId)));
+      .where(and(eq(notifications.id, id), eq(notifications.employeeId, employeeId)));
   }
 
-  static async markAllRead(userId: number): Promise<void> {
+  static async markAllRead(employeeId: string): Promise<void> {
     await db
       .update(notifications)
       .set({ isRead: true, readAt: new Date() })
-      .where(and(eq(notifications.userId, userId), eq(notifications.isRead, false)));
+      .where(and(eq(notifications.employeeId, employeeId), eq(notifications.isRead, false)));
   }
 }

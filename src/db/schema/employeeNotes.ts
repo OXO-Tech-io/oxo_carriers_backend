@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 
@@ -7,9 +7,11 @@ import { employee as users } from './employee';
 // HR Team (hr_executive) can create notes but is deliberately given no
 // read/update route at all afterwards - enforced in employeeNoteRoutes.ts,
 // not in this schema. Only HR Manager (and super_admin) can list/view/edit.
-export const employeeNotes = pgTable('employee_notes', {
+export const employeeNotes = pgTable('tbl_employee_notes', {
     id: serial('id').primaryKey(),
-    employeeUserId: integer('employee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     authorUserId: integer('author_user_id').references(() => users.id, { onDelete: 'set null' }),
     content: text('content').notNull(),
     createdAt: timestamp('created_at').defaultNow(),
@@ -18,8 +20,8 @@ export const employeeNotes = pgTable('employee_notes', {
 
 export const employeeNotesRelations = relations(employeeNotes, ({ one }) => ({
     employee: one(users, {
-        fields: [employeeNotes.employeeUserId],
-        references: [users.id],
+        fields: [employeeNotes.employeeId],
+        references: [users.employeeId],
         relationName: 'employeeNoteSubject',
     }),
     author: one(users, {

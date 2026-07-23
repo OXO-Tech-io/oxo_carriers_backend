@@ -18,8 +18,15 @@ export type MedicalDocumentFiles = {
 
 @Injectable()
 export class MedicalInsuranceService {
+  private requireEmployeeId(employee: JwtPayload): string {
+    if (!employee.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
+    return employee.employeeId;
+  }
+
   async apply(employee: JwtPayload, dto: CreateMedicalClaimDto, files: MedicalDocumentFiles | undefined) {
-    const userId = employee.userId;
+    const employeeId = this.requireEmployeeId(employee);
     const type = dto.type as MedicalClaimType;
     const quarter = dto.quarter || getCurrentQuarter();
     const amount = parseFloat(dto.amount as string);
@@ -39,7 +46,7 @@ export class MedicalInsuranceService {
     }
 
     if (type === MedicalClaimType.OPD) {
-      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(userId, quarter);
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, quarter);
       if (used + amount > maxAmount) {
         throw new BadRequestException(
           `OPD quarter limit exceeded. Used: ${used.toLocaleString()}, limit: ${maxAmount.toLocaleString()} for ${quarter}`,
@@ -56,7 +63,7 @@ export class MedicalInsuranceService {
     const relevant_document_url = relevantFile ? `/uploads/documents/${relevantFile.filename}` : null;
 
     const claim = await MedicalInsuranceModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       type,
       quarter,
       amount,
@@ -71,8 +78,8 @@ export class MedicalInsuranceService {
     return { success: true, message: 'Medical insurance claim submitted', claim };
   }
 
-  async getMyClaims(userId: number, status?: MedicalClaimStatus) {
-    const claims = await MedicalInsuranceModel.findByUserId(userId, { status });
+  async getMyClaims(employeeId: string, status?: MedicalClaimStatus) {
+    const claims = await MedicalInsuranceModel.findByEmployeeId(employeeId, { status });
     return { success: true, claims };
   }
 
@@ -86,7 +93,7 @@ export class MedicalInsuranceService {
     if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE) {
       return this.getAll(status, type);
     }
-    return this.getMyClaims(employee.userId, status);
+    return this.getMyClaims(this.requireEmployeeId(employee), status);
   }
 
   async getClaimById(employee: JwtPayload, id: number) {
@@ -94,7 +101,7 @@ export class MedicalInsuranceService {
     if (!claim) {
       throw new NotFoundException('Claim not found');
     }
-    if (employee.role === UserRole.EMPLOYEE && claim.user_id !== employee.userId) {
+    if (employee.role === UserRole.EMPLOYEE && claim.employee_id !== employee.employeeId) {
       throw new ForbiddenException('Forbidden');
     }
     return { success: true, claim };
@@ -148,7 +155,7 @@ export class MedicalInsuranceService {
     dto: ResubmitMedicalClaimDto,
     files: MedicalDocumentFiles | undefined,
   ) {
-    const userId = employee.userId;
+    const employeeId = this.requireEmployeeId(employee);
     const type = (dto.type as MedicalClaimType) || undefined;
     const quarter = dto.quarter || undefined;
     const amount = dto.amount != null ? parseFloat(dto.amount) : undefined;
@@ -157,7 +164,7 @@ export class MedicalInsuranceService {
     if (!original) {
       throw new NotFoundException('Original claim not found');
     }
-    if (original.user_id !== userId) {
+    if (original.employee_id !== employeeId) {
       throw new ForbiddenException('Forbidden');
     }
     if (original.status !== MedicalClaimStatus.REJECTED) {
@@ -176,7 +183,7 @@ export class MedicalInsuranceService {
     }
 
     if (finalType === MedicalClaimType.OPD) {
-      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(userId, finalQuarter);
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, finalQuarter);
       if (used + finalAmount > maxAmount) {
         throw new BadRequestException(`OPD quarter limit exceeded for ${finalQuarter}`);
       }
@@ -193,7 +200,7 @@ export class MedicalInsuranceService {
       : (original.relevant_document_url ?? null);
 
     const claim = await MedicalInsuranceModel.create({
-      user_id: userId,
+      employee_id: employeeId,
       type: finalType,
       quarter: finalQuarter,
       amount: finalAmount,

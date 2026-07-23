@@ -37,8 +37,12 @@ export const formService = {
     const groupMemberIds = await groupService.resolveMemberUserIds(groupIds);
     const resolvedUserIds = [...new Set([...userIds, ...groupMemberIds])];
     const distributions = await FormDistributionModel.createMany(formId, resolvedUserIds);
+    const recipientEmployees = await EmployeeModel.findByIds(resolvedUserIds);
+    const recipientEmployeeIds = recipientEmployees
+      .map((employee) => employee.employeeId)
+      .filter((id): id is string => !!id);
     await notificationService.notifyMany(
-      resolvedUserIds,
+      recipientEmployeeIds,
       'form',
       `New form: ${form.title}`,
       'HR has assigned you a form to fill out.',
@@ -131,7 +135,7 @@ export const formService = {
     return Promise.all(
       responses.map(async (response) => {
         const answers = await FormResponseModel.listAnswersByResponseId(response.id);
-        const user = await EmployeeModel.findById(response.userId);
+        const user = response.employeeId ? await EmployeeModel.findByEmployeeId(response.employeeId) : null;
         return { response, answers, user };
       })
     );
@@ -152,7 +156,7 @@ export const formService = {
 
     for (const { response, answers, user } of responses) {
       const row: Record<string, string> = {
-        submittedBy: user ? `${user.firstName} ${user.lastName}` : `User #${response.userId}`,
+        submittedBy: user ? `${user.firstName} ${user.lastName}` : `Employee ${response.employeeId}`,
         submittedAt: response.submittedAt ? new Date(response.submittedAt).toLocaleString() : '',
       };
       for (const field of fields) {

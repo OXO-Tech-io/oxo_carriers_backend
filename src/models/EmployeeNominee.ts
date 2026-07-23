@@ -14,7 +14,7 @@ export type EmployeeNomineeInput = {
 
 export type DecryptedEmployeeNominee = {
   id: number;
-  userId: number;
+  employeeId: string;
   nameWithInitials: string | null;
   nic: string | null;
   relationship: string;
@@ -24,11 +24,11 @@ export type DecryptedEmployeeNominee = {
 };
 
 export class EmployeeNomineeModel {
-  static async listByUserId(userId: number, executor: DbExecutor = db): Promise<DecryptedEmployeeNominee[]> {
+  static async listByEmployeeId(employeeId: string, executor: DbExecutor = db): Promise<DecryptedEmployeeNominee[]> {
     return executor
       .select({
         id: employeeNominees.id,
-        userId: employeeNominees.userId,
+        employeeId: employeeNominees.employeeId,
         nameWithInitials: pgpDecrypt(employeeNominees.nameWithInitials),
         nic: pgpDecrypt(employeeNominees.nic),
         relationship: employeeNominees.relationship,
@@ -37,22 +37,22 @@ export class EmployeeNomineeModel {
         updatedAt: employeeNominees.updatedAt,
       })
       .from(employeeNominees)
-      .where(eq(employeeNominees.userId, userId));
+      .where(eq(employeeNominees.employeeId, employeeId));
   }
 
-  static async countByUserId(userId: number, executor: DbExecutor = db): Promise<number> {
+  static async countByEmployeeId(employeeId: string, executor: DbExecutor = db): Promise<number> {
     const rows = await executor
       .select({ count: sql<number>`count(*)::int` })
       .from(employeeNominees)
-      .where(eq(employeeNominees.userId, userId));
+      .where(eq(employeeNominees.employeeId, employeeId));
     return rows[0]?.count ?? 0;
   }
 
-  static async create(userId: number, data: EmployeeNomineeInput, executor: DbExecutor = db) {
+  static async create(employeeId: string, data: EmployeeNomineeInput, executor: DbExecutor = db) {
     const [inserted] = await executor
       .insert(employeeNominees)
       .values({
-        userId,
+        employeeId,
         nameWithInitials: pgpEncrypt(data.nameWithInitials),
         nic: pgpEncrypt(data.nic),
         relationship: data.relationship,

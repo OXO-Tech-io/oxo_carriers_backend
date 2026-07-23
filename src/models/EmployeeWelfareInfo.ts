@@ -15,17 +15,23 @@ export type EmployeeWelfareInfoInput = {
 // so unlike EmployeePiiModel/EmployeeNomineeModel/etc. there's no pgcrypto
 // encrypt/decrypt step here.
 export class EmployeeWelfareInfoModel {
-  static async findByUserId(userId: number, executor: DbExecutor = db): Promise<DrizzleEmployeeWelfareInfo | null> {
-    const rows = await executor.select().from(employeeWelfareInfo).where(eq(employeeWelfareInfo.userId, userId));
+  static async findByEmployeeId(
+    employeeId: string,
+    executor: DbExecutor = db
+  ): Promise<DrizzleEmployeeWelfareInfo | null> {
+    const rows = await executor
+      .select()
+      .from(employeeWelfareInfo)
+      .where(eq(employeeWelfareInfo.employeeId, employeeId));
     return rows[0] ?? null;
   }
 
-  static async upsert(userId: number, data: EmployeeWelfareInfoInput, executor: DbExecutor = db) {
-    const values = { userId, ...data, updatedAt: new Date() };
+  static async upsert(employeeId: string, data: EmployeeWelfareInfoInput, executor: DbExecutor = db) {
+    const values = { employeeId, ...data, updatedAt: new Date() };
     await executor
       .insert(employeeWelfareInfo)
       .values({ ...values, createdAt: new Date() })
-      .onConflictDoUpdate({ target: employeeWelfareInfo.userId, set: values });
-    return this.findByUserId(userId, executor);
+      .onConflictDoUpdate({ target: employeeWelfareInfo.employeeId, set: values });
+    return this.findByEmployeeId(employeeId, executor);
   }
 }

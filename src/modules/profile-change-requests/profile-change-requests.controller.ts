@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
 import { profileChangeRequestService } from '../../services/profileChangeRequest.service';
 import { EmployeeModel } from '../../models/Employee';
 import { UserRole, JwtPayload } from '../../types';
@@ -35,8 +35,11 @@ import { logger } from '../../lib/logger';
 export class ProfileChangeRequestsController {
   @Post()
   async submit(@Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
+    if (!employee.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
     const input = submitProfileChangeRequestSchema.parse(body);
-    const request = await profileChangeRequestService.submitChangeRequest(employee.userId, input);
+    const request = await profileChangeRequestService.submitChangeRequest(employee.userId, employee.employeeId, input);
 
     this.notifySubmitted(employee.userId, request, input.changes as ProfileChangeItem[]).catch((emailErr: any) => {
       logger.error({ err: emailErr }, 'Failed to send profile change submitted email');
@@ -48,14 +51,14 @@ export class ProfileChangeRequestsController {
   @Get()
   async list(@Query() query: unknown, @CurrentEmployee() employee: JwtPayload) {
     const parsedQuery = listProfileChangeRequestsQuerySchema.parse(query);
-    const requests = await profileChangeRequestService.listRequests(employee.userId, employee.role, parsedQuery);
+    const requests = await profileChangeRequestService.listRequests(employee.employeeId, employee.role, parsedQuery);
     return { success: true, message: 'Profile change requests fetched', data: requests };
   }
 
   @Get(':id')
   async getById(@Param() params: unknown, @CurrentEmployee() employee: JwtPayload) {
     const { id } = profileChangeRequestIdParamSchema.parse(params);
-    const request = await profileChangeRequestService.getRequestById(id, employee.userId, employee.role);
+    const request = await profileChangeRequestService.getRequestById(id, employee.employeeId, employee.role);
     return { success: true, message: 'Profile change request fetched', data: request };
   }
 
@@ -124,11 +127,11 @@ export class ProfileChangeRequestsController {
   }
 
   private async notifyDecided(
-    updated: { id: number; userId: number; changes: unknown },
+    updated: { id: number; employeeId: string; changes: unknown },
     decision: 'approved' | 'rejected' | 'returned_for_modification',
     reviewerComments: string | undefined,
   ) {
-    const employee = await EmployeeModel.findById(updated.userId);
+    const employee = await EmployeeModel.findByEmployeeId(updated.employeeId);
     if (!employee) return;
     const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
     const changesSummary = profileChangeRequestService.summarizeChanges((updated.changes as ProfileChangeItem[]) ?? []);

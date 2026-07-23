@@ -12,9 +12,9 @@ export type EmployeeWorkHistoryInput = {
 };
 
 export class EmployeeWorkHistoryModel {
-  static async listByUserId(userId: number): Promise<DrizzleEmployeeWorkHistory[]> {
+  static async listByEmployeeId(employeeId: string): Promise<DrizzleEmployeeWorkHistory[]> {
     return db.query.employeeWorkHistory.findMany({
-      where: eq(employeeWorkHistory.userId, userId),
+      where: eq(employeeWorkHistory.employeeId, employeeId),
       orderBy: (t, { desc }) => [desc(t.startDate)],
     });
   }
@@ -26,10 +26,10 @@ export class EmployeeWorkHistoryModel {
     return record ?? null;
   }
 
-  static async create(userId: number, data: EmployeeWorkHistoryInput): Promise<DrizzleEmployeeWorkHistory> {
+  static async create(employeeId: string, data: EmployeeWorkHistoryInput): Promise<DrizzleEmployeeWorkHistory> {
     const [inserted] = await db
       .insert(employeeWorkHistory)
-      .values({ userId, ...data })
+      .values({ employeeId, ...data })
       .returning();
     if (!inserted) throw new Error('Failed to create employee work history record');
     return inserted;

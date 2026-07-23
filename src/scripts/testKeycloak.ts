@@ -32,10 +32,6 @@ async function main() {
     await keycloakAdminService.updatePassword(kcSub, 'UpdatedPassword@123');
     console.log('✓ Success! Password updated in Keycloak.');
 
-    console.log('\n📧 Step 4: Testing email verification update...');
-    await keycloakAdminService.verifyEmail(kcSub);
-    console.log('✓ Success! Email marked as verified in Keycloak.');
-
     console.log('\n========================================================================');
     console.log('🎉 Diagnostics Completed: Keycloak integration is fully functional!');
     console.log('========================================================================');

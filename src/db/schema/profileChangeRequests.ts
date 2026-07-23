@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, text, json, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, json, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 
@@ -17,9 +17,11 @@ export const profileChangeStatusEnum = pgEnum('profile_change_status', [
 // A single Approve/Reject/Return decision applies atomically to the whole bundle.
 // See src/validators/profileChangeRequest.validator.ts for the exact shape of each
 // item in the `changes` array (discriminated by `entityType`).
-export const profileChangeRequests = pgTable('profile_change_requests', {
+export const profileChangeRequests = pgTable('tbl_profile_change_requests', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // employee affected
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }), // employee affected
     submittedBy: integer('submitted_by').references(() => users.id, { onDelete: 'set null' }),
     status: profileChangeStatusEnum('status').default('pending_approval'),
     changes: json('changes').notNull(),
@@ -38,8 +40,8 @@ export const profileChangeRequests = pgTable('profile_change_requests', {
 // Relations
 export const profileChangeRequestsRelations = relations(profileChangeRequests, ({ one }) => ({
     employee: one(users, {
-        fields: [profileChangeRequests.userId],
-        references: [users.id],
+        fields: [profileChangeRequests.employeeId],
+        references: [users.employeeId],
         relationName: 'profileChangeEmployee',
     }),
     submitter: one(users, {

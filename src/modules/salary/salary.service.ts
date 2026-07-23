@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
 import { SalaryModel } from '../../models/Salary';
+import { EmployeeModel } from '../../models/Employee';
 import { JwtPayload, SalaryStatus, UserRole } from '../../types';
 import pool from '../../config/database';
 import { generateSalarySlipPDF as generatePDF } from '../../utils/pdfGenerator';
@@ -19,18 +20,28 @@ export class SalaryService {
     return SalaryModel.getComponents();
   }
 
+  private async resolveEmployeeId(userId: number): Promise<string> {
+    const employee = await EmployeeModel.findById(userId);
+    if (!employee?.employeeId) {
+      throw new BadRequestException('This user has no employee ID assigned yet');
+    }
+    return employee.employeeId;
+  }
+
   async getEmployeeSalaryStructure(userId: number, requester: JwtPayload) {
     if (requester.role === UserRole.EMPLOYEE && userId !== requester.userId) {
       throw new ForbiddenException('Forbidden');
     }
-    return SalaryModel.getEmployeeSalaryStructure(userId);
+    const employeeId = await this.resolveEmployeeId(userId);
+    return SalaryModel.getEmployeeSalaryStructure(employeeId);
   }
 
   async updateSalaryStructure(userId: number, dto: UpdateSalaryStructureDto, requester: JwtPayload) {
     if (requester.role !== UserRole.HR_MANAGER) {
       throw new ForbiddenException('Only HR Manager can update salary structure');
     }
-    await SalaryModel.updateSalaryStructure(userId, dto.components);
+    const employeeId = await this.resolveEmployeeId(userId);
+    await SalaryModel.updateSalaryStructure(employeeId, dto.components);
   }
 
   async generateSalary(dto: GenerateSalaryDto, requester: JwtPayload) {
@@ -45,13 +56,14 @@ export class SalaryService {
     }
 
     const monthYear = new Date(year, month - 1, 1);
+    const employeeId = await this.resolveEmployeeId(userId);
 
-    const existing = await SalaryModel.findByUserId(userId, { year, month });
+    const existing = await SalaryModel.findByEmployeeId(employeeId, { year, month });
     if (existing.length > 0) {
       throw new BadRequestException('Salary for this month already exists');
     }
 
-    const salary = await SalaryModel.generateSalary(userId, monthYear, requester.userId);
+    const salary = await SalaryModel.generateSalary(employeeId, monthYear, requester.userId);
 
     // Send payslip notification email to employee (non-blocking, fire-and-forget).
     this.sendPayslipEmail(userId, monthYear, salary).catch((emailErr) => {
@@ -82,13 +94,17 @@ export class SalaryService {
     filters: { userId?: string; department?: string; year?: string; month?: string; status?: string },
   ) {
     if (requester.role === UserRole.EMPLOYEE) {
-      return SalaryModel.findByUserId(requester.userId, {
+      if (!requester.employeeId) {
+        throw new BadRequestException('Your account has no employee ID assigned yet');
+      }
+      return SalaryModel.findByEmployeeId(requester.employeeId, {
         year: filters.year ? parseInt(filters.year) : undefined,
         month: filters.month ? parseInt(filters.month) : undefined,
       });
     }
+    const employeeId = filters.userId ? await this.resolveEmployeeId(parseInt(filters.userId)) : undefined;
     return SalaryModel.getAll({
-      userId: filters.userId ? parseInt(filters.userId) : undefined,
+      employeeId,
       department: filters.department,
       year: filters.year ? parseInt(filters.year) : undefined,
       month: filters.month ? parseInt(filters.month) : undefined,
@@ -99,7 +115,7 @@ export class SalaryService {
   async getSalaryById(id: number, requester: JwtPayload) {
     const salary = await SalaryModel.findById(id);
     if (!salary) throw new NotFoundException('Salary not found');
-    if (requester.role === UserRole.EMPLOYEE && salary.user_id !== requester.userId) {
+    if (requester.role === UserRole.EMPLOYEE && salary.employee_id !== requester.employeeId) {
       throw new ForbiddenException('Forbidden');
     }
     const details = await SalaryModel.getSlipDetails(id);
@@ -109,12 +125,12 @@ export class SalaryService {
   async generateSalarySlipPdf(id: number, requester: JwtPayload): Promise<Buffer> {
     const salary = await SalaryModel.findById(id);
     if (!salary) throw new NotFoundException('Salary not found');
-    if (requester.role === UserRole.EMPLOYEE && salary.user_id !== requester.userId) {
+    if (requester.role === UserRole.EMPLOYEE && salary.employee_id !== requester.employeeId) {
       throw new ForbiddenException('Forbidden');
     }
 
     const details = await SalaryModel.getSlipDetails(id);
-    const userResult = await pool.query('SELECT * FROM tbl_employee WHERE id = $1', [salary.user_id]);
+    const userResult = await pool.query('SELECT * FROM tbl_employee WHERE employee_id = $1', [salary.employee_id]);
     const users = userResult.rows as any[];
     const user = users[0];
     if (!user) throw new NotFoundException('User not found');
@@ -165,7 +181,7 @@ export class SalaryService {
   }
 
   private async sendPaidEmail(updated: any) {
-    const userResult = await pool.query('SELECT first_name, last_name, email FROM tbl_employee WHERE id = $1', [updated.user_id]);
+    const userResult = await pool.query('SELECT first_name, last_name, email FROM tbl_employee WHERE employee_id = $1', [updated.employee_id]);
     const userRows = userResult.rows as any[];
     const employeeUser = userRows[0];
     if (!employeeUser?.email) return;
@@ -182,7 +198,10 @@ export class SalaryService {
 
   async getYearToDateEarnings(requester: JwtPayload, yearParam?: string) {
     const currentYear = yearParam ? parseInt(yearParam) : new Date().getFullYear();
-    const salaries = await SalaryModel.findByUserId(requester.userId, { year: currentYear });
+    if (!requester.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
+    const salaries = await SalaryModel.findByEmployeeId(requester.employeeId, { year: currentYear });
 
     const totalEarnings = salaries.reduce((sum, salary) => sum + parseFloat(salary.total_earnings.toString()), 0);
     const totalDeductions = salaries.reduce((sum, salary) => sum + parseFloat(salary.total_deductions.toString()), 0);
@@ -351,13 +370,14 @@ export class SalaryService {
           continue;
         }
 
-        const userResult2 = await pool.query('SELECT id, first_name, last_name FROM tbl_employee WHERE id = $1', [userId]);
+        const userResult2 = await pool.query('SELECT id, employee_id, first_name, last_name FROM tbl_employee WHERE id = $1', [userId]);
         const usersFound = userResult2.rows as any[];
-        if (usersFound.length === 0) {
+        if (usersFound.length === 0 || !usersFound[0].employee_id) {
           results.failed++;
-          results.errors.push(`Row ${rowNum}: User with ID ${userId} not found`);
+          results.errors.push(`Row ${rowNum}: User with ID ${userId} not found or has no employee ID`);
           continue;
         }
+        const employeeId: string = usersFound[0].employee_id;
 
         const parseNumericValue = (cell: any): number => {
           if (!cell) return 0;
@@ -404,7 +424,7 @@ export class SalaryService {
         const salaryAdvanceDeductions = deductionsCol > 0 ? parseNumericValue(row.getCell(deductionsCol)) : 0;
 
         await SalaryModel.createSalaryFromExcel(
-          userId,
+          employeeId,
           monthYear,
           {
             fullSalary,

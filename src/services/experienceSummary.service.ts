@@ -17,11 +17,11 @@ export interface ExperienceSummary {
 // employees with overlapping entries will be an over-count. Acceptable for a
 // first pass; revisit if concurrent-role data becomes common.
 export const experienceSummaryService = {
-  async calculate(userId: number): Promise<ExperienceSummary> {
-    const user = await EmployeeModel.findById(userId);
+  async calculate(employeeId: string): Promise<ExperienceSummary> {
+    const user = await EmployeeModel.findByEmployeeId(employeeId);
     if (!user) throw new NotFoundError('User not found');
 
-    const workHistory = await EmployeeWorkHistoryModel.listByUserId(userId);
+    const workHistory = await EmployeeWorkHistoryModel.listByEmployeeId(employeeId);
     const degreeDate = user.undergraduateDegreeCompletionDate
       ? new Date(user.undergraduateDegreeCompletionDate)
       : null;

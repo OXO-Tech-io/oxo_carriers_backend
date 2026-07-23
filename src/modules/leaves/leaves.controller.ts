@@ -39,7 +39,7 @@ export class LeavesController {
 
   @Get('balance')
   async getLeaveBalance(@CurrentEmployee() employee: JwtPayload, @Query() query: LeaveBalanceQueryDto) {
-    const balances = await this.leavesService.getLeaveBalance(employee.userId, query);
+    const balances = await this.leavesService.getLeaveBalance(employee, query);
     return { success: true, message: 'Leave balance fetched', data: balances };
   }
 

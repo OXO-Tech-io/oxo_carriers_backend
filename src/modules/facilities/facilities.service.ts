@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { FacilityModel } from '../../models/Facility';
 import { FacilityBookingModel } from '../../models/FacilityBooking';
-import { BookingStatus, FacilityType, UserRole } from '../../types';
+import { EmployeeModel } from '../../models/Employee';
+import { BookingStatus, FacilityType, JwtPayload, UserRole } from '../../types';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityDto } from './dto/update-facility.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
@@ -51,7 +52,14 @@ export class FacilitiesService {
 
   // ─── Booking management ─────────────────────────────────────────────────
 
-  async createBooking(userId: number, dto: CreateBookingDto) {
+  private requireEmployeeId(employee: JwtPayload): string {
+    if (!employee.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
+    return employee.employeeId;
+  }
+
+  async createBooking(employee: JwtPayload, dto: CreateBookingDto) {
     const startTime = new Date(dto.start_time);
     const endTime = new Date(dto.end_time);
 
@@ -62,7 +70,7 @@ export class FacilitiesService {
 
     return FacilityBookingModel.create({
       facility_id: dto.facility_id,
-      user_id: userId,
+      employee_id: this.requireEmployeeId(employee),
       start_time: startTime,
       end_time: endTime,
       purpose: dto.purpose,
@@ -70,20 +78,29 @@ export class FacilitiesService {
     });
   }
 
-  getMyBookings(userId: number) {
-    return FacilityBookingModel.getAll({ user_id: userId });
+  getMyBookings(employee: JwtPayload) {
+    return FacilityBookingModel.getAll({ employee_id: this.requireEmployeeId(employee) });
   }
 
-  getAllBookings(filters: AllBookingsFilters) {
-    return FacilityBookingModel.getAll(filters);
+  async getAllBookings(filters: AllBookingsFilters) {
+    const employeeId = filters.user_id
+      ? (await EmployeeModel.findById(filters.user_id))?.employeeId ?? undefined
+      : undefined;
+    return FacilityBookingModel.getAll({
+      employee_id: employeeId,
+      facility_id: filters.facility_id,
+      status: filters.status,
+      start_date: filters.start_date,
+      end_date: filters.end_date,
+    });
   }
 
-  async cancelBooking(id: number, userId: number, role: UserRole) {
+  async cancelBooking(id: number, employee: JwtPayload) {
     const booking = await FacilityBookingModel.findById(id);
     if (!booking) throw new NotFoundException('Booking not found');
 
     // Only allow owner or admin/hr to cancel
-    if (booking.user_id !== userId && role === UserRole.EMPLOYEE) {
+    if (booking.employee_id !== employee.employeeId && employee.role === UserRole.EMPLOYEE) {
       throw new ForbiddenException('Forbidden');
     }
 

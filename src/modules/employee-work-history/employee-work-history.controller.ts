@@ -12,7 +12,7 @@ export class EmployeeWorkHistoryController {
   async list(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
     const target = await EmployeeModel.findByEmployeeId(employeeId);
     if (!target) throw new NotFoundException('Employee not found');
-    const records = await this.employeeWorkHistoryService.list(employee.userId, employee.role, target.id);
+    const records = await this.employeeWorkHistoryService.list(employee.employeeId, employee.role, employeeId);
     return { success: true, message: 'Work history records fetched', data: records };
   }
 
@@ -21,9 +21,9 @@ export class EmployeeWorkHistoryController {
     const target = await EmployeeModel.findByEmployeeId(employeeId);
     if (!target) throw new NotFoundException('Employee not found');
     const summary = await this.employeeWorkHistoryService.getExperienceSummary(
-      employee.userId,
+      employee.employeeId,
       employee.role,
-      target.id,
+      employeeId,
     );
     return { success: true, message: 'Experience summary calculated', data: summary };
   }

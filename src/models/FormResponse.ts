@@ -7,6 +7,7 @@ import {
   type NewFormResponseAnswer,
 } from '../db/schema';
 import { and, eq } from 'drizzle-orm';
+import { EmployeeModel } from './Employee';
 
 export type SubmitAnswerInput = {
   fieldId: number;
@@ -14,9 +15,16 @@ export type SubmitAnswerInput = {
 };
 
 export class FormResponseModel {
+  // `userId` is the numeric tbl_employee.id used throughout the Forms API;
+  // tbl_form_responses stores the business employee_id (varchar) FK, so it is
+  // resolved via EmployeeModel before being persisted/queried.
   static async create(formId: number, userId: number, answers: SubmitAnswerInput[]): Promise<DrizzleFormResponse> {
+    const employee = await EmployeeModel.findById(userId);
+    if (!employee?.employeeId) throw new Error('Employee has no employee_id assigned');
+    const employeeId = employee.employeeId;
+
     return db.transaction(async (tx) => {
-      const [response] = await tx.insert(formResponses).values({ formId, userId }).returning();
+      const [response] = await tx.insert(formResponses).values({ formId, employeeId }).returning();
       if (!response) throw new Error('Failed to create form response');
 
       const answerRows: NewFormResponseAnswer[] = answers.map((a) => ({
@@ -39,8 +47,10 @@ export class FormResponseModel {
   }
 
   static async findByFormAndUser(formId: number, userId: number): Promise<DrizzleFormResponse | null> {
+    const employee = await EmployeeModel.findById(userId);
+    if (!employee?.employeeId) return null;
     const record = await db.query.formResponses.findFirst({
-      where: and(eq(formResponses.formId, formId), eq(formResponses.userId, userId)),
+      where: and(eq(formResponses.formId, formId), eq(formResponses.employeeId, employee.employeeId)),
     });
     return record ?? null;
   }

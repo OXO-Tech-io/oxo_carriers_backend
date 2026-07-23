@@ -3,11 +3,11 @@ import { communicationRecipients, communications, employee as users, type Commun
 import { and, desc, eq } from 'drizzle-orm';
 
 export class CommunicationRecipientModel {
-  static async createMany(communicationId: number, userIds: number[]): Promise<DrizzleRecipient[]> {
-    if (!userIds.length) return [];
+  static async createMany(communicationId: number, employeeIds: string[]): Promise<DrizzleRecipient[]> {
+    if (!employeeIds.length) return [];
     return db
       .insert(communicationRecipients)
-      .values(userIds.map((userId) => ({ communicationId, userId })))
+      .values(employeeIds.map((employeeId) => ({ communicationId, employeeId })))
       .returning();
   }
 
@@ -22,12 +22,12 @@ export class CommunicationRecipientModel {
   }
 
   /** Joined with the parent communication so the recipient-facing UI can show title/body. */
-  static async listForUser(userId: number) {
+  static async listForUser(employeeId: string) {
     const rows = await db
       .select({
         id: communicationRecipients.id,
         communicationId: communicationRecipients.communicationId,
-        userId: communicationRecipients.userId,
+        employeeId: communicationRecipients.employeeId,
         emailSentAt: communicationRecipients.emailSentAt,
         respondedAt: communicationRecipients.respondedAt,
         responseText: communicationRecipients.responseText,
@@ -37,14 +37,14 @@ export class CommunicationRecipientModel {
       })
       .from(communicationRecipients)
       .innerJoin(communications, eq(communicationRecipients.communicationId, communications.id))
-      .where(eq(communicationRecipients.userId, userId))
+      .where(eq(communicationRecipients.employeeId, employeeId))
       .orderBy(desc(communicationRecipients.id));
     return rows;
   }
 
-  static async findByCommunicationAndUser(communicationId: number, userId: number) {
+  static async findByCommunicationAndUser(communicationId: number, employeeId: string) {
     const record = await db.query.communicationRecipients.findFirst({
-      where: and(eq(communicationRecipients.communicationId, communicationId), eq(communicationRecipients.userId, userId)),
+      where: and(eq(communicationRecipients.communicationId, communicationId), eq(communicationRecipients.employeeId, employeeId)),
     });
     return record ?? null;
   }
@@ -69,7 +69,7 @@ export class CommunicationRecipientModel {
       })
       .from(communicationRecipients)
       .innerJoin(communications, eq(communicationRecipients.communicationId, communications.id))
-      .innerJoin(users, eq(communicationRecipients.userId, users.id))
+      .innerJoin(users, eq(communicationRecipients.employeeId, users.employeeId))
       .where(communicationId ? eq(communicationRecipients.communicationId, communicationId) : undefined);
     return rows;
   }

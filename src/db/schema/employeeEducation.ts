@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, date, timestamp, pgEnum, boolean } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, date, timestamp, pgEnum, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 
@@ -18,9 +18,11 @@ export const qualificationLevelEnum = pgEnum('qualification_level', [
 // Employee Education Table
 // Holds only the approved state of an employee's educational background.
 // Writes only ever happen via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeEducation = pgTable('employee_education', {
+export const employeeEducation = pgTable('tbl_employee_education', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     qualificationLevel: qualificationLevelEnum('qualification_level').notNull(),
     qualificationTitle: varchar('qualification_title', { length: 255 }).notNull(),
     awardingInstitution: varchar('awarding_institution', { length: 255 }).notNull(),
@@ -34,8 +36,8 @@ export const employeeEducation = pgTable('employee_education', {
 // Relations
 export const employeeEducationRelations = relations(employeeEducation, ({ one }) => ({
     employee: one(users, {
-        fields: [employeeEducation.userId],
-        references: [users.id],
+        fields: [employeeEducation.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

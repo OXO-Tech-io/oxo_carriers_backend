@@ -3,7 +3,7 @@ import { workLogs, employee as users, type WorkLog as DrizzleWorkLog } from '../
 import { and, eq, gte, lte, sql } from 'drizzle-orm';
 
 export type WorkLogInput = {
-  userId: number;
+  employeeId: string;
   workDate: string;
   taskDescription: string;
   hoursSpent: number;
@@ -34,11 +34,11 @@ export class WorkLogModel {
     return Promise.all(entries.map((entry) => this.create(entry)));
   }
 
-  static async findByUserId(
-    userId: number,
+  static async findByEmployeeId(
+    employeeId: string,
     filters?: { from?: string; to?: string }
   ): Promise<DrizzleWorkLog[]> {
-    const conditions = [eq(workLogs.userId, userId)];
+    const conditions = [eq(workLogs.employeeId, employeeId)];
     if (filters?.from) conditions.push(gte(workLogs.workDate, filters.from));
     if (filters?.to) conditions.push(lte(workLogs.workDate, filters.to));
     return db.query.workLogs.findMany({
@@ -47,9 +47,9 @@ export class WorkLogModel {
     });
   }
 
-  static async listAll(filters?: { userId?: number; from?: string; to?: string }): Promise<DrizzleWorkLog[]> {
+  static async listAll(filters?: { employeeId?: string; from?: string; to?: string }): Promise<DrizzleWorkLog[]> {
     const conditions = [];
-    if (filters?.userId) conditions.push(eq(workLogs.userId, filters.userId));
+    if (filters?.employeeId) conditions.push(eq(workLogs.employeeId, filters.employeeId));
     if (filters?.from) conditions.push(gte(workLogs.workDate, filters.from));
     if (filters?.to) conditions.push(lte(workLogs.workDate, filters.to));
     return db.query.workLogs.findMany({
@@ -65,17 +65,17 @@ export class WorkLogModel {
 
     const rows = await db
       .select({
-        userId: workLogs.userId,
-        employeeId: users.employeeId,
+        userId: users.id,
+        employeeId: workLogs.employeeId,
         firstName: users.firstName,
         lastName: users.lastName,
         totalHours: sql<string>`SUM(${workLogs.hoursSpent})`,
         entryCount: sql<string>`COUNT(*)`,
       })
       .from(workLogs)
-      .innerJoin(users, eq(workLogs.userId, users.id))
+      .innerJoin(users, eq(workLogs.employeeId, users.employeeId))
       .where(conditions.length ? and(...conditions) : undefined)
-      .groupBy(workLogs.userId, users.employeeId, users.firstName, users.lastName)
+      .groupBy(users.id, workLogs.employeeId, users.firstName, users.lastName)
       .orderBy(users.firstName, users.lastName);
 
     return rows.map(row => ({

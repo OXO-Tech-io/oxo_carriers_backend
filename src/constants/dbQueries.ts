@@ -13,12 +13,19 @@ export const USER_QUERIES = {
 } as const;
 
 // Permission Queries
+// tbl_user_permissions.user_id was renamed to a business employee_id (varchar)
+// FK referencing tbl_employee.employee_id - GET_ALL_USER_PERMISSIONS still
+// joins back to tbl_employee to expose the numeric id (aliased as user_id)
+// since every caller of that query keys its result by the numeric id.
 export const PERMISSION_QUERIES = {
-    GET_USER_PERMISSIONS: 'SELECT permission_key, access_level FROM tbl_user_permissions WHERE user_id = $1',
-    GET_ALL_USER_PERMISSIONS: 'SELECT user_id, permission_key, access_level FROM tbl_user_permissions ORDER BY user_id',
+    GET_USER_PERMISSIONS: 'SELECT permission_key, access_level FROM tbl_user_permissions WHERE employee_id = $1',
+    GET_ALL_USER_PERMISSIONS: `SELECT e.id AS user_id, p.permission_key, p.access_level
+     FROM tbl_user_permissions p
+     JOIN tbl_employee e ON e.employee_id = p.employee_id
+     ORDER BY e.id`,
     CHECK_PERMISSION: `SELECT 1
      FROM tbl_user_permissions
-     WHERE user_id = $1
+     WHERE employee_id = $1
        AND permission_key = $2
        AND (
          access_level = 'write'

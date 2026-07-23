@@ -5,12 +5,12 @@ import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
 
 @Injectable()
 export class WorkLogsService {
-  submitEntries(userId: number, dto: SubmitWorkLogsDto) {
-    return workLogService.submitEntries(userId, dto.entries);
+  submitEntries(employeeId: string, dto: SubmitWorkLogsDto) {
+    return workLogService.submitEntries(employeeId, dto.entries);
   }
 
-  listMine(userId: number, query: ListWorkLogsQueryDto) {
-    return workLogService.listMine(userId, { from: query.from, to: query.to });
+  listMine(employeeId: string, query: ListWorkLogsQueryDto) {
+    return workLogService.listMine(employeeId, { from: query.from, to: query.to });
   }
 
   listAll(query: ListWorkLogsQueryDto) {
@@ -33,8 +33,8 @@ export class WorkLogsService {
     return workLogService.generateTemplate();
   }
 
-  async bulkUpload(userId: number, file: Express.Multer.File | undefined) {
+  async bulkUpload(employeeId: string, file: Express.Multer.File | undefined) {
     if (!file) throw new BadRequestException('Excel file is required');
-    return workLogService.bulkUpload(userId, file.path);
+    return workLogService.bulkUpload(employeeId, file.path);
   }
 }

@@ -20,7 +20,9 @@ export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'r
 // drizzle/0009_tbl_prefix_and_employee_type.sql.
 export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     type: claimTypeEnum('type').notNull(),
     quarter: varchar('quarter', { length: 10 }).notNull(),
     amount: decimal('amount', { precision: 12, scale: 2 }).notNull(),
@@ -38,8 +40,8 @@ export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
 // Relations
 export const medicalInsuranceClaimsRelations = relations(medicalInsuranceClaims, ({ one }) => ({
     user: one(employee, {
-        fields: [medicalInsuranceClaims.userId],
-        references: [employee.id],
+        fields: [medicalInsuranceClaims.employeeId],
+        references: [employee.employeeId],
     }),
     reviewer: one(employee, {
         fields: [medicalInsuranceClaims.reviewedBy],

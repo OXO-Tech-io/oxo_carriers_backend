@@ -18,7 +18,7 @@ export function getMaxAmountForType(type: MedicalClaimType): number {
 
 export class MedicalInsuranceModel {
   static async create(claim: {
-    user_id: number;
+    employee_id: string;
     type: MedicalClaimType;
     quarter: string;
     amount: number;
@@ -27,10 +27,10 @@ export class MedicalInsuranceModel {
     resubmission_of?: number | null;
   }): Promise<MedicalInsuranceClaim> {
     const result = await pool.query(
-      `INSERT INTO tbl_medical_insurance_claims (user_id, type, quarter, amount, supportive_document_url, relevant_document_url, resubmission_of, status)
+      `INSERT INTO tbl_medical_insurance_claims (employee_id, type, quarter, amount, supportive_document_url, relevant_document_url, resubmission_of, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending') RETURNING id`,
       [
-        claim.user_id,
+        claim.employee_id,
         claim.type,
         claim.quarter,
         claim.amount,
@@ -47,9 +47,9 @@ export class MedicalInsuranceModel {
 
   static async findById(id: number): Promise<MedicalInsuranceClaim | null> {
     const result = await pool.query(
-      `SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
+      `SELECT mc.*, u.id as user_row_id, u.first_name, u.last_name, u.email, u.employee_id
        FROM tbl_medical_insurance_claims mc
-       LEFT JOIN tbl_employee u ON mc.user_id = u.id
+       LEFT JOIN tbl_employee u ON mc.employee_id = u.employee_id
        WHERE mc.id = $1`,
       [id]
     );
@@ -58,14 +58,14 @@ export class MedicalInsuranceModel {
     return this.mapRow(rowsArray[0]);
   }
 
-  static async findByUserId(userId: number, filters?: { status?: MedicalClaimStatus }): Promise<MedicalInsuranceClaim[]> {
+  static async findByEmployeeId(employeeId: string, filters?: { status?: MedicalClaimStatus }): Promise<MedicalInsuranceClaim[]> {
     let query = `
-      SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
+      SELECT mc.*, u.id as user_row_id, u.first_name, u.last_name, u.email, u.employee_id
       FROM tbl_medical_insurance_claims mc
-      LEFT JOIN tbl_employee u ON mc.user_id = u.id
-      WHERE mc.user_id = $1
+      LEFT JOIN tbl_employee u ON mc.employee_id = u.employee_id
+      WHERE mc.employee_id = $1
     `;
-    const params: any[] = [userId];
+    const params: any[] = [employeeId];
     if (filters?.status) {
       params.push(filters.status);
       query += ` AND mc.status = $${params.length}`;
@@ -77,9 +77,9 @@ export class MedicalInsuranceModel {
 
   static async getAll(filters?: { status?: MedicalClaimStatus; type?: MedicalClaimType }): Promise<MedicalInsuranceClaim[]> {
     let query = `
-      SELECT mc.*, u.first_name, u.last_name, u.email, u.employee_id
+      SELECT mc.*, u.id as user_row_id, u.first_name, u.last_name, u.email, u.employee_id
       FROM tbl_medical_insurance_claims mc
-      LEFT JOIN tbl_employee u ON mc.user_id = u.id
+      LEFT JOIN tbl_employee u ON mc.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
@@ -96,12 +96,12 @@ export class MedicalInsuranceModel {
     return (result.rows as any[]).map(this.mapRow);
   }
 
-  static async getUsedOPDAmountForQuarter(userId: number, quarter: string): Promise<number> {
+  static async getUsedOPDAmountForQuarter(employeeId: string, quarter: string): Promise<number> {
     const result = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total
        FROM tbl_medical_insurance_claims
-       WHERE user_id = $1 AND quarter = $2 AND type = 'OPD' AND status = 'approved'`,
-      [userId, quarter]
+       WHERE employee_id = $1 AND quarter = $2 AND type = 'OPD' AND status = 'approved'`,
+      [employeeId, quarter]
     );
     const row = (result.rows as any[])[0];
     return parseFloat(row?.total || 0);
@@ -123,7 +123,7 @@ export class MedicalInsuranceModel {
   private static mapRow(row: any): MedicalInsuranceClaim {
     return {
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       type: row.type,
       quarter: row.quarter,
       amount: parseFloat(row.amount) || row.amount,
@@ -138,7 +138,7 @@ export class MedicalInsuranceModel {
       updated_at: row.updated_at,
       user: row.first_name
         ? {
-            id: row.user_id,
+            id: row.user_row_id,
             first_name: row.first_name,
             last_name: row.last_name,
             email: row.email,

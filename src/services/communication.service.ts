@@ -22,7 +22,11 @@ export const communicationService = {
     const resolvedUserIds = [...new Set([...recipientUserIds, ...groupMemberIds])];
 
     const communication = await CommunicationModel.create({ title, body, createdBy });
-    const recipients = await CommunicationRecipientModel.createMany(communication.id, resolvedUserIds);
+    const recipientEmployees = await EmployeeModel.findByIds(resolvedUserIds);
+    const recipientEmployeeIds = recipientEmployees
+      .map((employee) => employee.employeeId)
+      .filter((id): id is string => !!id);
+    const recipients = await CommunicationRecipientModel.createMany(communication.id, recipientEmployeeIds);
     if (files.length) {
       await AttachmentModel.createMany('communication', communication.id, files, createdBy);
     }
@@ -32,7 +36,7 @@ export const communicationService = {
     for (const recipient of recipients) {
       (async () => {
         try {
-          const user = await EmployeeModel.findById(recipient.userId);
+          const user = await EmployeeModel.findByEmployeeId(recipient.employeeId);
           if (user?.email) {
             await sendCommunicationEmail(user.email, {
               employeeName: `${user.firstName} ${user.lastName}`,
@@ -42,7 +46,7 @@ export const communicationService = {
             await CommunicationRecipientModel.markEmailSent(recipient.id);
           }
           await notificationService.notify(
-            recipient.userId,
+            recipient.employeeId,
             'communication',
             title,
             'You have a new communication from HR.',
@@ -62,12 +66,12 @@ export const communicationService = {
     return CommunicationModel.listAll();
   },
 
-  async listMine(userId: number) {
-    return CommunicationRecipientModel.listForUser(userId);
+  async listMine(employeeId: string) {
+    return CommunicationRecipientModel.listForUser(employeeId);
   },
 
-  async respond(communicationId: number, userId: number, responseText?: string) {
-    const recipient = await CommunicationRecipientModel.findByCommunicationAndUser(communicationId, userId);
+  async respond(communicationId: number, employeeId: string, responseText?: string) {
+    const recipient = await CommunicationRecipientModel.findByCommunicationAndUser(communicationId, employeeId);
     if (!recipient) throw new NotFoundError('Communication not found for this user');
     if (recipient.respondedAt) throw new ForbiddenError('You have already responded to this communication');
     await CommunicationRecipientModel.markResponded(recipient.id, responseText);

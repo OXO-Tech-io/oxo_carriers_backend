@@ -12,7 +12,7 @@ export class EmployeeDependentsController {
   async list(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
     const target = await EmployeeModel.findByEmployeeId(employeeId);
     if (!target) throw new NotFoundException('Employee not found');
-    const records = await this.employeeDependentsService.list(employee.userId, employee.role, target.id);
+    const records = await this.employeeDependentsService.list(employee.employeeId, employee.role, employeeId);
     return { success: true, message: 'Dependent records fetched', data: records };
   }
 }

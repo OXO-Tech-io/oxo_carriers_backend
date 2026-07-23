@@ -33,12 +33,12 @@ export class CommunicationsService {
     return communicationService.listAll();
   }
 
-  async listMine(userId: number) {
-    return communicationService.listMine(userId);
+  async listMine(employeeId: string) {
+    return communicationService.listMine(employeeId);
   }
 
-  async respond(communicationId: number, userId: number, dto: RespondCommunicationDto) {
-    await communicationService.respond(communicationId, userId, dto.responseText);
+  async respond(communicationId: number, employeeId: string, dto: RespondCommunicationDto) {
+    await communicationService.respond(communicationId, employeeId, dto.responseText);
     return {};
   }
 

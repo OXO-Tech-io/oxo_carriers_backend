@@ -40,14 +40,6 @@ export class EmployeesService {
     return EmployeeModel.findByEmployeeId(employeeId);
   }
 
-  findByVerificationToken(token: string) {
-    return EmployeeModel.findByVerificationToken(token);
-  }
-
-  verifyEmail(userId: number) {
-    return EmployeeModel.verifyEmail(userId);
-  }
-
   create(data: Parameters<typeof EmployeeModel.create>[0]) {
     return EmployeeModel.create(data);
   }

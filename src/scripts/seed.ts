@@ -22,7 +22,6 @@ async function seed() {
             firstName: 'Super',
             lastName: 'Admin',
             role: 'super_admin',
-            emailVerified: true,
             department: 'Administration',
             position: 'System Administrator',
             hireDate: new Date().toISOString().split('T')[0],

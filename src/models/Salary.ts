@@ -11,14 +11,14 @@ export class SalaryModel {
     return result.rows as SalaryComponent[];
   }
 
-  static async getEmployeeSalaryStructure(userId: number): Promise<EmployeeSalaryStructureWithComponent[]> {
+  static async getEmployeeSalaryStructure(employeeId: string): Promise<EmployeeSalaryStructureWithComponent[]> {
     const result = await pool.query(
       `SELECT ess.*, sc.name as component_name, sc.type as component_type
        FROM tbl_employee_salary_structure ess
        JOIN tbl_salary_components sc ON ess.component_id = sc.id
-       WHERE ess.user_id = $1 AND (ess.end_date IS NULL OR ess.end_date >= CURRENT_DATE)
+       WHERE ess.employee_id = $1 AND (ess.end_date IS NULL OR ess.end_date >= CURRENT_DATE)
        ORDER BY sc.type, sc.name`,
-      [userId]
+      [employeeId]
     );
     return result.rows.map((row: any) => ({
       ...row,
@@ -27,22 +27,22 @@ export class SalaryModel {
   }
 
   static async updateSalaryStructure(
-    userId: number,
+    employeeId: string,
     components: Array<{ component_id: number; amount: number; is_percentage?: boolean; percentage_of?: string }>
   ): Promise<void> {
     // End current structure
     await pool.query(
-      'UPDATE tbl_employee_salary_structure SET end_date = CURRENT_DATE WHERE user_id = $1 AND end_date IS NULL',
-      [userId]
+      'UPDATE tbl_employee_salary_structure SET end_date = CURRENT_DATE WHERE employee_id = $1 AND end_date IS NULL',
+      [employeeId]
     );
 
     // Insert new structure
     for (const component of components) {
       await pool.query(
-        `INSERT INTO tbl_employee_salary_structure (user_id, component_id, amount, is_percentage, percentage_of, effective_date)
+        `INSERT INTO tbl_employee_salary_structure (employee_id, component_id, amount, is_percentage, percentage_of, effective_date)
          VALUES ($1, $2, $3, $4, $5, CURRENT_DATE)`,
         [
-          userId,
+          employeeId,
           component.component_id,
           encryptSalary(component.amount),
           component.is_percentage || false,
@@ -53,12 +53,12 @@ export class SalaryModel {
   }
 
   static async generateSalary(
-    userId: number,
+    employeeId: string,
     monthYear: Date,
     generatedBy: number
   ): Promise<MonthlySalary> {
     // Get salary structure
-    const structure = await this.getEmployeeSalaryStructure(userId);
+    const structure = await this.getEmployeeSalaryStructure(employeeId);
 
     let basicSalary = 0;
     let totalEarnings = 0;
@@ -109,10 +109,10 @@ export class SalaryModel {
 
     // Insert monthly salary
     const result = await pool.query(
-      `INSERT INTO tbl_monthly_salaries (user_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
+      `INSERT INTO tbl_monthly_salaries (employee_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'generated', $9) RETURNING id`,
       [
-        userId,
+        employeeId,
         monthYear,
         encryptSalary(basicSalary),
         encryptSalary(localSalary),
@@ -161,9 +161,9 @@ export class SalaryModel {
     return this.decryptMonthlySalary(salaries[0]);
   }
 
-  static async findByUserId(userId: number, filters?: { year?: number; month?: number }): Promise<MonthlySalary[]> {
-    let query = 'SELECT * FROM tbl_monthly_salaries WHERE user_id = $1';
-    const params: any[] = [userId];
+  static async findByEmployeeId(employeeId: string, filters?: { year?: number; month?: number }): Promise<MonthlySalary[]> {
+    let query = 'SELECT * FROM tbl_monthly_salaries WHERE employee_id = $1';
+    const params: any[] = [employeeId];
 
     if (filters?.year) {
       params.push(filters.year);
@@ -182,7 +182,7 @@ export class SalaryModel {
   }
 
   static async getAll(filters?: {
-    userId?: number;
+    employeeId?: string;
     department?: string;
     year?: number;
     month?: number;
@@ -191,14 +191,14 @@ export class SalaryModel {
     let query = `
       SELECT ms.*, u.first_name, u.last_name, u.employee_id, u.department
       FROM tbl_monthly_salaries ms
-      JOIN tbl_employee u ON ms.user_id = u.id
+      JOIN tbl_employee u ON ms.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
 
-    if (filters?.userId) {
-      params.push(filters.userId);
-      query += ` AND ms.user_id = $${params.length}`;
+    if (filters?.employeeId) {
+      params.push(filters.employeeId);
+      query += ` AND ms.employee_id = $${params.length}`;
     }
 
     if (filters?.department) {
@@ -258,21 +258,21 @@ export class SalaryModel {
     await pool.query('UPDATE tbl_monthly_salaries SET pdf_url = $1 WHERE id = $2', [pdfUrl, id]);
   }
 
-  static async bulkGenerateSalaries(userIds: number[], monthYear: Date, generatedBy: number): Promise<number> {
+  static async bulkGenerateSalaries(employeeIds: string[], monthYear: Date, generatedBy: number): Promise<number> {
     let count = 0;
-    for (const userId of userIds) {
+    for (const employeeId of employeeIds) {
       try {
-        await this.generateSalary(userId, monthYear, generatedBy);
+        await this.generateSalary(employeeId, monthYear, generatedBy);
         count++;
       } catch (error) {
-        log.error({ err: error, userId }, 'Failed to generate salary');
+        log.error({ err: error, employeeId }, 'Failed to generate salary');
       }
     }
     return count;
   }
 
   static async createSalaryFromExcel(
-    userId: number,
+    employeeId: string,
     monthYear: Date,
     excelData: {
       fullSalary: number;
@@ -354,7 +354,7 @@ export class SalaryModel {
     // Insert monthly salary
     log.debug(
       {
-        userId,
+        employeeId,
         localSalaryValue,
         oxoInternationalSalaryValue,
         fullSalary,
@@ -365,9 +365,9 @@ export class SalaryModel {
     );
 
     const upsertResult = await pool.query(
-      `INSERT INTO tbl_monthly_salaries (user_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
+      `INSERT INTO tbl_monthly_salaries (employee_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'generated', $9)
-       ON CONFLICT (user_id, month_year) DO UPDATE SET
+       ON CONFLICT (employee_id, month_year) DO UPDATE SET
          basic_salary = EXCLUDED.basic_salary,
          local_salary = EXCLUDED.local_salary,
          oxo_international_salary = EXCLUDED.oxo_international_salary,
@@ -378,7 +378,7 @@ export class SalaryModel {
          generated_by = EXCLUDED.generated_by
        RETURNING id`,
       [
-        userId,
+        employeeId,
         monthYear,
         encryptSalary(basicSalary),
         encryptSalary(localSalaryValue),
@@ -392,8 +392,8 @@ export class SalaryModel {
 
     // Verify the insert immediately after
     const verifyResult = await pool.query(
-      'SELECT id, local_salary, oxo_international_salary, basic_salary FROM tbl_monthly_salaries WHERE user_id = $1 AND month_year = $2',
-      [userId, monthYear]
+      'SELECT id, local_salary, oxo_international_salary, basic_salary FROM tbl_monthly_salaries WHERE employee_id = $1 AND month_year = $2',
+      [employeeId, monthYear]
     );
     const verifyRows = verifyResult.rows as any[];
     if (verifyRows.length > 0) {
@@ -426,7 +426,7 @@ export class SalaryModel {
         log.debug('OXO International Salary saved correctly');
       }
     } else {
-      log.error({ userId }, 'Failed to verify salary record');
+      log.error({ employeeId }, 'Failed to verify salary record');
     }
 
     let salaryId = (upsertResult.rows[0] as any)?.id;
@@ -437,8 +437,8 @@ export class SalaryModel {
     } else {
       // Fallback: look up the existing row id
       const existingResult = await pool.query(
-        'SELECT id FROM tbl_monthly_salaries WHERE user_id = $1 AND month_year = $2',
-        [userId, monthYear]
+        'SELECT id FROM tbl_monthly_salaries WHERE employee_id = $1 AND month_year = $2',
+        [employeeId, monthYear]
       );
       const existingRows = existingResult.rows as any[];
       if (existingRows.length > 0) {

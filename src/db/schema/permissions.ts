@@ -10,7 +10,9 @@ export const accessLevelEnum = pgEnum('access_level', ['read', 'write']);
 // drizzle/0009_tbl_prefix_and_employee_type.sql.
 export const userPermissions = pgTable('tbl_user_permissions', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     permissionKey: varchar('permission_key', { length: 100 }).notNull(),
     accessLevel: accessLevelEnum('access_level').notNull().default('read'),
     assignedBy: integer('assigned_by').references(() => employee.id, { onDelete: 'set null' }),
@@ -21,8 +23,8 @@ export const userPermissions = pgTable('tbl_user_permissions', {
 // Relations
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
     user: one(employee, {
-        fields: [userPermissions.userId],
-        references: [employee.id],
+        fields: [userPermissions.employeeId],
+        references: [employee.employeeId],
     }),
     assigner: one(employee, {
         fields: [userPermissions.assignedBy],

@@ -1,14 +1,24 @@
 import ExcelJS from 'exceljs';
 import { WorkLogModel, type WorkLogInput } from '../models/WorkLog';
+import { EmployeeModel } from '../models/Employee';
 import { BadRequestError } from '../utils/AppError';
 import { WorkLogEntryInput } from '../validators/workLog.validator';
 
 const TEMPLATE_HEADERS = ['Date', 'Task Description', 'Hours Spent', 'Remarks'];
 
+// `userId` filters below are the wire/API field (internal numeric employee
+// id, unchanged for minimal API-surface churn) - resolved here to the
+// business employeeId that tbl_work_logs.employee_id now stores.
+async function resolveEmployeeIdFilter(userId?: number): Promise<string | undefined> {
+  if (!userId) return undefined;
+  const employee = await EmployeeModel.findById(userId);
+  return employee?.employeeId ?? undefined;
+}
+
 export const workLogService = {
-  async submitEntries(userId: number, entries: WorkLogEntryInput[]) {
+  async submitEntries(employeeId: string, entries: WorkLogEntryInput[]) {
     const rows: WorkLogInput[] = entries.map((entry) => ({
-      userId,
+      employeeId,
       workDate: entry.workDate,
       taskDescription: entry.taskDescription,
       hoursSpent: entry.hoursSpent,
@@ -17,12 +27,13 @@ export const workLogService = {
     return WorkLogModel.createMany(rows);
   },
 
-  async listMine(userId: number, filters?: { from?: string; to?: string }) {
-    return WorkLogModel.findByUserId(userId, filters);
+  async listMine(employeeId: string, filters?: { from?: string; to?: string }) {
+    return WorkLogModel.findByEmployeeId(employeeId, filters);
   },
 
   async listAll(filters?: { userId?: number; from?: string; to?: string }) {
-    return WorkLogModel.listAll(filters);
+    const employeeId = await resolveEmployeeIdFilter(filters?.userId);
+    return WorkLogModel.listAll({ employeeId, from: filters?.from, to: filters?.to });
   },
 
   async getSummary(filters?: { from?: string; to?: string }) {
@@ -52,11 +63,12 @@ export const workLogService = {
   },
 
   async generateDetailedReport(filters?: { userId?: number; from?: string; to?: string }): Promise<ExcelJS.Buffer> {
-    const rows = await WorkLogModel.listAll(filters);
+    const employeeId = await resolveEmployeeIdFilter(filters?.userId);
+    const rows = await WorkLogModel.listAll({ employeeId, from: filters?.from, to: filters?.to });
     const workbook = new ExcelJS.Workbook();
     const worksheet = workbook.addWorksheet('Work Log Detail');
     worksheet.columns = [
-      { header: 'Employee ID', key: 'userId', width: 15 },
+      { header: 'Employee ID', key: 'employeeId', width: 15 },
       { header: 'Date', key: 'workDate', width: 15 },
       { header: 'Task Description', key: 'task', width: 50 },
       { header: 'Hours Spent', key: 'hours', width: 15 },
@@ -65,7 +77,7 @@ export const workLogService = {
     worksheet.getRow(1).font = { bold: true };
     rows.forEach(row => {
       worksheet.addRow({
-        userId: row.userId,
+        employeeId: row.employeeId,
         workDate: row.workDate,
         task: row.taskDescription,
         hours: row.hoursSpent,
@@ -89,7 +101,7 @@ export const workLogService = {
     return workbook.xlsx.writeBuffer();
   },
 
-  async bulkUpload(userId: number, filePath: string): Promise<{ success: number; failed: number; errors: string[] }> {
+  async bulkUpload(employeeId: string, filePath: string): Promise<{ success: number; failed: number; errors: string[] }> {
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.readFile(filePath);
     const worksheet = workbook.getWorksheet(1);
@@ -145,7 +157,7 @@ export const workLogService = {
       }
 
       entries.push({
-        userId,
+        employeeId,
         workDate,
         taskDescription,
         hoursSpent,

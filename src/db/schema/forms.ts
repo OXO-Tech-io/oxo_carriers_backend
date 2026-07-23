@@ -5,7 +5,7 @@ import { employee as users } from './employee';
 export const formStatusEnum = pgEnum('form_status', ['draft', 'published']);
 export const formFieldTypeEnum = pgEnum('form_field_type', ['text', 'radio', 'select', 'file']);
 
-export const forms = pgTable('forms', {
+export const forms = pgTable('tbl_forms', {
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
@@ -16,7 +16,7 @@ export const forms = pgTable('forms', {
 });
 
 // `options` holds a JSON string[] of choices, only meaningful for radio/select.
-export const formFields = pgTable('form_fields', {
+export const formFields = pgTable('tbl_form_fields', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     label: varchar('label', { length: 255 }).notNull(),
@@ -26,24 +26,28 @@ export const formFields = pgTable('form_fields', {
     orderIndex: integer('order_index').notNull().default(0),
 });
 
-export const formDistributions = pgTable('form_distributions', {
+export const formDistributions = pgTable('tbl_form_distributions', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     distributedAt: timestamp('distributed_at').defaultNow(),
 });
 
-export const formResponses = pgTable('form_responses', {
+export const formResponses = pgTable('tbl_form_responses', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     submittedAt: timestamp('submitted_at').defaultNow(),
 });
 
 // File-type answers do not use valueText - instead a row is written into the
 // shared `attachments` table with entityType='form_response_answer',
 // entityId=this row's id, mirroring the polymorphic attachment convention.
-export const formResponseAnswers = pgTable('form_response_answers', {
+export const formResponseAnswers = pgTable('tbl_form_response_answers', {
     id: serial('id').primaryKey(),
     responseId: integer('response_id').notNull().references(() => formResponses.id, { onDelete: 'cascade' }),
     fieldId: integer('field_id').notNull().references(() => formFields.id, { onDelete: 'cascade' }),
@@ -64,12 +68,12 @@ export const formFieldsRelations = relations(formFields, ({ one, many }) => ({
 
 export const formDistributionsRelations = relations(formDistributions, ({ one }) => ({
     form: one(forms, { fields: [formDistributions.formId], references: [forms.id] }),
-    user: one(users, { fields: [formDistributions.userId], references: [users.id] }),
+    user: one(users, { fields: [formDistributions.employeeId], references: [users.employeeId] }),
 }));
 
 export const formResponsesRelations = relations(formResponses, ({ one, many }) => ({
     form: one(forms, { fields: [formResponses.formId], references: [forms.id] }),
-    user: one(users, { fields: [formResponses.userId], references: [users.id] }),
+    user: one(users, { fields: [formResponses.employeeId], references: [users.employeeId] }),
     answers: many(formResponseAnswers),
 }));
 

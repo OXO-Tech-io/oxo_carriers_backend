@@ -42,8 +42,13 @@ export class UsersController {
   @Post()
   @HttpCode(201)
   async create(@Body() dto: CreateUserDto, @CurrentEmployee() employee: JwtPayload) {
-    const user = await this.usersService.create(dto, employee);
-    return { success: true, message: 'User created successfully in database.', user };
+    const { keycloak, ...user } = await this.usersService.create(dto, employee);
+    const message = !keycloak.provisioned
+      ? 'User created successfully. Keycloak provisioning was skipped or failed - use POST /users/:id/keycloak to provision manually.'
+      : keycloak.onboardingEmailSent
+        ? 'User created and provisioned in Keycloak successfully. An onboarding email has been sent.'
+        : 'User created and provisioned in Keycloak successfully, but the onboarding email could not be sent.';
+    return { success: true, message, user };
   }
 
   @Post(':id/keycloak')

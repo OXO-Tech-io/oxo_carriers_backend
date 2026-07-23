@@ -39,7 +39,9 @@ export const leaveTypes = pgTable('tbl_leave_types', {
 // Employee Leave Balance Table
 export const employeeLeaveBalance = pgTable('tbl_employee_leave_balance', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     totalDays: decimal('total_days', { precision: 5, scale: 2 }).default('0'),
     usedDays: decimal('used_days', { precision: 5, scale: 2 }).default('0'),
@@ -52,7 +54,9 @@ export const employeeLeaveBalance = pgTable('tbl_employee_leave_balance', {
 // Leave Requests Table
 export const leaveRequests = pgTable('tbl_leave_requests', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     leaveTypeId: integer('leave_type_id').notNull().references(() => leaveTypes.id, { onDelete: 'cascade' }),
     startDate: date('start_date').notNull(),
     endDate: date('end_date').notNull(),
@@ -90,8 +94,8 @@ export const leaveTypesRelations = relations(leaveTypes, ({ many }) => ({
 
 export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ one }) => ({
     user: one(employee, {
-        fields: [employeeLeaveBalance.userId],
-        references: [employee.id],
+        fields: [employeeLeaveBalance.employeeId],
+        references: [employee.employeeId],
     }),
     leaveType: one(leaveTypes, {
         fields: [employeeLeaveBalance.leaveTypeId],
@@ -101,8 +105,8 @@ export const employeeLeaveBalanceRelations = relations(employeeLeaveBalance, ({ 
 
 export const leaveRequestsRelations = relations(leaveRequests, ({ one }) => ({
     user: one(employee, {
-        fields: [leaveRequests.userId],
-        references: [employee.id],
+        fields: [leaveRequests.employeeId],
+        references: [employee.employeeId],
     }),
     leaveType: one(leaveTypes, {
         fields: [leaveRequests.leaveTypeId],

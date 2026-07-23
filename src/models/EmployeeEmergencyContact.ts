@@ -13,7 +13,7 @@ export type EmployeeEmergencyContactInput = {
 
 export type DecryptedEmployeeEmergencyContact = {
   id: number;
-  userId: number;
+  employeeId: string;
   name: string | null;
   relationship: string;
   contactNumber: string | null;
@@ -22,14 +22,14 @@ export type DecryptedEmployeeEmergencyContact = {
 };
 
 export class EmployeeEmergencyContactModel {
-  static async listByUserId(
-    userId: number,
+  static async listByEmployeeId(
+    employeeId: string,
     executor: DbExecutor = db
   ): Promise<DecryptedEmployeeEmergencyContact[]> {
     return executor
       .select({
         id: employeeEmergencyContacts.id,
-        userId: employeeEmergencyContacts.userId,
+        employeeId: employeeEmergencyContacts.employeeId,
         name: pgpDecrypt(employeeEmergencyContacts.name),
         relationship: employeeEmergencyContacts.relationship,
         contactNumber: pgpDecrypt(employeeEmergencyContacts.contactNumber),
@@ -37,14 +37,14 @@ export class EmployeeEmergencyContactModel {
         updatedAt: employeeEmergencyContacts.updatedAt,
       })
       .from(employeeEmergencyContacts)
-      .where(eq(employeeEmergencyContacts.userId, userId));
+      .where(eq(employeeEmergencyContacts.employeeId, employeeId));
   }
 
-  static async create(userId: number, data: EmployeeEmergencyContactInput, executor: DbExecutor = db) {
+  static async create(employeeId: string, data: EmployeeEmergencyContactInput, executor: DbExecutor = db) {
     const [inserted] = await executor
       .insert(employeeEmergencyContacts)
       .values({
-        userId,
+        employeeId,
         name: pgpEncrypt(data.name),
         relationship: data.relationship,
         contactNumber: pgpEncrypt(data.contactNumber),

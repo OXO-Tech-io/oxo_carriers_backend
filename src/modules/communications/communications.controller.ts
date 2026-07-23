@@ -29,7 +29,7 @@ export class CommunicationsController {
 
   @Get('mine')
   async listMine(@CurrentEmployee() employee: JwtPayload) {
-    const communications = await this.communicationsService.listMine(employee.userId);
+    const communications = await this.communicationsService.listMine(employee.employeeId!);
     return { success: true, message: 'Communications fetched', data: communications };
   }
 
@@ -40,7 +40,7 @@ export class CommunicationsController {
     @Body() dto: RespondCommunicationDto,
   ) {
     const id = this.parseId(idParam);
-    const result = await this.communicationsService.respond(id, employee.userId, dto);
+    const result = await this.communicationsService.respond(id, employee.employeeId!, dto);
     return { success: true, message: 'Response recorded', data: result };
   }
 

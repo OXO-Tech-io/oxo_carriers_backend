@@ -6,18 +6,18 @@ import { NotificationModel } from '../models/Notification';
 // per event type.
 export const notificationService = {
   async notify(
-    userId: number,
+    employeeId: string,
     type: string,
     title: string,
     message: string,
     payload?: unknown,
     link?: string
   ) {
-    return NotificationModel.create({ userId, type, title, message, payload, link });
+    return NotificationModel.create({ employeeId, type, title, message, payload, link });
   },
 
   async notifyMany(
-    userIds: number[],
+    employeeIds: string[],
     type: string,
     title: string,
     message: string,
@@ -25,23 +25,23 @@ export const notificationService = {
     link?: string
   ) {
     return Promise.all(
-      userIds.map(userId => NotificationModel.create({ userId, type, title, message, payload, link }))
+      employeeIds.map(employeeId => NotificationModel.create({ employeeId, type, title, message, payload, link }))
     );
   },
 
-  async listForUser(userId: number, filters?: { isRead?: boolean; limit?: number; offset?: number }) {
-    return NotificationModel.listByUserId(userId, filters);
+  async listForUser(employeeId: string, filters?: { isRead?: boolean; limit?: number; offset?: number }) {
+    return NotificationModel.listByEmployeeId(employeeId, filters);
   },
 
-  async unreadCount(userId: number) {
-    return NotificationModel.countUnread(userId);
+  async unreadCount(employeeId: string) {
+    return NotificationModel.countUnread(employeeId);
   },
 
-  async markRead(id: number, userId: number) {
-    return NotificationModel.markRead(id, userId);
+  async markRead(id: number, employeeId: string) {
+    return NotificationModel.markRead(id, employeeId);
   },
 
-  async markAllRead(userId: number) {
-    return NotificationModel.markAllRead(userId);
+  async markAllRead(employeeId: string) {
+    return NotificationModel.markAllRead(employeeId);
   },
 };

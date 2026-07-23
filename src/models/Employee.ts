@@ -73,7 +73,6 @@ export class EmployeeModel {
         firstName: claims.first_name || claims.email.split('@')[0],
         lastName: claims.last_name || '',
         role: claims.role,
-        emailVerified: true,
       })
       .returning();
 
@@ -95,7 +94,7 @@ export class EmployeeModel {
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({
-          userId: insertedUser.id,
+          employeeId,
           permissionKey: permission,
           accessLevel: 'read',
         });
@@ -112,21 +111,15 @@ export class EmployeeModel {
     return decryptUser(user || null);
   }
 
-  static async findByVerificationToken(token: string): Promise<DrizzleEmployee | null> {
-    const user = await db.query.employee.findFirst({
-      where: eq(employee.emailVerificationToken, token),
+  /** Bulk lookup by internal numeric id - used to resolve numeric id lists
+   * (e.g. recipient pickers that still work in terms of internal ids) to the
+   * business employeeId needed for FK columns like tbl_notifications.employee_id. */
+  static async findByIds(ids: number[]): Promise<DrizzleEmployee[]> {
+    if (!ids.length) return [];
+    const users = await db.query.employee.findMany({
+      where: inArray(employee.id, ids),
     });
-    return decryptUser(user || null);
-  }
-
-  static async verifyEmail(userId: number): Promise<void> {
-    await db
-      .update(employee)
-      .set({
-        emailVerified: true,
-        emailVerificationToken: null,
-      })
-      .where(eq(employee.id, userId));
+    return users.map(user => decryptUser(user)) as DrizzleEmployee[];
   }
 
   static async create(userData: {
@@ -149,7 +142,6 @@ export class EmployeeModel {
     swift_code?: string | null;
     company_name?: string | null;
     contact_number?: string | null;
-    email_verification_token?: string;
   }): Promise<DrizzleEmployee> {
     const [insertedUser] = await db
       .insert(employee)
@@ -173,8 +165,6 @@ export class EmployeeModel {
         swiftCode: encryptPII(userData.swift_code) ?? null,
         companyName: encryptPII(userData.company_name) ?? null,
         contactNumber: encryptPII(userData.contact_number) ?? null,
-        emailVerified: false,
-        emailVerificationToken: userData.email_verification_token || null,
       })
       .returning();
 

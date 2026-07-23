@@ -232,8 +232,12 @@ async function bootstrap() {
     // 3. Assign default permissions to existing employee accounts if they don't already have them
     try {
       logger.info('Checking default permissions for existing employees...');
-      const employeesRes = await pool.query("SELECT id FROM tbl_employee WHERE role = 'employee'");
-      const employeeIds = (employeesRes.rows || []).map((row: any) => row.id);
+      // tbl_user_permissions is keyed by the business employee_id (varchar),
+      // not the numeric tbl_employee.id.
+      const employeesRes = await pool.query(
+        "SELECT employee_id FROM tbl_employee WHERE role = 'employee' AND employee_id IS NOT NULL",
+      );
+      const employeeIds = (employeesRes.rows || []).map((row: any) => row.employee_id);
       const defaultPermissions = [
         'dashboard',
         'leaves',
@@ -249,12 +253,12 @@ async function bootstrap() {
       for (const empId of employeeIds) {
         for (const permission of defaultPermissions) {
           const checkRes = await pool.query(
-            'SELECT 1 FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+            'SELECT 1 FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
             [empId, permission],
           );
           if (checkRes.rows.length === 0) {
             await pool.query(
-              'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+              'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
               [empId, permission, 'read'],
             );
             assignedCount++;
@@ -273,23 +277,25 @@ async function bootstrap() {
     // 4. Grant HR managers/executives write access to Profile Change Requests
     try {
       logger.info('Checking profile_change_requests permission for HR users...');
-      const hrRes = await pool.query("SELECT id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')");
-      const hrIds = (hrRes.rows || []).map((row: any) => row.id);
+      const hrRes = await pool.query(
+        "SELECT employee_id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive') AND employee_id IS NOT NULL",
+      );
+      const hrIds = (hrRes.rows || []).map((row: any) => row.employee_id);
       let hrAssignedCount = 0;
       for (const hrId of hrIds) {
         const checkRes = await pool.query(
-          'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+          'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
           [hrId, 'profile_change_requests'],
         );
         if (checkRes.rows.length === 0) {
           await pool.query(
-            'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+            'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
             [hrId, 'profile_change_requests', 'write'],
           );
           hrAssignedCount++;
         } else if (checkRes.rows[0].access_level !== 'write') {
           await pool.query(
-            'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+            'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
             [hrId, 'profile_change_requests', 'write'],
           );
           hrAssignedCount++;
@@ -308,32 +314,34 @@ async function bootstrap() {
     // and Forms, and HR managers write access to Work Logs.
     try {
       logger.info('Checking HR modules permissions for HR users...');
-      const hrRes = await pool.query("SELECT id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')");
-      const grants: { userId: number; key: string }[] = [];
+      const hrRes = await pool.query(
+        "SELECT employee_id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive') AND employee_id IS NOT NULL",
+      );
+      const grants: { employeeId: string; key: string }[] = [];
       for (const row of hrRes.rows as any[]) {
         for (const key of ['communications', 'events', 'forms']) {
-          grants.push({ userId: row.id, key });
+          grants.push({ employeeId: row.employee_id, key });
         }
         if (row.role === 'hr_manager') {
-          grants.push({ userId: row.id, key: 'work_logs' });
+          grants.push({ employeeId: row.employee_id, key: 'work_logs' });
         }
       }
       let hrModuleGrantCount = 0;
       for (const grant of grants) {
         const checkRes = await pool.query(
-          'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
-          [grant.userId, grant.key],
+          'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
+          [grant.employeeId, grant.key],
         );
         if (checkRes.rows.length === 0) {
           await pool.query(
-            'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
-            [grant.userId, grant.key, 'write'],
+            'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
+            [grant.employeeId, grant.key, 'write'],
           );
           hrModuleGrantCount++;
         } else if (checkRes.rows[0].access_level !== 'write') {
           await pool.query(
-            'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
-            [grant.userId, grant.key, 'write'],
+            'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
+            [grant.employeeId, grant.key, 'write'],
           );
           hrModuleGrantCount++;
         }

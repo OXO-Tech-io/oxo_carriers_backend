@@ -12,7 +12,7 @@ export class EmployeeWelfareInfoController {
   async get(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
     const target = await EmployeeModel.findByEmployeeId(employeeId);
     if (!target) throw new NotFoundException('Employee not found');
-    const record = await this.employeeWelfareInfoService.get(employee.userId, employee.role, target.id);
+    const record = await this.employeeWelfareInfoService.get(employee.employeeId, employee.role, employeeId);
     return { success: true, message: 'Welfare info fetched', data: record };
   }
 }

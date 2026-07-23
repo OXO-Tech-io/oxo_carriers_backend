@@ -7,16 +7,16 @@ export class EventParticipantModel {
     return db.query.eventParticipants.findMany({ where: eq(eventParticipants.eventId, eventId) });
   }
 
-  /** Upsert-by-application-logic: one row per (eventId, userId). */
+  /** Upsert-by-application-logic: one row per (eventId, employeeId). */
   static async recordParticipation(
     eventId: number,
-    userId: number,
+    employeeId: string,
     participated: boolean,
     recordedBy: number,
     willParticipate?: boolean | null
   ): Promise<DrizzleEventParticipant> {
     const existing = await db.query.eventParticipants.findFirst({
-      where: and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.userId, userId)),
+      where: and(eq(eventParticipants.eventId, eventId), eq(eventParticipants.employeeId, employeeId)),
     });
 
     if (existing) {
@@ -31,7 +31,7 @@ export class EventParticipantModel {
 
     const [inserted] = await db
       .insert(eventParticipants)
-      .values({ eventId, userId, participated, willParticipate, recordedBy })
+      .values({ eventId, employeeId, participated, willParticipate, recordedBy })
       .returning();
     if (!inserted) throw new Error('Failed to record event participation');
     return inserted;

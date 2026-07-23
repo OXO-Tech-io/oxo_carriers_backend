@@ -2,16 +2,16 @@ import { EmployeeNoteModel } from '../models/EmployeeNote';
 import { AttachmentModel, type AttachmentFileInput } from '../models/Attachment';
 
 export const employeeNoteService = {
-  async create(employeeUserId: number, authorUserId: number, content: string, files: AttachmentFileInput[]) {
-    const note = await EmployeeNoteModel.create({ employeeUserId, authorUserId, content });
+  async create(employeeId: string, authorUserId: number, content: string, files: AttachmentFileInput[]) {
+    const note = await EmployeeNoteModel.create({ employeeId, authorUserId, content });
     if (files.length) {
       await AttachmentModel.createMany('employee_note', note.id, files, authorUserId);
     }
     return note;
   },
 
-  async listForEmployee(employeeUserId: number) {
-    const notes = await EmployeeNoteModel.listByEmployeeId(employeeUserId);
+  async listForEmployee(employeeId: string) {
+    const notes = await EmployeeNoteModel.listByEmployeeId(employeeId);
     const attachments = await AttachmentModel.findByEntityMany(
       'employee_note',
       notes.map((n) => n.id)

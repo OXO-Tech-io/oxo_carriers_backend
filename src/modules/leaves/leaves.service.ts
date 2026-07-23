@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { leaveService } from '../../services/leave.service';
 import { createLeaveRequestSchema } from '../../validators/leave.validator';
 import { JwtPayload } from '../../types';
@@ -18,20 +18,27 @@ import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
  */
 @Injectable()
 export class LeavesService {
+  private requireEmployeeId(employee: JwtPayload): string {
+    if (!employee.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
+    return employee.employeeId;
+  }
+
   async getLeaveTypes() {
     return leaveService.getLeaveTypes();
   }
 
-  async getLeaveBalance(userId: number, query: LeaveBalanceQueryDto) {
-    return leaveService.getLeaveBalance(userId, query);
+  async getLeaveBalance(employee: JwtPayload, query: LeaveBalanceQueryDto) {
+    return leaveService.getLeaveBalance(this.requireEmployeeId(employee), query);
   }
 
   async listLeaveRequests(employee: JwtPayload, query: ListLeaveRequestsQueryDto) {
-    return leaveService.listLeaveRequests(employee.userId, employee.role, query);
+    return leaveService.listLeaveRequests(this.requireEmployeeId(employee), employee.role, query);
   }
 
   async getLeaveRequestById(employee: JwtPayload, id: number) {
-    return leaveService.getLeaveRequestById(id, employee.userId, employee.role);
+    return leaveService.getLeaveRequestById(id, this.requireEmployeeId(employee), employee.role);
   }
 
   /**
@@ -45,7 +52,7 @@ export class LeavesService {
   async createLeaveRequest(employee: JwtPayload, body: unknown, file: Express.Multer.File | undefined) {
     const input = createLeaveRequestSchema.parse(body);
     const attachmentUrl = file ? `/uploads/documents/${file.filename}` : undefined;
-    return leaveService.createLeaveRequest(employee.userId, input, attachmentUrl);
+    return leaveService.createLeaveRequest(this.requireEmployeeId(employee), input, attachmentUrl);
   }
 
   async approveLeaveRequest(employee: JwtPayload, id: number, dto: ApproveLeaveRequestDto) {

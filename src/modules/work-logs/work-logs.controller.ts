@@ -26,7 +26,7 @@ export class WorkLogsController {
 
   @Get('mine')
   async listMine(@Query() query: ListWorkLogsQueryDto, @CurrentEmployee() employee: JwtPayload) {
-    const logs = await this.workLogsService.listMine(employee.userId, query);
+    const logs = await this.workLogsService.listMine(employee.employeeId!, query);
     return { success: true, message: 'Work logs fetched', data: logs };
   }
 
@@ -69,14 +69,14 @@ export class WorkLogsController {
   @Post()
   @HttpCode(201)
   async submit(@Body() dto: SubmitWorkLogsDto, @CurrentEmployee() employee: JwtPayload) {
-    const result = await this.workLogsService.submitEntries(employee.userId, dto);
+    const result = await this.workLogsService.submitEntries(employee.employeeId!, dto);
     return { success: true, message: 'Work log entries submitted', data: result };
   }
 
   @Post('bulk-upload')
   @UseInterceptors(FileInterceptor('excel', workLogsExcelMulterOptions))
   async bulkUpload(@UploadedFile() file: Express.Multer.File, @CurrentEmployee() employee: JwtPayload) {
-    const result = await this.workLogsService.bulkUpload(employee.userId, file);
+    const result = await this.workLogsService.bulkUpload(employee.employeeId!, file);
     return { success: true, message: 'Bulk upload processed', data: result };
   }
 }

@@ -13,11 +13,13 @@ export const groups = pgTable('tbl_groups', {
 export const groupMembers = pgTable('tbl_group_members', {
     id: serial('id').primaryKey(),
     groupId: integer('group_id').notNull().references(() => groups.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     addedBy: integer('added_by').references(() => users.id, { onDelete: 'set null' }),
     addedAt: timestamp('added_at').defaultNow(),
 }, (table) => ({
-    groupUserUnique: uniqueIndex('tbl_group_members_group_id_user_id_idx').on(table.groupId, table.userId),
+    groupUserUnique: uniqueIndex('tbl_group_members_group_id_user_id_idx').on(table.groupId, table.employeeId),
 }));
 
 export const groupsRelations = relations(groups, ({ one, many }) => ({
@@ -27,7 +29,7 @@ export const groupsRelations = relations(groups, ({ one, many }) => ({
 
 export const groupMembersRelations = relations(groupMembers, ({ one }) => ({
     group: one(groups, { fields: [groupMembers.groupId], references: [groups.id] }),
-    user: one(users, { fields: [groupMembers.userId], references: [users.id] }),
+    user: one(users, { fields: [groupMembers.employeeId], references: [users.employeeId] }),
 }));
 
 export type Group = typeof groups.$inferSelect;

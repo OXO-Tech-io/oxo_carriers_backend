@@ -3,7 +3,7 @@ import { employeeNotes, type EmployeeNote as DrizzleEmployeeNote } from '../db/s
 import { eq } from 'drizzle-orm';
 
 export type EmployeeNoteInput = {
-  employeeUserId: number;
+  employeeId: string;
   authorUserId: number;
   content: string;
 };
@@ -20,9 +20,9 @@ export class EmployeeNoteModel {
     return record ?? null;
   }
 
-  static async listByEmployeeId(employeeUserId: number): Promise<DrizzleEmployeeNote[]> {
+  static async listByEmployeeId(employeeId: string): Promise<DrizzleEmployeeNote[]> {
     return db.query.employeeNotes.findMany({
-      where: eq(employeeNotes.employeeUserId, employeeUserId),
+      where: eq(employeeNotes.employeeId, employeeId),
       orderBy: (t, { desc }) => [desc(t.createdAt)],
     });
   }

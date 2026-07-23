@@ -32,7 +32,9 @@ export const salaryComponents = pgTable('tbl_salary_components', {
 // Employee Salary Structure Table
 export const employeeSalaryStructure = pgTable('tbl_employee_salary_structure', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     componentId: integer('component_id').notNull().references(() => salaryComponents.id, { onDelete: 'cascade' }),
     amount: varchar('amount', { length: 500 }).notNull(),
     isPercentage: boolean('is_percentage').default(false),
@@ -45,7 +47,9 @@ export const employeeSalaryStructure = pgTable('tbl_employee_salary_structure', 
 // Monthly Salaries Table
 export const monthlySalaries = pgTable('tbl_monthly_salaries', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     monthYear: date('month_year').notNull(),
     basicSalary: varchar('basic_salary', { length: 500 }).notNull(),
     localSalary: varchar('local_salary', { length: 500 }).default('0'),
@@ -77,8 +81,8 @@ export const salaryComponentsRelations = relations(salaryComponents, ({ many }) 
 
 export const employeeSalaryStructureRelations = relations(employeeSalaryStructure, ({ one }) => ({
     user: one(employee, {
-        fields: [employeeSalaryStructure.userId],
-        references: [employee.id],
+        fields: [employeeSalaryStructure.employeeId],
+        references: [employee.employeeId],
     }),
     component: one(salaryComponents, {
         fields: [employeeSalaryStructure.componentId],
@@ -88,8 +92,8 @@ export const employeeSalaryStructureRelations = relations(employeeSalaryStructur
 
 export const monthlySalariesRelations = relations(monthlySalaries, ({ one, many }) => ({
     user: one(employee, {
-        fields: [monthlySalaries.userId],
-        references: [employee.id],
+        fields: [monthlySalaries.employeeId],
+        references: [employee.employeeId],
     }),
     generator: one(employee, {
         fields: [monthlySalaries.generatedBy],

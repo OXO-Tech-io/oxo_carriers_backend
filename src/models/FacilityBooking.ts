@@ -3,7 +3,7 @@ import { FacilityBooking, BookingStatus } from "../types";
 
 export class FacilityBookingModel {
   static async getAll(filters?: {
-    user_id?: number;
+    employee_id?: string;
     facility_id?: number;
     status?: BookingStatus;
     start_date?: string;
@@ -14,14 +14,14 @@ export class FacilityBookingModel {
              u.first_name, u.last_name
       FROM tbl_facility_bookings fb
       JOIN tbl_facilities f ON fb.facility_id = f.id
-      JOIN tbl_employee u ON fb.user_id = u.id
+      JOIN tbl_employee u ON fb.employee_id = u.employee_id
       WHERE 1=1
     `;
     const params: any[] = [];
 
-    if (filters?.user_id) {
-      params.push(filters.user_id);
-      query += ` AND fb.user_id = $${params.length}`;
+    if (filters?.employee_id) {
+      params.push(filters.employee_id);
+      query += ` AND fb.employee_id = $${params.length}`;
     }
 
     if (filters?.facility_id) {
@@ -57,7 +57,7 @@ export class FacilityBookingModel {
              u.first_name, u.last_name
       FROM tbl_facility_bookings fb
       JOIN tbl_facilities f ON fb.facility_id = f.id
-      JOIN tbl_employee u ON fb.user_id = u.id
+      JOIN tbl_employee u ON fb.employee_id = u.employee_id
       WHERE fb.id = $1
     `,
       [id],
@@ -96,16 +96,16 @@ export class FacilityBookingModel {
   ): Promise<FacilityBooking> {
     if (
       bookingData.facility_id === undefined ||
-      bookingData.user_id === undefined ||
+      bookingData.employee_id === undefined ||
       bookingData.start_time === undefined ||
       bookingData.end_time === undefined
     ) {
       throw new Error("Missing required booking fields");
     }
 
-    const params: [number, number, Date, Date, string | null, BookingStatus] = [
+    const params: [number, string, Date, Date, string | null, BookingStatus] = [
       bookingData.facility_id,
-      bookingData.user_id,
+      bookingData.employee_id,
       bookingData.start_time,
       bookingData.end_time,
       bookingData.purpose || null,
@@ -113,7 +113,7 @@ export class FacilityBookingModel {
     ];
 
     const result = await pool.query(
-      "INSERT INTO tbl_facility_bookings (facility_id, user_id, start_time, end_time, purpose, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
+      "INSERT INTO tbl_facility_bookings (facility_id, employee_id, start_time, end_time, purpose, status) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id",
       params,
     );
 

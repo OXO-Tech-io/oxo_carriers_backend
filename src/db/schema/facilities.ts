@@ -44,7 +44,9 @@ export const facilities = pgTable('tbl_facilities', {
 export const facilityBookings = pgTable('tbl_facility_bookings', {
     id: serial('id').primaryKey(),
     facilityId: integer('facility_id').notNull().references(() => facilities.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => employee.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     startTime: timestamp('start_time').notNull(),
     endTime: timestamp('end_time').notNull(),
     purpose: text('purpose'),
@@ -64,8 +66,8 @@ export const facilityBookingsRelations = relations(facilityBookings, ({ one }) =
         references: [facilities.id],
     }),
     user: one(employee, {
-        fields: [facilityBookings.userId],
-        references: [employee.id],
+        fields: [facilityBookings.employeeId],
+        references: [employee.employeeId],
     }),
 }));
 

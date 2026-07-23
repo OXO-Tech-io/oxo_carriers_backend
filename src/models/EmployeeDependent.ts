@@ -16,7 +16,7 @@ export type EmployeeDependentInput = {
 
 export type DecryptedEmployeeDependent = {
   id: number;
-  userId: number;
+  employeeId: string;
   fullName: string | null;
   nic: string | null;
   dateOfBirth: string;
@@ -28,11 +28,11 @@ export type DecryptedEmployeeDependent = {
 };
 
 export class EmployeeDependentModel {
-  static async listByUserId(userId: number, executor: DbExecutor = db): Promise<DecryptedEmployeeDependent[]> {
+  static async listByEmployeeId(employeeId: string, executor: DbExecutor = db): Promise<DecryptedEmployeeDependent[]> {
     return executor
       .select({
         id: employeeDependents.id,
-        userId: employeeDependents.userId,
+        employeeId: employeeDependents.employeeId,
         fullName: pgpDecrypt(employeeDependents.fullName),
         nic: pgpDecrypt(employeeDependents.nic),
         dateOfBirth: employeeDependents.dateOfBirth,
@@ -43,14 +43,14 @@ export class EmployeeDependentModel {
         updatedAt: employeeDependents.updatedAt,
       })
       .from(employeeDependents)
-      .where(eq(employeeDependents.userId, userId));
+      .where(eq(employeeDependents.employeeId, employeeId));
   }
 
-  static async create(userId: number, data: EmployeeDependentInput, executor: DbExecutor = db) {
+  static async create(employeeId: string, data: EmployeeDependentInput, executor: DbExecutor = db) {
     const [inserted] = await executor
       .insert(employeeDependents)
       .values({
-        userId,
+        employeeId,
         fullName: pgpEncrypt(data.fullName),
         nic: pgpEncrypt(data.nic),
         dateOfBirth: data.dateOfBirth,

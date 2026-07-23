@@ -51,8 +51,8 @@ async function run() {
 
     const result = await client.query<{ id: number }>(
       `INSERT INTO tbl_employee
-         (employee_id, email, first_name, last_name, role, email_verified)
-       VALUES ($1, $2, $3, $4, 'super_admin', true)
+         (employee_id, email, first_name, last_name, role)
+       VALUES ($1, $2, $3, $4, 'super_admin')
        RETURNING id`,
       [employeeId, email, firstName, lastName]
     );

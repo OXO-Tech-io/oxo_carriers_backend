@@ -11,13 +11,16 @@ const SELF_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole
  */
 @Injectable()
 export class EmployeeEducationService {
-  async list(actorUserId: number, actorRole: UserRole, queryUserId?: number) {
+  async list(actorEmployeeId: string | null, actorRole: UserRole, queryEmployeeId?: string) {
     if (SELF_ROLES.includes(actorRole)) {
-      return EmployeeEducationModel.listByUserId(actorUserId);
+      if (!actorEmployeeId) {
+        throw new BadRequestException('Employee record is missing an employeeId');
+      }
+      return EmployeeEducationModel.listByEmployeeId(actorEmployeeId);
     }
-    if (!queryUserId) {
-      throw new BadRequestException('userId query parameter is required for HR/admin views');
+    if (!queryEmployeeId) {
+      throw new BadRequestException('employeeId query parameter is required for HR/admin views');
     }
-    return EmployeeEducationModel.listByUserId(queryUserId);
+    return EmployeeEducationModel.listByEmployeeId(queryEmployeeId);
   }
 }

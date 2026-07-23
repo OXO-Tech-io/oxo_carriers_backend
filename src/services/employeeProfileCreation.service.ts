@@ -57,21 +57,21 @@ export const employeeProfileCreationService = {
       }
 
       for (const nominee of profile.nominees ?? []) {
-        await EmployeeNomineeModel.create(user.id, nominee, tx);
+        await EmployeeNomineeModel.create(user.employeeId, nominee, tx);
       }
 
       if (profile.statutory?.maritalStatus === 'married') {
         for (const dependent of profile.dependents ?? []) {
-          await EmployeeDependentModel.create(user.id, dependent, tx);
+          await EmployeeDependentModel.create(user.employeeId, dependent, tx);
         }
       }
 
       for (const contact of profile.emergencyContacts ?? []) {
-        await EmployeeEmergencyContactModel.create(user.id, contact, tx);
+        await EmployeeEmergencyContactModel.create(user.employeeId, contact, tx);
       }
 
       if (profile.welfare) {
-        await EmployeeWelfareInfoModel.upsert(user.id, profile.welfare, tx);
+        await EmployeeWelfareInfoModel.upsert(user.employeeId, profile.welfare, tx);
       }
     });
   },

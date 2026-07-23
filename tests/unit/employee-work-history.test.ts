@@ -27,17 +27,17 @@ describe("EmployeeWorkHistoryModel", () => {
   });
 
   it("creates, lists, updates, and deletes a work history record", async () => {
-    const created = await EmployeeWorkHistoryModel.create(testUser.id, {
+    const created = await EmployeeWorkHistoryModel.create(testUser.employeeId, {
       organization: "Acme Corp",
       positionHeld: "Software Engineer",
       startDate: "2018-01-01",
       endDate: "2021-12-31",
       remarks: "Led backend team",
     });
-    expect(created.userId).toBe(testUser.id);
+    expect(created.employeeId).toBe(testUser.employeeId);
     expect(created.organization).toBe("Acme Corp");
 
-    const list = await EmployeeWorkHistoryModel.listByUserId(testUser.id);
+    const list = await EmployeeWorkHistoryModel.listByEmployeeId(testUser.employeeId);
     expect(list.some(r => r.id === created.id)).toBe(true);
 
     const updated = await EmployeeWorkHistoryModel.update(created.id, {
@@ -51,7 +51,7 @@ describe("EmployeeWorkHistoryModel", () => {
   });
 
   it("supports a null endDate to represent 'Present'", async () => {
-    const created = await EmployeeWorkHistoryModel.create(testUser.id, {
+    const created = await EmployeeWorkHistoryModel.create(testUser.employeeId, {
       organization: "Current Employer",
       positionHeld: "Lead Engineer",
       startDate: "2022-01-01",
@@ -62,7 +62,7 @@ describe("EmployeeWorkHistoryModel", () => {
   });
 
   it("cascade deletes work history records when the employee is deleted", async () => {
-    const created = await EmployeeWorkHistoryModel.create(testUser.id, {
+    const created = await EmployeeWorkHistoryModel.create(testUser.employeeId, {
       organization: "Beta Inc",
       positionHeld: "Consultant",
       startDate: "2015-01-01",

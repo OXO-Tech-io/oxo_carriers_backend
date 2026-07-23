@@ -29,7 +29,13 @@ export class PermissionGuard implements CanActivate {
     }
     if (request.employee.role === UserRole.SUPER_ADMIN) return true;
 
-    const allowed = await hasPermission(request.employee.userId, required.key, required.level);
+    // tbl_user_permissions is keyed by the business employee_id, not the
+    // numeric userId - an employee with no employeeId yet has no permissions.
+    if (!request.employee.employeeId) {
+      throw new ForbiddenException('Forbidden');
+    }
+
+    const allowed = await hasPermission(request.employee.employeeId, required.key, required.level);
     if (!allowed) {
       throw new ForbiddenException('Forbidden');
     }

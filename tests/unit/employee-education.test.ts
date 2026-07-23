@@ -27,17 +27,17 @@ describe("EmployeeEducationModel", () => {
   });
 
   it("creates, lists, updates, and deletes an education record", async () => {
-    const created = await EmployeeEducationModel.create(testUser.id, {
+    const created = await EmployeeEducationModel.create(testUser.employeeId, {
       qualificationLevel: "degree",
       qualificationTitle: "BSc Computer Science",
       awardingInstitution: "University of Colombo",
       dateAwarded: "2020-06-15",
       remarks: "First class honours",
     });
-    expect(created.userId).toBe(testUser.id);
+    expect(created.employeeId).toBe(testUser.employeeId);
     expect(created.qualificationLevel).toBe("degree");
 
-    const list = await EmployeeEducationModel.listByUserId(testUser.id);
+    const list = await EmployeeEducationModel.listByEmployeeId(testUser.employeeId);
     expect(list.some(r => r.id === created.id)).toBe(true);
 
     const updated = await EmployeeEducationModel.update(created.id, {
@@ -51,7 +51,7 @@ describe("EmployeeEducationModel", () => {
   });
 
   it("cascade deletes education records when the employee is deleted", async () => {
-    const created = await EmployeeEducationModel.create(testUser.id, {
+    const created = await EmployeeEducationModel.create(testUser.employeeId, {
       qualificationLevel: "masters",
       qualificationTitle: "MSc Data Science",
       awardingInstitution: "University of Moratuwa",

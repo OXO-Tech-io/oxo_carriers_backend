@@ -101,17 +101,17 @@ type TxExecutor = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function applyNomineeChange(
   tx: TxExecutor,
-  userId: number,
+  employeeId: string,
   actorUserId: number,
   item: Extract<ProfileChangeItem, { entityType: 'nominee' }>
 ) {
   if (item.operation === 'create') {
     const after = item.after as NomineeValue;
-    const inserted = await EmployeeNomineeModel.create(userId, after, tx);
+    const inserted = await EmployeeNomineeModel.create(employeeId, after, tx);
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_nominees',
+      tableName: 'tbl_employee_nominees',
       recordId: inserted.id,
       oldValues: null,
       newValues: after as any,
@@ -122,7 +122,7 @@ async function applyNomineeChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_nominees',
+      tableName: 'tbl_employee_nominees',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: after as any,
@@ -132,7 +132,7 @@ async function applyNomineeChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_nominees',
+      tableName: 'tbl_employee_nominees',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: null,
@@ -142,7 +142,7 @@ async function applyNomineeChange(
 
 async function applyDependentChange(
   tx: TxExecutor,
-  userId: number,
+  employeeId: string,
   actorUserId: number,
   item: Extract<ProfileChangeItem, { entityType: 'dependent' }>,
   effectiveMaritalStatus: 'married' | 'single' | null
@@ -152,11 +152,11 @@ async function applyDependentChange(
   }
   if (item.operation === 'create') {
     const after = item.after as DependentValue;
-    const inserted = await EmployeeDependentModel.create(userId, after, tx);
+    const inserted = await EmployeeDependentModel.create(employeeId, after, tx);
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_dependents',
+      tableName: 'tbl_employee_dependents',
       recordId: inserted.id,
       oldValues: null,
       newValues: after as any,
@@ -167,7 +167,7 @@ async function applyDependentChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_dependents',
+      tableName: 'tbl_employee_dependents',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: after as any,
@@ -177,7 +177,7 @@ async function applyDependentChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_dependents',
+      tableName: 'tbl_employee_dependents',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: null,
@@ -187,17 +187,17 @@ async function applyDependentChange(
 
 async function applyEmergencyContactChange(
   tx: TxExecutor,
-  userId: number,
+  employeeId: string,
   actorUserId: number,
   item: Extract<ProfileChangeItem, { entityType: 'emergency_contact_record' }>
 ) {
   if (item.operation === 'create') {
     const after = item.after as EmergencyContactRecordValue;
-    const inserted = await EmployeeEmergencyContactModel.create(userId, after, tx);
+    const inserted = await EmployeeEmergencyContactModel.create(employeeId, after, tx);
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_emergency_contacts',
+      tableName: 'tbl_employee_emergency_contacts',
       recordId: inserted.id,
       oldValues: null,
       newValues: after as any,
@@ -208,7 +208,7 @@ async function applyEmergencyContactChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_emergency_contacts',
+      tableName: 'tbl_employee_emergency_contacts',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: after as any,
@@ -218,7 +218,7 @@ async function applyEmergencyContactChange(
     await tx.insert(auditLogs).values({
       userId: actorUserId,
       action: 'profile_change_request.applied',
-      tableName: 'employee_emergency_contacts',
+      tableName: 'tbl_employee_emergency_contacts',
       recordId: item.recordId!,
       oldValues: item.before as any,
       newValues: null,
@@ -231,12 +231,13 @@ export const profileChangeRequestService = {
 
   async submitChangeRequest(
     userId: number,
+    employeeId: string,
     input: SubmitProfileChangeRequestInput
   ): Promise<DrizzleProfileChangeRequest> {
     let previousRequestId: number | undefined;
     if (input.previousRequestId) {
       const previous = await ProfileChangeRequestModel.findById(input.previousRequestId);
-      if (!previous || previous.userId !== userId) {
+      if (!previous || previous.employeeId !== employeeId) {
         throw new NotFoundError('Previous request not found');
       }
       if (previous.status !== 'returned_for_modification') {
@@ -246,7 +247,7 @@ export const profileChangeRequestService = {
     }
 
     const created = await ProfileChangeRequestModel.create({
-      userId,
+      employeeId,
       submittedBy: userId,
       changes: input.changes,
       comments: input.comments ?? null,
@@ -256,7 +257,7 @@ export const profileChangeRequestService = {
     await db.insert(auditLogs).values({
       userId,
       action: 'profile_change_request.submitted',
-      tableName: 'profile_change_requests',
+      tableName: 'tbl_profile_change_requests',
       recordId: created.id,
       oldValues: null,
       newValues: { changes: input.changes },
@@ -267,22 +268,27 @@ export const profileChangeRequestService = {
       const employee = await EmployeeModel.findById(userId);
       const employeeName = employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'An employee';
       await db.insert(notifications).values(
-        hrUsers.map(hr => ({
-          userId: hr.id,
-          type: 'profile_change_submitted',
-          title: 'Profile change request submitted',
-          message: `${employeeName} submitted a profile change request awaiting your review.`,
-          payload: { requestId: created.id },
-          link: `/profile-approvals?id=${created.id}`,
-        }))
+        hrUsers
+          .filter(hr => !!hr.employeeId)
+          .map(hr => ({
+            employeeId: hr.employeeId!,
+            type: 'profile_change_submitted',
+            title: 'Profile change request submitted',
+            message: `${employeeName} submitted a profile change request awaiting your review.`,
+            payload: { requestId: created.id },
+            link: `/profile-approvals?id=${created.id}`,
+          }))
       );
     }
 
     return created;
   },
 
-  async listMyRequests(userId: number, query: ListProfileChangeRequestsQuery) {
-    return ProfileChangeRequestModel.listByUserId(userId, { status: query.status });
+  async listMyRequests(employeeId: string | null, query: ListProfileChangeRequestsQuery) {
+    if (!employeeId) {
+      throw new BadRequestError('Your account has no employee ID assigned yet');
+    }
+    return ProfileChangeRequestModel.listByEmployeeId(employeeId, { status: query.status });
   },
 
   async listAllRequests(actorRole: UserRole, query: ListProfileChangeRequestsQuery) {
@@ -294,17 +300,17 @@ export const profileChangeRequestService = {
 
   // Branches like leaveService.listLeaveRequests: HR/super_admin see every
   // employee's requests (with status filter), everyone else only sees their own.
-  async listRequests(userId: number, actorRole: UserRole, query: ListProfileChangeRequestsQuery) {
+  async listRequests(employeeId: string | null, actorRole: UserRole, query: ListProfileChangeRequestsQuery) {
     if (HR_ROLES.includes(actorRole)) {
       return this.listAllRequests(actorRole, query);
     }
-    return this.listMyRequests(userId, query);
+    return this.listMyRequests(employeeId, query);
   },
 
-  async getRequestById(id: number, actorUserId: number, actorRole: UserRole) {
+  async getRequestById(id: number, actorEmployeeId: string | null, actorRole: UserRole) {
     const request = await ProfileChangeRequestModel.findById(id);
     if (!request) throw new NotFoundError('Profile change request not found');
-    if (!HR_ROLES.includes(actorRole) && request.userId !== actorUserId) {
+    if (!HR_ROLES.includes(actorRole) && request.employeeId !== actorEmployeeId) {
       throw new ForbiddenError();
     }
     return request;
@@ -331,7 +337,7 @@ export const profileChangeRequestService = {
 
     return db.transaction(async tx => {
       if (decision === 'approved') {
-        const employeeRow = await tx.query.employee.findFirst({ where: eq(users.id, request.userId) });
+        const employeeRow = await tx.query.employee.findFirst({ where: eq(users.employeeId, request.employeeId) });
         if (!employeeRow) throw new NotFoundError('Employee not found');
 
         // Tab C (dependents) is only meaningful while married - resolve using
@@ -353,7 +359,10 @@ export const profileChangeRequestService = {
         const nomineeCreates = changes.filter(c => c.entityType === 'nominee' && c.operation === 'create').length;
         const nomineeDeletes = changes.filter(c => c.entityType === 'nominee' && c.operation === 'delete').length;
         if (nomineeCreates > 0) {
-          const existingNomineeCount = await EmployeeNomineeModel.countByUserId(request.userId, tx);
+          if (!employeeRow.employeeId) {
+            throw new BadRequestError('Employee has no employeeId; cannot manage nominees');
+          }
+          const existingNomineeCount = await EmployeeNomineeModel.countByEmployeeId(employeeRow.employeeId, tx);
           if (existingNomineeCount + nomineeCreates - nomineeDeletes > MAX_NOMINEES) {
             throw new BadRequestError(`An employee can have at most ${MAX_NOMINEES} nominees`);
           }
@@ -373,20 +382,20 @@ export const profileChangeRequestService = {
                   bankBranchCode: after.bankBranchCode ? encryptPII(after.bankBranchCode) : null,
                   swiftCode: after.swiftCode ? encryptPII(after.swiftCode) : null,
                 })
-                .where(eq(users.id, request.userId));
+                .where(eq(users.employeeId, request.employeeId));
             } else {
               const after = item.after as string | null;
               const value = item.field === 'contactNumber' ? (after ? encryptPII(after) : null) : after;
               await tx
                 .update(users)
                 .set({ [item.field]: value } as Record<string, unknown>)
-                .where(eq(users.id, request.userId));
+                .where(eq(users.employeeId, request.employeeId));
             }
             await tx.insert(auditLogs).values({
               userId: actorUserId,
               action: 'profile_change_request.applied',
-              tableName: 'users',
-              recordId: request.userId,
+              tableName: 'tbl_employee',
+              recordId: employeeRow.id,
               oldValues: { [item.field]: item.before } as any,
               newValues: { [item.field]: item.after } as any,
             });
@@ -428,36 +437,51 @@ export const profileChangeRequestService = {
               userId: actorUserId,
               action: 'profile_change_request.applied',
               tableName: 'tbl_employee_pii',
-              recordId: request.userId,
+              recordId: employeeRow.id,
               oldValues: { [item.field]: item.before } as any,
               newValues: { [item.field]: item.after } as any,
             });
           } else if (item.entityType === 'nominee') {
-            await applyNomineeChange(tx, request.userId, actorUserId, item);
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot manage nominees');
+            }
+            await applyNomineeChange(tx, employeeRow.employeeId, actorUserId, item);
           } else if (item.entityType === 'dependent') {
-            await applyDependentChange(tx, request.userId, actorUserId, item, effectiveMaritalStatus);
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot manage dependents');
+            }
+            await applyDependentChange(tx, employeeRow.employeeId, actorUserId, item, effectiveMaritalStatus);
           } else if (item.entityType === 'emergency_contact_record') {
-            await applyEmergencyContactChange(tx, request.userId, actorUserId, item);
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot manage emergency contacts');
+            }
+            await applyEmergencyContactChange(tx, employeeRow.employeeId, actorUserId, item);
           } else if (item.entityType === 'welfare_field') {
-            await EmployeeWelfareInfoModel.upsert(request.userId, { [WELFARE_FIELD_TO_MODEL_KEY[item.field]]: item.after }, tx);
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot update welfare info');
+            }
+            await EmployeeWelfareInfoModel.upsert(employeeRow.employeeId, { [WELFARE_FIELD_TO_MODEL_KEY[item.field]]: item.after }, tx);
             await tx.insert(auditLogs).values({
               userId: actorUserId,
               action: 'profile_change_request.applied',
-              tableName: 'employee_welfare_info',
-              recordId: request.userId,
+              tableName: 'tbl_employee_welfare_info',
+              recordId: employeeRow.id,
               oldValues: { [item.field]: item.before } as any,
               newValues: { [item.field]: item.after } as any,
             });
           } else if (item.entityType === 'education') {
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot manage education records');
+            }
             if (item.operation === 'create') {
               const [inserted] = await tx
                 .insert(employeeEducation)
-                .values({ userId: request.userId, ...item.after! })
+                .values({ employeeId: employeeRow.employeeId, ...item.after! })
                 .returning();
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_education',
+                tableName: 'tbl_employee_education',
                 recordId: inserted.id,
                 oldValues: null,
                 newValues: item.after as any,
@@ -470,7 +494,7 @@ export const profileChangeRequestService = {
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_education',
+                tableName: 'tbl_employee_education',
                 recordId: item.recordId!,
                 oldValues: item.before as any,
                 newValues: item.after as any,
@@ -480,22 +504,25 @@ export const profileChangeRequestService = {
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_education',
+                tableName: 'tbl_employee_education',
                 recordId: item.recordId!,
                 oldValues: item.before as any,
                 newValues: null,
               });
             }
           } else if (item.entityType === 'work_history') {
+            if (!employeeRow.employeeId) {
+              throw new BadRequestError('Employee has no employeeId; cannot manage work history records');
+            }
             if (item.operation === 'create') {
               const [inserted] = await tx
                 .insert(employeeWorkHistory)
-                .values({ userId: request.userId, ...item.after! })
+                .values({ employeeId: employeeRow.employeeId, ...item.after! })
                 .returning();
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_work_history',
+                tableName: 'tbl_employee_work_history',
                 recordId: inserted.id,
                 oldValues: null,
                 newValues: item.after as any,
@@ -508,7 +535,7 @@ export const profileChangeRequestService = {
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_work_history',
+                tableName: 'tbl_employee_work_history',
                 recordId: item.recordId!,
                 oldValues: item.before as any,
                 newValues: item.after as any,
@@ -518,7 +545,7 @@ export const profileChangeRequestService = {
               await tx.insert(auditLogs).values({
                 userId: actorUserId,
                 action: 'profile_change_request.applied',
-                tableName: 'employee_work_history',
+                tableName: 'tbl_employee_work_history',
                 recordId: item.recordId!,
                 oldValues: item.before as any,
                 newValues: null,
@@ -538,8 +565,11 @@ export const profileChangeRequestService = {
           })
           .where(eq(profileChangeRequests.id, id));
 
+        if (!employeeRow.employeeId) {
+          throw new BadRequestError('Employee has no employeeId; cannot send notification');
+        }
         await tx.insert(notifications).values({
-          userId: request.userId,
+          employeeId: employeeRow.employeeId,
           type: 'profile_change_approved',
           title: 'Profile change request approved',
           message: 'Your profile change request has been approved and your profile has been updated.',
@@ -558,8 +588,13 @@ export const profileChangeRequestService = {
           })
           .where(eq(profileChangeRequests.id, id));
 
+        const employeeRow = await tx.query.employee.findFirst({ where: eq(users.employeeId, request.employeeId) });
+        if (!employeeRow) throw new NotFoundError('Employee not found');
+        if (!employeeRow.employeeId) {
+          throw new BadRequestError('Employee has no employeeId; cannot send notification');
+        }
         await tx.insert(notifications).values({
-          userId: request.userId,
+          employeeId: employeeRow.employeeId,
           type: decision === 'rejected' ? 'profile_change_rejected' : 'profile_change_returned',
           title:
             decision === 'rejected'

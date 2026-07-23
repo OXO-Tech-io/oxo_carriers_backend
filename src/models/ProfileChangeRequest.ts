@@ -7,7 +7,7 @@ import { and, eq } from 'drizzle-orm';
 import type { ProfileChangeItem } from '../validators/profileChangeRequest.validator';
 
 export type ProfileChangeRequestCreateInput = {
-  userId: number;
+  employeeId: string;
   submittedBy: number;
   changes: ProfileChangeItem[];
   comments?: string | null;
@@ -36,7 +36,7 @@ export class ProfileChangeRequestModel {
     const [inserted] = await db
       .insert(profileChangeRequests)
       .values({
-        userId: data.userId,
+        employeeId: data.employeeId,
         submittedBy: data.submittedBy,
         changes: data.changes,
         comments: data.comments ?? null,
@@ -59,11 +59,11 @@ export class ProfileChangeRequestModel {
     return record ?? null;
   }
 
-  static async listByUserId(
-    userId: number,
+  static async listByEmployeeId(
+    employeeId: string,
     filters?: ProfileChangeRequestListFilters
   ): Promise<ProfileChangeRequestWithRelations[]> {
-    const conditions = [eq(profileChangeRequests.userId, userId)];
+    const conditions = [eq(profileChangeRequests.employeeId, employeeId)];
     if (filters?.status) {
       conditions.push(eq(profileChangeRequests.status, filters.status));
     }

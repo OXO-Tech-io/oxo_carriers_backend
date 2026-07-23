@@ -4,7 +4,7 @@ import { employee as users } from './employee';
 
 // Events Table - phase 1 is manual attendance recording by HR; a QR-based
 // automated check-in is a planned phase 2, not modeled here.
-export const events = pgTable('events', {
+export const events = pgTable('tbl_events', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
@@ -14,10 +14,12 @@ export const events = pgTable('events', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-export const eventParticipants = pgTable('event_participants', {
+export const eventParticipants = pgTable('tbl_event_participants', {
     id: serial('id').primaryKey(),
     eventId: integer('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     participated: boolean('participated').notNull().default(false),
     // Stated intention ahead of the event, tracked separately from the actual
     // `participated` outcome above: null = no response, true = said they'd
@@ -34,7 +36,7 @@ export const eventsRelations = relations(events, ({ one, many }) => ({
 
 export const eventParticipantsRelations = relations(eventParticipants, ({ one }) => ({
     event: one(events, { fields: [eventParticipants.eventId], references: [events.id] }),
-    user: one(users, { fields: [eventParticipants.userId], references: [users.id] }),
+    user: one(users, { fields: [eventParticipants.employeeId], references: [users.employeeId] }),
 }));
 
 export type Event = typeof events.$inferSelect;

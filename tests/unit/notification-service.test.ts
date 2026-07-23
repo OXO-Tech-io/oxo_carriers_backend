@@ -27,39 +27,39 @@ describe("notificationService", () => {
   });
 
   it("creates a notification, tracks unread count, and marks it read", async () => {
-    const before = await notificationService.unreadCount(testUser.id);
+    const before = await notificationService.unreadCount(testUser.employeeId);
 
     const created = await notificationService.notify(
-      testUser.id,
+      testUser.employeeId,
       "profile_change_approved",
       "Profile change approved",
       "Your profile change request has been approved.",
       { requestId: 1 },
       "/profile?tab=pending-changes"
     );
-    expect(created.userId).toBe(testUser.id);
+    expect(created.employeeId).toBe(testUser.employeeId);
     expect(created.isRead).toBe(false);
 
-    const afterCreate = await notificationService.unreadCount(testUser.id);
+    const afterCreate = await notificationService.unreadCount(testUser.employeeId);
     expect(afterCreate).toBe(before + 1);
 
-    const list = await notificationService.listForUser(testUser.id);
+    const list = await notificationService.listForUser(testUser.employeeId);
     expect(list.some(n => n.id === created.id)).toBe(true);
 
-    await notificationService.markRead(created.id, testUser.id);
-    const afterRead = await notificationService.unreadCount(testUser.id);
+    await notificationService.markRead(created.id, testUser.employeeId);
+    const afterRead = await notificationService.unreadCount(testUser.employeeId);
     expect(afterRead).toBe(before);
   });
 
   it("marks all notifications for a user as read", async () => {
-    await notificationService.notify(testUser.id, "test_type", "Title A", "Message A");
-    await notificationService.notify(testUser.id, "test_type", "Title B", "Message B");
+    await notificationService.notify(testUser.employeeId, "test_type", "Title A", "Message A");
+    await notificationService.notify(testUser.employeeId, "test_type", "Title B", "Message B");
 
-    const beforeCount = await notificationService.unreadCount(testUser.id);
+    const beforeCount = await notificationService.unreadCount(testUser.employeeId);
     expect(beforeCount).toBeGreaterThanOrEqual(2);
 
-    await notificationService.markAllRead(testUser.id);
-    const afterCount = await notificationService.unreadCount(testUser.id);
+    await notificationService.markAllRead(testUser.employeeId);
+    const afterCount = await notificationService.unreadCount(testUser.employeeId);
     expect(afterCount).toBe(0);
   });
 });

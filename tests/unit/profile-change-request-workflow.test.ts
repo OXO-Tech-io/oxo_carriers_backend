@@ -82,21 +82,21 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
       comments: "Please review my updated details.",
     };
 
-    const created = await profileChangeRequestService.submitChangeRequest(employee.id, input);
+    const created = await profileChangeRequestService.submitChangeRequest(employee.id, employeeIdTag, input);
     expect(created.status).toBe("pending_approval");
-    expect(created.userId).toBe(employee.id);
+    expect(created.employeeId).toBe(employeeIdTag);
 
     // Real tables should be untouched at this point.
     const stillOriginal = await EmployeeModel.findById(employee.id);
     expect(stillOriginal?.contactNumber).toBe("+94770000000");
     const educationBefore = await db.query.employeeEducation.findMany({
-      where: eq(employeeEducation.userId, employee.id),
+      where: eq(employeeEducation.employeeId, employeeIdTag),
     });
     expect(educationBefore.length).toBe(0);
 
     // HR should have received an in-app notification about the submission.
     const hrNotifications = await db.query.notifications.findFirst({
-      where: and(eq(notifications.userId, hrManager.id), eq(notifications.type, "profile_change_submitted")),
+      where: and(eq(notifications.employeeId, hrIdTag), eq(notifications.type, "profile_change_submitted")),
     });
     expect(hrNotifications).toBeDefined();
 
@@ -125,7 +125,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
 
     // 3. employee_education row created
     const educationAfter = await db.query.employeeEducation.findMany({
-      where: eq(employeeEducation.userId, employee.id),
+      where: eq(employeeEducation.employeeId, employeeIdTag),
     });
     expect(educationAfter.length).toBe(1);
     expect(educationAfter[0].qualificationTitle).toBe("BSc Computer Science");
@@ -138,7 +138,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
 
     // 5. employee received an in-app approval notification
     const employeeNotification = await db.query.notifications.findFirst({
-      where: and(eq(notifications.userId, employee.id), eq(notifications.type, "profile_change_approved")),
+      where: and(eq(notifications.employeeId, employeeIdTag), eq(notifications.type, "profile_change_approved")),
     });
     expect(employeeNotification).toBeDefined();
 
@@ -157,7 +157,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
   });
 
   it("requires reviewerComments to reject or return, enforced end-to-end via ProfileChangeRequestModel + service", async () => {
-    const second = await profileChangeRequestService.submitChangeRequest(employee.id, {
+    const second = await profileChangeRequestService.submitChangeRequest(employee.id, employeeIdTag, {
       changes: [
         {
           entityType: "user_field",
@@ -178,7 +178,7 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
     );
     expect(returned.status).toBe("returned_for_modification");
 
-    const resubmitted = await profileChangeRequestService.submitChangeRequest(employee.id, {
+    const resubmitted = await profileChangeRequestService.submitChangeRequest(employee.id, employeeIdTag, {
       changes: [
         {
           entityType: "user_field",

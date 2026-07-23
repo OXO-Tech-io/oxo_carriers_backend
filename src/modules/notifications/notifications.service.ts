@@ -4,19 +4,19 @@ import { ListNotificationsQueryDto } from './dto/list-notifications-query.dto';
 
 @Injectable()
 export class NotificationsService {
-  listForUser(userId: number, query: ListNotificationsQueryDto) {
-    return notificationService.listForUser(userId, query);
+  listForUser(employeeId: string, query: ListNotificationsQueryDto) {
+    return notificationService.listForUser(employeeId, query);
   }
 
-  unreadCount(userId: number) {
-    return notificationService.unreadCount(userId);
+  unreadCount(employeeId: string) {
+    return notificationService.unreadCount(employeeId);
   }
 
-  markRead(id: number, userId: number) {
-    return notificationService.markRead(id, userId);
+  markRead(id: number, employeeId: string) {
+    return notificationService.markRead(id, employeeId);
   }
 
-  markAllRead(userId: number) {
-    return notificationService.markAllRead(userId);
+  markAllRead(employeeId: string) {
+    return notificationService.markAllRead(employeeId);
   }
 }

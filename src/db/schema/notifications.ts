@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, boolean, json, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, boolean, json, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 
@@ -6,9 +6,11 @@ import { employee as users } from './employee';
 // Generic in-app notification table shared by every module (not just profile change requests).
 // `type` is a plain string (not a pgEnum) so future phases can add new notification types
 // without a schema migration each time.
-export const notifications = pgTable('notifications', {
+export const notifications = pgTable('tbl_notifications', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     type: varchar('type', { length: 100 }).notNull(),
     title: varchar('title', { length: 255 }).notNull(),
     message: text('message').notNull(),
@@ -22,8 +24,8 @@ export const notifications = pgTable('notifications', {
 // Relations
 export const notificationsRelations = relations(notifications, ({ one }) => ({
     user: one(users, {
-        fields: [notifications.userId],
-        references: [users.id],
+        fields: [notifications.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

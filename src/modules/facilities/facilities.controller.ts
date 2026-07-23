@@ -71,12 +71,12 @@ export class FacilitiesController {
   @Post('book')
   @HttpCode(201)
   createBooking(@Body() dto: CreateBookingDto, @CurrentEmployee() employee: JwtPayload) {
-    return this.facilitiesService.createBooking(employee.userId, dto);
+    return this.facilitiesService.createBooking(employee, dto);
   }
 
   @Get('my-bookings')
   getMyBookings(@CurrentEmployee() employee: JwtPayload) {
-    return this.facilitiesService.getMyBookings(employee.userId);
+    return this.facilitiesService.getMyBookings(employee);
   }
 
   @Get('all-bookings')
@@ -99,6 +99,6 @@ export class FacilitiesController {
   @Put('bookings/:id/cancel')
   cancelBooking(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = parseInt(idParam, 10);
-    return this.facilitiesService.cancelBooking(id, employee.userId, employee.role);
+    return this.facilitiesService.cancelBooking(id, employee);
   }
 }

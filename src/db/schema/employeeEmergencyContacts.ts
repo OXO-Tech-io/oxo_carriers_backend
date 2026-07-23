@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 import { bytea } from './employeePii';
@@ -10,9 +10,11 @@ import { bytea } from './employeePii';
 // backfilled into this table as each employee's first record (see
 // src/scripts/addProfileTabFields.ts). name/contactNumber are encrypted like
 // tbl_employee_pii; writes only ever happen via ProfileChangeRequest approval.
-export const employeeEmergencyContacts = pgTable('employee_emergency_contacts', {
+export const employeeEmergencyContacts = pgTable('tbl_employee_emergency_contacts', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     name: bytea('name'),
     relationship: varchar('relationship', { length: 100 }).notNull(),
     contactNumber: bytea('contact_number'),
@@ -22,8 +24,8 @@ export const employeeEmergencyContacts = pgTable('employee_emergency_contacts', 
 
 export const employeeEmergencyContactsRelations = relations(employeeEmergencyContacts, ({ one }) => ({
     employee: one(users, {
-        fields: [employeeEmergencyContacts.userId],
-        references: [users.id],
+        fields: [employeeEmergencyContacts.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

@@ -1,10 +1,17 @@
-import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
 import { UserRole } from '../../../types';
 
 export class CreateUserDto {
   @IsOptional()
   @IsString()
   employee_id?: string;
+
+  // SUPER_ADMIN-only escape hatch for "system users" (e.g. service/shared
+  // accounts) that shouldn't get a Keycloak login. Ignored for any other
+  // requester role - see UsersService.create.
+  @IsOptional()
+  @IsBoolean()
+  skipKeycloakProvisioning?: boolean;
 
   @IsEmail()
   email!: string;

@@ -25,7 +25,10 @@
     "db:add-event-participation-intent": "ts-node src/scripts/addEventParticipationIntent.ts",
     "db:add-profile-tab-fields": "ts-node src/scripts/addProfileTabFields.ts",
     "db:widen-bank-code-columns": "ts-node src/scripts/widenBankCodeColumns.ts",
-    "db:add-groups-tables": "ts-node src/scripts/addGroupsTables.ts"
+    "db:add-groups-tables": "ts-node src/scripts/addGroupsTables.ts",
+    "db:drop-email-verification-columns": "ts-node src/scripts/dropEmailVerificationColumns.ts",
+    "db:rename-tables-tbl-prefix-batch2": "ts-node src/scripts/renameTablesToTblPrefixBatch2.ts",
+    "db:rename-user-id-to-employee-id-fk": "ts-node src/scripts/renameUserIdToEmployeeIdFk.ts"
   },
   "keywords": [],
   "author": "",

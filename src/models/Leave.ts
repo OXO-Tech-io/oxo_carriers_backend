@@ -4,7 +4,7 @@ import { calculateProRatedAnnualLeave } from '../utils/leaveCalculation';
 
 export class LeaveModel {
   static async createRequest(request: {
-    user_id: number;
+    employee_id: string;
     leave_type_id: number;
     start_date: Date;
     end_date: Date;
@@ -15,10 +15,10 @@ export class LeaveModel {
     attachment_url?: string;
   }): Promise<LeaveRequest> {
     const result = await pool.query(
-      `INSERT INTO tbl_leave_requests (user_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
+      `INSERT INTO tbl_leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
       [
-        request.user_id,
+        request.employee_id,
         request.leave_type_id,
         request.start_date,
         request.end_date,
@@ -46,7 +46,7 @@ export class LeaveModel {
               u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
        FROM tbl_leave_requests lr
        LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
-       LEFT JOIN tbl_employee u ON lr.user_id = u.id
+       LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
        WHERE lr.id = $1`,
       [id]
     );
@@ -56,7 +56,7 @@ export class LeaveModel {
     const row = rowsArray[0];
     return {
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       leave_type_id: row.leave_type_id,
       start_date: row.start_date,
       end_date: row.end_date,
@@ -87,7 +87,7 @@ export class LeaveModel {
     } as LeaveRequest;
   }
 
-  static async findByUserId(userId: number, filters?: {
+  static async findByEmployeeId(employeeId: string, filters?: {
     status?: LeaveStatus;
     year?: number;
   }): Promise<LeaveRequest[]> {
@@ -98,10 +98,10 @@ export class LeaveModel {
              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id
       FROM tbl_leave_requests lr
       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
-      LEFT JOIN tbl_employee u ON lr.user_id = u.id
-      WHERE lr.user_id = $1
+      LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
+      WHERE lr.employee_id = $1
     `;
-    const params: any[] = [userId];
+    const params: any[] = [employeeId];
 
     if (filters?.status) {
       params.push(filters.status);
@@ -118,7 +118,7 @@ export class LeaveModel {
     const result = await pool.query(query, params);
     return (result.rows as any[]).map((row: any) => ({
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       leave_type_id: row.leave_type_id,
       start_date: row.start_date,
       end_date: row.end_date,
@@ -154,7 +154,7 @@ export class LeaveModel {
   static async getAll(filters?: {
     status?: LeaveStatus;
     department?: string;
-    userId?: number;
+    employeeId?: string;
     year?: number;
   }): Promise<LeaveRequest[]> {
     let query = `
@@ -163,7 +163,7 @@ export class LeaveModel {
              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at,
              u.id as user_id_full, u.first_name, u.last_name, u.email, u.employee_id, u.department
       FROM tbl_leave_requests lr
-      LEFT JOIN tbl_employee u ON lr.user_id = u.id
+      LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
       WHERE 1=1
     `;
@@ -179,9 +179,9 @@ export class LeaveModel {
       query += ` AND u.department = $${params.length}`;
     }
 
-    if (filters?.userId) {
-      params.push(filters.userId);
-      query += ` AND lr.user_id = $${params.length}`;
+    if (filters?.employeeId) {
+      params.push(filters.employeeId);
+      query += ` AND lr.employee_id = $${params.length}`;
     }
 
     if (filters?.year) {
@@ -194,7 +194,7 @@ export class LeaveModel {
     const result = await pool.query(query, params);
     return (result.rows as any[]).map((row: any) => ({
       id: row.id,
-      user_id: row.user_id,
+      employee_id: row.employee_id,
       leave_type_id: row.leave_type_id,
       start_date: row.start_date,
       end_date: row.end_date,
@@ -260,25 +260,25 @@ export class LeaveModel {
     if (status === LeaveStatus.HR_APPROVED) {
       const request = await this.findById(id);
       if (request) {
-        await this.deductLeaveBalance(request.user_id, request.leave_type_id, request.total_days);
+        await this.deductLeaveBalance(request.employee_id, request.leave_type_id, request.total_days);
       }
     }
 
     return await this.findById(id);
   }
 
-  static async deductLeaveBalance(userId: number, leaveTypeId: number, days: number): Promise<void> {
+  static async deductLeaveBalance(employeeId: string, leaveTypeId: number, days: number): Promise<void> {
     const currentYear = new Date().getFullYear();
     await pool.query(
       `UPDATE tbl_employee_leave_balance
        SET used_days = used_days + $1,
            remaining_days = total_days - (used_days + $2)
-       WHERE user_id = $3 AND leave_type_id = $4 AND year = $5`,
-      [days, days, userId, leaveTypeId, currentYear]
+       WHERE employee_id = $3 AND leave_type_id = $4 AND year = $5`,
+      [days, days, employeeId, leaveTypeId, currentYear]
     );
   }
 
-  static async getLeaveBalance(userId: number, year?: number): Promise<LeaveBalance[]> {
+  static async getLeaveBalance(employeeId: string, year?: number): Promise<LeaveBalance[]> {
     const currentYear = year || new Date().getFullYear();
 
     try {
@@ -289,15 +289,15 @@ export class LeaveModel {
       const activeLeaveTypes = leaveTypesRes.rows as any[];
 
       // Fetch user details to get hire date (needed for pro-rated leave calculation)
-      const userRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE id = $1', [userId]);
+      const userRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE employee_id = $1', [employeeId]);
       const user = userRes.rows[0];
       const hireDate = user?.hire_date ? new Date(user.hire_date) : new Date();
 
       // For each active leave type, ensure the user has a balance record
       for (const type of activeLeaveTypes) {
         const balanceCheck = await pool.query(
-          'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
-          [userId, type.id, currentYear]
+          'SELECT 1 FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+          [employeeId, type.id, currentYear]
         );
         if (balanceCheck.rows.length === 0) {
           let totalDays = type.max_days;
@@ -309,9 +309,9 @@ export class LeaveModel {
             totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
           }
           await pool.query(
-            `INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
+            `INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year)
              VALUES ($1, $2, $3, 0, $3, $4)`,
-            [userId, type.id, totalDays, currentYear]
+            [employeeId, type.id, totalDays, currentYear]
           );
         }
       }
@@ -325,9 +325,9 @@ export class LeaveModel {
               (elb.total_days - elb.used_days) as calculated_remaining_days
        FROM tbl_employee_leave_balance elb
        JOIN tbl_leave_types lt ON elb.leave_type_id = lt.id
-       WHERE elb.user_id = $1 AND elb.year = $2
+       WHERE elb.employee_id = $1 AND elb.year = $2
        ORDER BY lt.name`,
-      [userId, currentYear]
+      [employeeId, currentYear]
     );
 
     // Transform the flat structure to nested structure
@@ -339,7 +339,7 @@ export class LeaveModel {
 
       return {
         id: row.id,
-        user_id: row.user_id,
+        employee_id: row.employee_id,
         leave_type_id: row.leave_type_id,
         total_days: parseFloat(row.total_days) || row.total_days,
         used_days: parseFloat(row.used_days) || row.used_days,

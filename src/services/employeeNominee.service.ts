@@ -5,13 +5,16 @@ import { BadRequestError } from '../utils/AppError';
 const SELF_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
 export const employeeNomineeService = {
-  async list(actorUserId: number, actorRole: UserRole, queryUserId?: number) {
+  async list(actorEmployeeId: string | null, actorRole: UserRole, queryEmployeeId?: string) {
     if (SELF_ROLES.includes(actorRole)) {
-      return EmployeeNomineeModel.listByUserId(actorUserId);
+      if (!actorEmployeeId) {
+        throw new BadRequestError('Employee record is missing an employeeId');
+      }
+      return EmployeeNomineeModel.listByEmployeeId(actorEmployeeId);
     }
-    if (!queryUserId) {
-      throw new BadRequestError('userId query parameter is required for HR/admin views');
+    if (!queryEmployeeId) {
+      throw new BadRequestError('employeeId query parameter is required for HR/admin views');
     }
-    return EmployeeNomineeModel.listByUserId(queryUserId);
+    return EmployeeNomineeModel.listByEmployeeId(queryEmployeeId);
   },
 };

@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 import { bytea, employeeSexEnum } from './employeePii';
@@ -11,9 +11,11 @@ export const dependentRelationshipEnum = pgEnum('dependent_relationship', ['spou
 // is 'married' (enforced in profileChangeRequest.service.ts). fullName/nic/
 // mobileNumber are encrypted like tbl_employee_pii; writes only ever happen
 // via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeDependents = pgTable('employee_dependents', {
+export const employeeDependents = pgTable('tbl_employee_dependents', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     fullName: bytea('full_name'),
     // Not applicable for children under 16 years of age.
     nic: bytea('nic'),
@@ -27,8 +29,8 @@ export const employeeDependents = pgTable('employee_dependents', {
 
 export const employeeDependentsRelations = relations(employeeDependents, ({ one }) => ({
     employee: one(users, {
-        fields: [employeeDependents.userId],
-        references: [users.id],
+        fields: [employeeDependents.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

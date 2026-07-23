@@ -23,7 +23,7 @@ export class PermissionsService {
   }
 
   async getMyPermissions(userId: number) {
-    const assignments = await getUserPermissionAssignments(userId);
+    const assignments = await this.getAssignmentsFor(userId);
     return {
       userId,
       assignments,
@@ -38,13 +38,22 @@ export class PermissionsService {
       throw new NotFoundException('User not found');
     }
 
-    const assignments = await getUserPermissionAssignments(userId);
+    const assignments = await this.getAssignmentsFor(userId, targetUser);
     return {
       userId,
       assignments,
       permissionLevels: this.toPermissionLevels(assignments),
       permissions: assignments.map((item) => item.key),
     };
+  }
+
+  // tbl_user_permissions is keyed by the business employee_id, not the
+  // numeric tbl_employee.id used throughout this service's public API, so the
+  // numeric id is resolved to employee_id before every read/write below.
+  private async getAssignmentsFor(userId: number, preloadedUser?: Awaited<ReturnType<typeof EmployeeModel.findById>>) {
+    const targetUser = preloadedUser ?? (await EmployeeModel.findById(userId));
+    if (!targetUser?.employeeId) return [];
+    return getUserPermissionAssignments(targetUser.employeeId);
   }
 
   async getAllUserPermissions() {
@@ -103,21 +112,26 @@ export class PermissionsService {
       assignments.push({ key: key as PermissionKey, accessLevel });
     }
 
+    if (!targetUser.employeeId) {
+      throw new BadRequestException('User has no employee ID assigned');
+    }
+    const targetEmployeeId = targetUser.employeeId;
+
     const client = await pool.connect();
     try {
       await client.query('BEGIN');
-      await client.query('DELETE FROM tbl_user_permissions WHERE user_id = $1', [userId]);
+      await client.query('DELETE FROM tbl_user_permissions WHERE employee_id = $1', [targetEmployeeId]);
 
       if (assignments.length > 0) {
         const values: unknown[] = [];
         const placeholders: string[] = [];
         assignments.forEach((permission) => {
           const base = values.length;
-          values.push(userId, permission.key, permission.accessLevel, actorId);
+          values.push(targetEmployeeId, permission.key, permission.accessLevel, actorId);
           placeholders.push(`($${base + 1}, $${base + 2}, $${base + 3}, $${base + 4})`);
         });
         await client.query(
-          `INSERT INTO tbl_user_permissions (user_id, permission_key, access_level, assigned_by) VALUES ${placeholders.join(', ')}`,
+          `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level, assigned_by) VALUES ${placeholders.join(', ')}`,
           values,
         );
       }

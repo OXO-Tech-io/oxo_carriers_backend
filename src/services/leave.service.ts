@@ -47,19 +47,19 @@ export const leaveService = {
   },
 
   async getLeaveBalance(
-    userId: number,
+    employeeId: string,
     query: LeaveBalanceQuery
   ): Promise<LeaveBalance[]> {
-    return LeaveModel.getLeaveBalance(userId, query.year);
+    return LeaveModel.getLeaveBalance(employeeId, query.year);
   },
 
   async listLeaveRequests(
-    userId: number,
+    employeeId: string,
     role: UserRole,
     query: ListLeaveRequestsQuery
   ): Promise<LeaveRequest[]> {
     if (role === UserRole.EMPLOYEE) {
-      return LeaveModel.findByUserId(userId, {
+      return LeaveModel.findByEmployeeId(employeeId, {
         status: query.status,
         year: query.year,
       });
@@ -73,21 +73,21 @@ export const leaveService = {
 
   async getLeaveRequestById(
     id: number,
-    userId: number,
+    employeeId: string,
     role: UserRole
   ): Promise<LeaveRequest> {
     const request = await LeaveModel.findById(id);
     if (!request) {
       throw new NotFoundError('Leave request not found');
     }
-    if (role === UserRole.EMPLOYEE && request.user_id !== userId) {
+    if (role === UserRole.EMPLOYEE && request.employee_id !== employeeId) {
       throw new ForbiddenError();
     }
     return request;
   },
 
   async createLeaveRequest(
-    userId: number,
+    employeeId: string,
     input: CreateLeaveRequestInput,
     attachmentUrl?: string
   ): Promise<LeaveRequest> {
@@ -102,7 +102,7 @@ export const leaveService = {
       throw new BadRequestError('Invalid date range');
     }
 
-    const balances = await LeaveModel.getLeaveBalance(userId);
+    const balances = await LeaveModel.getLeaveBalance(employeeId);
     const balance = balances.find(b => b.leave_type_id === input.leave_type_id);
 
     if (!balance) {
@@ -116,7 +116,7 @@ export const leaveService = {
     }
 
     return LeaveModel.createRequest({
-      user_id: userId,
+      employee_id: employeeId,
       leave_type_id: input.leave_type_id,
       start_date: start,
       end_date: end,
@@ -144,8 +144,8 @@ export const leaveService = {
 
     if (approvedBy === 'team_leader') {
       const result = await pool.query(
-        'SELECT manager_id FROM tbl_employee WHERE id = $1',
-        [request.user_id]
+        'SELECT manager_id FROM tbl_employee WHERE employee_id = $1',
+        [request.employee_id]
       );
       const requester = (result.rows as Array<{ manager_id: number | null }>)[0];
       if (!requester || requester.manager_id !== actorUserId) {

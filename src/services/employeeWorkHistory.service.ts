@@ -6,23 +6,29 @@ import { BadRequestError } from '../utils/AppError';
 const SELF_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
 export const employeeWorkHistoryService = {
-  async list(actorUserId: number, actorRole: UserRole, queryUserId?: number) {
+  async list(actorEmployeeId: string | null, actorRole: UserRole, queryEmployeeId?: string) {
     if (SELF_ROLES.includes(actorRole)) {
-      return EmployeeWorkHistoryModel.listByUserId(actorUserId);
+      if (!actorEmployeeId) {
+        throw new BadRequestError('Employee record is missing an employeeId');
+      }
+      return EmployeeWorkHistoryModel.listByEmployeeId(actorEmployeeId);
     }
-    if (!queryUserId) {
-      throw new BadRequestError('userId query parameter is required for HR/admin views');
+    if (!queryEmployeeId) {
+      throw new BadRequestError('employeeId query parameter is required for HR/admin views');
     }
-    return EmployeeWorkHistoryModel.listByUserId(queryUserId);
+    return EmployeeWorkHistoryModel.listByEmployeeId(queryEmployeeId);
   },
 
-  async getExperienceSummary(actorUserId: number, actorRole: UserRole, queryUserId?: number) {
+  async getExperienceSummary(actorEmployeeId: string | null, actorRole: UserRole, queryEmployeeId?: string) {
     if (SELF_ROLES.includes(actorRole)) {
-      return experienceSummaryService.calculate(actorUserId);
+      if (!actorEmployeeId) {
+        throw new BadRequestError('Employee record is missing an employeeId');
+      }
+      return experienceSummaryService.calculate(actorEmployeeId);
     }
-    if (!queryUserId) {
-      throw new BadRequestError('userId query parameter is required for HR/admin views');
+    if (!queryEmployeeId) {
+      throw new BadRequestError('employeeId query parameter is required for HR/admin views');
     }
-    return experienceSummaryService.calculate(queryUserId);
+    return experienceSummaryService.calculate(queryEmployeeId);
   },
 };

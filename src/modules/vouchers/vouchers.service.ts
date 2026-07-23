@@ -20,9 +20,9 @@ export class VouchersService {
     requiredLevel: AccessLevel = 'read',
   ): Promise<boolean> {
     const role = employee?.role;
-    const userId = employee?.userId;
+    const employeeId = employee?.employeeId;
 
-    if (!role || !userId) {
+    if (!role || !employeeId) {
       return false;
     }
 
@@ -30,7 +30,7 @@ export class VouchersService {
       return true;
     }
 
-    return hasPermission(userId, permission, requiredLevel);
+    return hasPermission(employeeId, permission, requiredLevel);
   }
 
   /** GET /vouchers/service-providers - list vendors (for create voucher dropdown). */

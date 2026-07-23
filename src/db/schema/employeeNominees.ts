@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, decimal, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, decimal, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from './employee';
 import { bytea } from './employeePii';
@@ -7,9 +7,11 @@ import { bytea } from './employeePii';
 // enforced in profileChangeRequest.service.ts, not at the DB level).
 // name/nic are encrypted like tbl_employee_pii; writes only ever happen via
 // ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeNominees = pgTable('employee_nominees', {
+export const employeeNominees = pgTable('tbl_employee_nominees', {
     id: serial('id').primaryKey(),
-    userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => users.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
     nameWithInitials: bytea('name_with_initials'),
     nic: bytea('nic'),
     relationship: varchar('relationship', { length: 100 }).notNull(),
@@ -20,8 +22,8 @@ export const employeeNominees = pgTable('employee_nominees', {
 
 export const employeeNomineesRelations = relations(employeeNominees, ({ one }) => ({
     employee: one(users, {
-        fields: [employeeNominees.userId],
-        references: [users.id],
+        fields: [employeeNominees.employeeId],
+        references: [users.employeeId],
     }),
 }));
 

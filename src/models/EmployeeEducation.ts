@@ -11,9 +11,9 @@ export type EmployeeEducationInput = {
 };
 
 export class EmployeeEducationModel {
-  static async listByUserId(userId: number): Promise<DrizzleEmployeeEducation[]> {
+  static async listByEmployeeId(employeeId: string): Promise<DrizzleEmployeeEducation[]> {
     return db.query.employeeEducation.findMany({
-      where: eq(employeeEducation.userId, userId),
+      where: eq(employeeEducation.employeeId, employeeId),
       orderBy: (t, { desc }) => [desc(t.dateAwarded)],
     });
   }
@@ -25,10 +25,10 @@ export class EmployeeEducationModel {
     return record ?? null;
   }
 
-  static async create(userId: number, data: EmployeeEducationInput): Promise<DrizzleEmployeeEducation> {
+  static async create(employeeId: string, data: EmployeeEducationInput): Promise<DrizzleEmployeeEducation> {
     const [inserted] = await db
       .insert(employeeEducation)
-      .values({ userId, ...data })
+      .values({ employeeId, ...data })
       .returning();
     if (!inserted) throw new Error('Failed to create employee education record');
     return inserted;
