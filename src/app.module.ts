@@ -15,6 +15,16 @@ import { EmployeeNomineesModule } from './modules/employee-nominees/employee-nom
 import { EmployeeDependentsModule } from './modules/employee-dependents/employee-dependents.module';
 import { EmployeeEmergencyContactsModule } from './modules/employee-emergency-contacts/employee-emergency-contacts.module';
 import { EmployeeWelfareInfoModule } from './modules/employee-welfare-info/employee-welfare-info.module';
+import { FacilitiesModule } from './modules/facilities/facilities.module';
+import { PermissionsModule } from './modules/permissions/permissions.module';
+import { NotificationsModule } from './modules/notifications/notifications.module';
+import { GroupsModule } from './modules/groups/groups.module';
+import { WorkLogsModule } from './modules/work-logs/work-logs.module';
+import { MedicalInsuranceModule } from './modules/medical-insurance/medical-insurance.module';
+import { ConsultantSubmissionsModule } from './modules/consultant-submissions/consultant-submissions.module';
+import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { LeaveCalendarModule } from './modules/leave-calendar/leave-calendar.module';
+import { EmployeeNotesModule } from './modules/employee-notes/employee-notes.module';
 
 @Module({
   imports: [
@@ -34,6 +44,16 @@ import { EmployeeWelfareInfoModule } from './modules/employee-welfare-info/emplo
     EmployeeDependentsModule,
     EmployeeEmergencyContactsModule,
     EmployeeWelfareInfoModule,
+    FacilitiesModule,
+    PermissionsModule,
+    NotificationsModule,
+    GroupsModule,
+    WorkLogsModule,
+    MedicalInsuranceModule,
+    ConsultantSubmissionsModule,
+    VouchersModule,
+    LeaveCalendarModule,
+    EmployeeNotesModule,
   ],
 })
 export class AppModule {}
