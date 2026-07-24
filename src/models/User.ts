@@ -5,12 +5,56 @@ import bcrypt from 'bcryptjs';
 import { eq, like, or, and, sql, inArray } from 'drizzle-orm';
 import { encryptPII, decryptPII } from '../utils/encryption';
 
+export function decryptUserPII<T extends Record<string, any>>(user: T): T;
+export function decryptUserPII<T extends Record<string, any>>(user: T | null): T | null;
+export function decryptUserPII<T extends Record<string, any>>(user: T | undefined): T | undefined;
+export function decryptUserPII<T extends Record<string, any>>(user: T | null | undefined): T | null | undefined {
+  if (!user) return user;
+  const result: any = { ...user };
+  const fields = [
+    ['firstName', 'first_name'],
+    ['lastName', 'last_name'],
+    ['email', 'email'],
+    ['contactNumber', 'contact_number'],
+    ['bankName', 'bank_name'],
+    ['accountHolderName', 'account_holder_name'],
+    ['accountNumber', 'account_number'],
+    ['bankBranch', 'bank_branch'],
+    ['bankBranchCode', 'bank_branch_code'],
+    ['swiftCode', 'swift_code'],
+  ];
+
+  for (const [camel, snake] of fields) {
+    if (result[camel] && typeof result[camel] === 'string') {
+      result[camel] = decryptPII(result[camel]) ?? result[camel];
+    }
+    if (result[snake] && typeof result[snake] === 'string') {
+      result[snake] = decryptPII(result[snake]) ?? result[snake];
+    }
+  }
+  return result as T;
+}
+
 export class UserModel {
   static async findByEmail(email: string): Promise<DrizzleUser | null> {
-    const user = await db.query.users.findFirst({
+    const targetEmail = email.toLowerCase().trim();
+    // 1. Try direct database query match first
+    const directUser = await db.query.users.findFirst({
       where: eq(users.email, email),
     });
-    return user || null;
+    if (directUser) {
+      return decryptUserPII(directUser);
+    }
+
+    // 2. If not found by raw string (due to PII encryption on email column), scan users to match decrypted email
+    const allUsers = await db.query.users.findMany();
+    for (const u of allUsers) {
+      const decrypted = decryptUserPII(u);
+      if (decrypted && decrypted.email && decrypted.email.toLowerCase().trim() === targetEmail) {
+        return decrypted;
+      }
+    }
+    return null;
   }
 
   static async findById(id: number): Promise<Omit<DrizzleUser, 'password'> | null> {
@@ -20,14 +64,14 @@ export class UserModel {
         password: false, // Exclude password from result
       },
     });
-    return user || null;
+    return user ? decryptUserPII(user) : null;
   }
 
   static async findByKeycloakSub(sub: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.keycloakSub, sub),
     });
-    return user || null;
+    return user ? decryptUserPII(user) : null;
   }
 
   static async linkKeycloakSub(userId: number, sub: string): Promise<void> {
@@ -58,10 +102,10 @@ export class UserModel {
       .insert(users)
       .values({
         employeeId,
-        email: claims.email,
+        email: encryptPII(claims.email) || claims.email,
         keycloakSub: claims.sub,
-        firstName: claims.first_name || claims.email.split('@')[0],
-        lastName: claims.last_name || '',
+        firstName: encryptPII(claims.first_name || claims.email.split('@')[0]) || claims.first_name,
+        lastName: encryptPII(claims.last_name || '') || claims.last_name,
         role: claims.role,
         mustChangePassword: false,
         emailVerified: true,
@@ -93,21 +137,21 @@ export class UserModel {
       }
     }
 
-    return insertedUser;
+    return decryptUserPII(insertedUser)!;
   }
 
   static async findByEmployeeId(employeeId: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.employeeId, employeeId),
     });
-    return user || null;
+    return user ? decryptUserPII(user) : null;
   }
 
   static async findByVerificationToken(token: string): Promise<DrizzleUser | null> {
     const user = await db.query.users.findFirst({
       where: eq(users.emailVerificationToken, token),
     });
-    return user || null;
+    return user ? decryptUserPII(user) : null;
   }
 
   static async verifyEmail(userId: number): Promise<void> {
@@ -142,30 +186,30 @@ export class UserModel {
     contact_number?: string | null;
     email_verification_token?: string;
   }): Promise<DrizzleUser> {
-    const hashedPassword = await bcrypt.hash(userData.password, 10);
+    const hashedPassword = await bcrypt.hash(userData.password || 'password123', 10);
 
     const [insertedUser] = await db
       .insert(users)
       .values({
         employeeId: userData.employee_id,
-        email: userData.email,
+        email: encryptPII(userData.email) || userData.email,
         password: hashedPassword,
-        firstName: userData.first_name,
-        lastName: userData.last_name,
+        firstName: encryptPII(userData.first_name) || userData.first_name,
+        lastName: encryptPII(userData.last_name) || userData.last_name,
         role: userData.role,
         department: userData.department || null,
         position: userData.position || null,
         hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
         managerId: userData.manager_id || null,
         hourlyRate: userData.hourly_rate?.toString() ?? null,
-        bankName: userData.bank_name ?? null,
-        accountHolderName: userData.account_holder_name ?? null,
-        accountNumber: userData.account_number ?? null,
-        bankBranch: userData.bank_branch ?? null,
-        bankBranchCode: userData.bank_branch_code ?? null,
-        swiftCode: userData.swift_code ?? null,
+        bankName: userData.bank_name ? (encryptPII(userData.bank_name) || userData.bank_name) : null,
+        accountHolderName: userData.account_holder_name ? (encryptPII(userData.account_holder_name) || userData.account_holder_name) : null,
+        accountNumber: userData.account_number ? (encryptPII(userData.account_number) || userData.account_number) : null,
+        bankBranch: userData.bank_branch ? (encryptPII(userData.bank_branch) || userData.bank_branch) : null,
+        bankBranchCode: userData.bank_branch_code ? (encryptPII(userData.bank_branch_code) || userData.bank_branch_code) : null,
+        swiftCode: userData.swift_code ? (encryptPII(userData.swift_code) || userData.swift_code) : null,
         companyName: userData.company_name ?? null,
-        contactNumber: userData.contact_number ?? null,
+        contactNumber: userData.contact_number ? (encryptPII(userData.contact_number) || userData.contact_number) : null,
         mustChangePassword: true,
         emailVerified: false,
         emailVerificationToken: userData.email_verification_token || null,
@@ -175,15 +219,25 @@ export class UserModel {
     if (!insertedUser) {
       throw new Error('Failed to create user');
     }
-    return insertedUser;
+    return decryptUserPII(insertedUser)!;
   }
 
   static async update(id: number, updates: Partial<DrizzleUser>): Promise<Omit<DrizzleUser, 'password'> | null> {
-    // Filter out undefined values and restricted fields
+    // Filter out undefined values and restricted fields, and encrypt PII strings
     const filteredUpdates: any = {};
+    const encryptKeys = [
+      'firstName', 'lastName', 'email', 'contactNumber',
+      'bankName', 'accountHolderName', 'accountNumber',
+      'bankBranch', 'bankBranchCode', 'swiftCode'
+    ];
+
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined && key !== 'id' && key !== 'createdAt') {
-        filteredUpdates[key] = value;
+        if (encryptKeys.includes(key) && typeof value === 'string' && value) {
+          filteredUpdates[key] = encryptPII(value) || value;
+        } else {
+          filteredUpdates[key] = value;
+        }
       }
     });
 
@@ -229,18 +283,6 @@ export class UserModel {
       conditions.push(eq(users.department, filters.department));
     }
 
-    if (filters?.search) {
-      const searchTerm = `%${filters.search}%`;
-      conditions.push(
-        or(
-          like(users.firstName, searchTerm),
-          like(users.lastName, searchTerm),
-          like(users.email, searchTerm),
-          like(users.employeeId, searchTerm)
-        )
-      );
-    }
-
     const allUsers = await db.query.users.findMany({
       where: conditions.length > 0 ? and(...conditions) : undefined,
       columns: {
@@ -249,7 +291,19 @@ export class UserModel {
       orderBy: (users, { desc }) => [desc(users.createdAt)],
     });
 
-    return allUsers;
+    const decryptedUsers = allUsers.map((u) => decryptUserPII(u)!);
+
+    if (filters?.search) {
+      const searchTerm = filters.search.toLowerCase();
+      return decryptedUsers.filter((u) =>
+        u.firstName?.toLowerCase().includes(searchTerm) ||
+        u.lastName?.toLowerCase().includes(searchTerm) ||
+        u.email?.toLowerCase().includes(searchTerm) ||
+        u.employeeId?.toLowerCase().includes(searchTerm)
+      );
+    }
+
+    return decryptedUsers;
   }
 
   static async delete(id: number): Promise<void> {

@@ -78,8 +78,8 @@ export const archive = async (req: Request, res: Response) => {
 
 export const distribute = async (req: Request, res: Response) => {
   const { id } = req.params as unknown as FormIdParam;
-  const { userIds, groupIds } = req.body as DistributeFormInput;
-  const result = await formService.distribute(id, userIds, groupIds);
+  const { userIds, groupIds, closeAt } = req.body as DistributeFormInput;
+  const result = await formService.distribute(id, userIds, groupIds, closeAt);
   ok(res, result, 'Form distributed');
 };
 

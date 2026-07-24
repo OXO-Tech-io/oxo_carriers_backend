@@ -11,7 +11,7 @@ export const dependentRelationshipEnum = pgEnum('dependent_relationship', ['spou
 // is 'married' (enforced in profileChangeRequest.service.ts). fullName/nic/
 // mobileNumber are encrypted like tbl_employee_pii; writes only ever happen
 // via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeDependents = pgTable('employee_dependents', {
+export const employeeDependents = pgTable('tbl_employee_dependents', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     fullName: bytea('full_name'),

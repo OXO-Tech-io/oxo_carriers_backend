@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { EmployeeModel } from "../../src/models/Employee";
+import { EmployeeModel } from "../../src/models/User";
 import { FormModel } from "../../src/models/Form";
 import { formService } from "../../src/services/form.service";
 import { isQuestionVisible } from "../../src/utils/formLogic";

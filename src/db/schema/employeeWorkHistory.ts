@@ -8,7 +8,7 @@ export const employmentTypeEnum = pgEnum('employment_type', ['regular', 'intern'
 // Employee Work History Table
 // Holds only the approved state of an employee's work history.
 // Writes only ever happen via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeWorkHistory = pgTable('employee_work_history', {
+export const employeeWorkHistory = pgTable('tbl_employee_work_history', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     organization: varchar('organization', { length: 255 }).notNull(),

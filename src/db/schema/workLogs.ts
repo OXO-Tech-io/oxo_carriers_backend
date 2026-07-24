@@ -5,7 +5,7 @@ import { users } from './users';
 // Work Logs Table - one row per task per day, entered manually or via bulk
 // Excel upload (see workLog.service.ts bulkUpload, mirroring the salary
 // bulk-import exceljs pattern).
-export const workLogs = pgTable('work_logs', {
+export const workLogs = pgTable('tbl_work_logs', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     workDate: date('work_date').notNull(),

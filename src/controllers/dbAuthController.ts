@@ -5,6 +5,7 @@ import jwt from 'jsonwebtoken';
 import { logger } from '../lib/logger';
 import { BadRequestError, UnauthorizedError } from '../utils/AppError';
 import { ok } from '../utils/response';
+import { UserModel } from '../models/User';
 
 // Database connection pool (from your database.ts)
 let pool: Pool;
@@ -30,7 +31,7 @@ export interface LoginResponse {
     firstName: string;
     lastName: string;
     role: string;
-    employeeId: string;
+    employeeId: string | null;
     token: string;
     expiresIn: number;
 }
@@ -63,31 +64,13 @@ export const login = async (req: Request, res: Response): Promise<void> => {
 
         logger.debug(`[AUTH] Login attempt for email: ${email}`);
 
-        // Query hris.users table from Google Cloud SQL
-        const query = `
-      SELECT 
-        id,
-        email,
-        password,
-        first_name,
-        last_name,
-        role,
-        employee_id,
-        email_verified,
-        must_change_password
-      FROM hris."users"
-      WHERE email = $1
-      LIMIT 1
-    `;
+        // Fetch user model with decrypted PII
+        const user = await UserModel.findByEmail(email);
 
-        const result = await pool.query(query, [email]);
-
-        if (result.rows.length === 0) {
+        if (!user || !user.password) {
             logger.warn(`[AUTH] Login failed: User not found - ${email}`);
             throw new UnauthorizedError('Invalid email or password');
         }
-
-        const user = result.rows[0];
 
         // Verify password using bcrypt
         const passwordMatch = await bcrypt.compare(password, user.password);
@@ -97,11 +80,9 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             throw new UnauthorizedError('Invalid email or password');
         }
 
-        // Check if email is verified (optional - customize based on your requirements)
-        if (!user.email_verified) {
+        // Check if email is verified
+        if (!user.emailVerified) {
             logger.info(`[AUTH] User ${email} attempting login with unverified email`);
-            // Uncomment below to enforce email verification before login
-            // throw new UnauthorizedError('Please verify your email before logging in');
         }
 
         // Generate JWT token
@@ -109,7 +90,7 @@ export const login = async (req: Request, res: Response): Promise<void> => {
             userId: user.id,
             email: user.email,
             role: user.role,
-            employeeId: user.employee_id,
+            employeeId: user.employeeId,
             iat: Math.floor(Date.now() / 1000),
         };
 
@@ -130,10 +111,10 @@ export const login = async (req: Request, res: Response): Promise<void> => {
         const response: LoginResponse = {
             id: user.id,
             email: user.email,
-            firstName: user.first_name,
-            lastName: user.last_name,
-            role: user.role,
-            employeeId: user.employee_id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            role: user.role as any,
+            employeeId: user.employeeId,
             token,
             expiresIn,
         };

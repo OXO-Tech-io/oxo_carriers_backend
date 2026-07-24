@@ -5,7 +5,7 @@ import { users } from './users';
 // Employee Welfare Info Table (Tab E). One row per employee - all plain
 // columns since none of these fields are identity/contact secrets. Writes
 // only ever happen via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeWelfareInfo = pgTable('employee_welfare_info', {
+export const employeeWelfareInfo = pgTable('tbl_employee_welfare_info', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().unique().references(() => users.id, { onDelete: 'cascade' }),
     weddingAnniversaryDate: date('wedding_anniversary_date'),

@@ -509,10 +509,41 @@ const startServer = async () => {
           logger.error({ err: seedError }, 'Failed to self-seed default leave types on startup');
         }
 
+        // 0. Ensure required columns on tbl_employee and related tables exist
+        try {
+          await pool.query('ALTER TABLE tbl_employee ADD COLUMN IF NOT EXISTS email_verified boolean DEFAULT false');
+          await pool.query('ALTER TABLE tbl_employee ADD COLUMN IF NOT EXISTS email_verification_token varchar(255)');
+          await pool.query('ALTER TABLE tbl_employee ALTER COLUMN email_hash DROP NOT NULL');
+          
+          const tables = [
+            'tbl_employee_leave_balance',
+            'tbl_user_permissions',
+            'tbl_employee_work_history',
+            'tbl_employee_education',
+            'tbl_notifications',
+            'tbl_profile_change_requests',
+            'tbl_form_distributions',
+            'tbl_form_responses',
+            'tbl_communication_recipients',
+          ];
+          for (const table of tables) {
+            await pool.query(`ALTER TABLE ${table} ADD COLUMN IF NOT EXISTS user_id integer REFERENCES tbl_employee(id) ON DELETE CASCADE`);
+            try {
+              await pool.query(`ALTER TABLE ${table} ALTER COLUMN employee_id DROP NOT NULL`);
+            } catch (_) {}
+          }
+          try {
+            await pool.query(`ALTER TABLE tbl_communications ADD COLUMN IF NOT EXISTS requires_acknowledgement boolean NOT NULL DEFAULT false`);
+            await pool.query(`ALTER TABLE tbl_communications ADD COLUMN IF NOT EXISTS deadline_at timestamp`);
+          } catch (_) {}
+        } catch (colErr: any) {
+          logger.error({ err: colErr }, 'Failed to check/add missing columns on database startup');
+        }
+
         // 2. Initialize missing leave balances for existing employees
         try {
           logger.info('⚙️ Checking leave balances for existing employees...');
-          const employeesRes = await pool.query("SELECT id, hire_date FROM tbl_employee WHERE role = 'employee'");
+          const employeesRes = await pool.query("SELECT id, employee_id, hire_date FROM tbl_employee WHERE role = 'employee'");
           const employees = employeesRes.rows || [];
 
           const leaveTypesRes = await pool.query("SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true");
@@ -522,10 +553,11 @@ const startServer = async () => {
           let initializedBalancesCount = 0;
 
           for (const emp of employees) {
+            if (!emp.employee_id) continue;
             for (const type of leaveTypes) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
-                [emp.id, type.id, currentYear]
+                'SELECT 1 FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+                [emp.employee_id, type.id, currentYear]
               );
               if (checkRes.rows.length === 0) {
                 const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
@@ -538,8 +570,8 @@ const startServer = async () => {
                   totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
                 }
                 await pool.query(
-                  'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
-                  [emp.id, type.id, totalDays, currentYear]
+                  'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
+                  [emp.employee_id, type.id, totalDays, currentYear]
                 );
                 initializedBalancesCount++;
               }
@@ -557,8 +589,8 @@ const startServer = async () => {
         // 3. Assign default permissions to existing employee accounts if they don't already have them
         try {
           logger.info('⚙️ Checking default permissions for existing employees...');
-          const employeesRes = await pool.query("SELECT id FROM tbl_employee WHERE role = 'employee'");
-          const employeeIds = (employeesRes.rows || []).map((row: any) => row.id);
+          const employeesRes = await pool.query("SELECT employee_id FROM tbl_employee WHERE role = 'employee'");
+          const employeeIds = (employeesRes.rows || []).map((row: any) => row.employee_id).filter(Boolean);
           const defaultPermissions = [
             'dashboard',
             'leaves',
@@ -574,12 +606,12 @@ const startServer = async () => {
           for (const empId of employeeIds) {
             for (const permission of defaultPermissions) {
               const checkRes = await pool.query(
-                'SELECT 1 FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+                'SELECT 1 FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
                 [empId, permission]
               );
               if (checkRes.rows.length === 0) {
                 await pool.query(
-                  'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                  'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
                   [empId, permission, 'read']
                 );
                 assignedCount++;
@@ -601,24 +633,24 @@ const startServer = async () => {
         try {
           logger.info('⚙️ Checking profile_change_requests permission for HR users...');
           const hrRes = await pool.query(
-            "SELECT id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
+            "SELECT employee_id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
           );
-          const hrIds = (hrRes.rows || []).map((row: any) => row.id);
+          const hrIds = (hrRes.rows || []).map((row: any) => row.employee_id).filter(Boolean);
           let hrAssignedCount = 0;
           for (const hrId of hrIds) {
             const checkRes = await pool.query(
-              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
+              'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
               [hrId, 'profile_change_requests']
             );
             if (checkRes.rows.length === 0) {
               await pool.query(
-                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
                 [hrId, 'profile_change_requests', 'write']
               );
               hrAssignedCount++;
             } else if (checkRes.rows[0].access_level !== 'write') {
               await pool.query(
-                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
                 [hrId, 'profile_change_requests', 'write']
               );
               hrAssignedCount++;
@@ -639,33 +671,34 @@ const startServer = async () => {
         try {
           logger.info('⚙️ Checking HR modules permissions for HR users...');
           const hrRes = await pool.query(
-            "SELECT id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
+            "SELECT employee_id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive')"
           );
-          const grants: { userId: number; key: string }[] = [];
+          const grants: { employeeId: string; key: string }[] = [];
           for (const row of hrRes.rows as any[]) {
+            if (!row.employee_id) continue;
             for (const key of ['communications', 'events', 'forms']) {
-              grants.push({ userId: row.id, key });
+              grants.push({ employeeId: row.employee_id, key });
             }
             if (row.role === 'hr_manager') {
-              grants.push({ userId: row.id, key: 'work_logs' });
+              grants.push({ employeeId: row.employee_id, key: 'work_logs' });
             }
           }
           let hrModuleGrantCount = 0;
           for (const grant of grants) {
             const checkRes = await pool.query(
-              'SELECT access_level FROM tbl_user_permissions WHERE user_id = $1 AND permission_key = $2',
-              [grant.userId, grant.key]
+              'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
+              [grant.employeeId, grant.key]
             );
             if (checkRes.rows.length === 0) {
               await pool.query(
-                'INSERT INTO tbl_user_permissions (user_id, permission_key, access_level) VALUES ($1, $2, $3)',
-                [grant.userId, grant.key, 'write']
+                'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
+                [grant.employeeId, grant.key, 'write']
               );
               hrModuleGrantCount++;
             } else if (checkRes.rows[0].access_level !== 'write') {
               await pool.query(
-                'UPDATE tbl_user_permissions SET access_level = $3 WHERE user_id = $1 AND permission_key = $2',
-                [grant.userId, grant.key, 'write']
+                'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
+                [grant.employeeId, grant.key, 'write']
               );
               hrModuleGrantCount++;
             }

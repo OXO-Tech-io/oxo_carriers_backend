@@ -42,7 +42,7 @@ export const formLogicActionEnum = pgEnum('form_logic_action', ['show', 'hide'])
 export const formLogicCombinatorEnum = pgEnum('form_logic_combinator', ['all', 'any']);
 export const formResponseStatusEnum = pgEnum('form_response_status', ['in_progress', 'submitted']);
 
-export const forms = pgTable('forms', {
+export const forms = pgTable('tbl_forms', {
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
@@ -58,7 +58,7 @@ export const forms = pgTable('forms', {
     lastResponseAt: timestamp('last_response_at'),
 });
 
-export const formSections = pgTable('form_sections', {
+export const formSections = pgTable('tbl_form_sections', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     title: varchar('title', { length: 255 }).notNull().default(''),
@@ -70,7 +70,7 @@ export const formSections = pgTable('form_sections', {
 // min/max, columns, allowed_mime_types, etc - see src/validators/formQuestionConfig.validator.ts
 // for the exact shape per type). Choice-type options (and grid rows) live in `form_question_options`
 // below rather than a `json` column, so they can be individually reordered/edited.
-export const formQuestions = pgTable('form_questions', {
+export const formQuestions = pgTable('tbl_form_questions', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     sectionId: integer('section_id').references(() => formSections.id, { onDelete: 'set null' }),
@@ -87,7 +87,7 @@ export const formQuestions = pgTable('form_questions', {
 
 // Doubles as grid rows for multiple_choice_grid/checkbox_grid (columns live in the question's
 // `config.columns: string[]`), matching Marketrix's convention.
-export const formQuestionOptions = pgTable('form_question_options', {
+export const formQuestionOptions = pgTable('tbl_form_question_options', {
     id: serial('id').primaryKey(),
     questionId: integer('question_id').notNull().references(() => formQuestions.id, { onDelete: 'cascade' }),
     label: varchar('label', { length: 255 }).notNull(),
@@ -96,7 +96,7 @@ export const formQuestionOptions = pgTable('form_question_options', {
     isOther: boolean('is_other').notNull().default(false),
 });
 
-export const formLogicRules = pgTable('form_logic_rules', {
+export const formLogicRules = pgTable('tbl_form_logic_rules', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     targetQuestionId: integer('target_question_id').notNull().references(() => formQuestions.id, { onDelete: 'cascade' }),
@@ -110,7 +110,7 @@ export const formLogicRules = pgTable('form_logic_rules', {
 
 // One row per form. Trimmed to what applies to an internal, always-authenticated HR tool - no
 // public-link/password/captcha/webhook/anonymous fields (see plan's "What changes vs. Marketrix").
-export const formSettings = pgTable('form_settings', {
+export const formSettings = pgTable('tbl_form_settings', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().unique().references(() => forms.id, { onDelete: 'cascade' }),
     thankYouMessage: text('thank_you_message'),
@@ -126,7 +126,7 @@ export const formSettings = pgTable('form_settings', {
 
 // One row per form. Minimal theme (primary color + header banner image only) - not the full
 // Marketrix theme editor (font/background/button-style/border-radius), see plan for rationale.
-export const formTheme = pgTable('form_theme', {
+export const formTheme = pgTable('tbl_form_theme', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().unique().references(() => forms.id, { onDelete: 'cascade' }),
     primaryColor: varchar('primary_color', { length: 32 }).notNull().default('#4f46e5'),
@@ -135,7 +135,7 @@ export const formTheme = pgTable('form_theme', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
-export const formDistributions = pgTable('form_distributions', {
+export const formDistributions = pgTable('tbl_form_distributions', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -147,7 +147,7 @@ export const formDistributions = pgTable('form_distributions', {
 // unique index below enforces this at the DB layer; the service looks up the existing
 // (form_id, user_id) row and updates it in place across draft autosaves and (if
 // form_settings.allow_edit_after_submit) re-submits.
-export const formResponses = pgTable('form_responses', {
+export const formResponses = pgTable('tbl_form_responses', {
     id: serial('id').primaryKey(),
     formId: integer('form_id').notNull().references(() => forms.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
@@ -162,7 +162,7 @@ export const formResponses = pgTable('form_responses', {
 // File-type answers do not use valueText/value - instead a row is written into the shared
 // `attachments` table with entityType='form_response_answer', entityId=this row's id, mirroring
 // the polymorphic attachment convention (see src/models/Attachment.ts).
-export const formResponseAnswers = pgTable('form_response_answers', {
+export const formResponseAnswers = pgTable('tbl_form_response_answers', {
     id: serial('id').primaryKey(),
     responseId: integer('response_id').notNull().references(() => formResponses.id, { onDelete: 'cascade' }),
     questionId: integer('question_id').notNull().references(() => formQuestions.id, { onDelete: 'cascade' }),

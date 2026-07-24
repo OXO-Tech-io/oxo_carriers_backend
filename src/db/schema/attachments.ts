@@ -7,7 +7,7 @@ import { users } from './users';
 // since it can point at rows in different tables - same pattern as auditLogs.recordId).
 // Introduced in Phase 1 for optional supporting documents on profile change requests; reused
 // as-is by later phases (HR Notes, Communications, Form Responses, Work Logs).
-export const attachments = pgTable('attachments', {
+export const attachments = pgTable('tbl_attachments', {
     id: serial('id').primaryKey(),
     entityType: varchar('entity_type', { length: 100 }).notNull(),
     entityId: integer('entity_id').notNull(),

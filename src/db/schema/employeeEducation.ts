@@ -18,7 +18,7 @@ export const qualificationLevelEnum = pgEnum('qualification_level', [
 // Employee Education Table
 // Holds only the approved state of an employee's educational background.
 // Writes only ever happen via ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeEducation = pgTable('employee_education', {
+export const employeeEducation = pgTable('tbl_employee_education', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     qualificationLevel: qualificationLevelEnum('qualification_level').notNull(),

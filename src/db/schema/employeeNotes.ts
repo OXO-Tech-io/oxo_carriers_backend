@@ -7,7 +7,7 @@ import { users } from './users';
 // HR Team (hr_executive) can create notes but is deliberately given no
 // read/update route at all afterwards - enforced in employeeNoteRoutes.ts,
 // not in this schema. Only HR Manager (and super_admin) can list/view/edit.
-export const employeeNotes = pgTable('employee_notes', {
+export const employeeNotes = pgTable('tbl_employee_notes', {
     id: serial('id').primaryKey(),
     employeeUserId: integer('employee_user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     authorUserId: integer('author_user_id').references(() => users.id, { onDelete: 'set null' }),

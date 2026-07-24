@@ -6,7 +6,7 @@ import { users } from './users';
 // Generic in-app notification table shared by every module (not just profile change requests).
 // `type` is a plain string (not a pgEnum) so future phases can add new notification types
 // without a schema migration each time.
-export const notifications = pgTable('notifications', {
+export const notifications = pgTable('tbl_notifications', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     type: varchar('type', { length: 100 }).notNull(),

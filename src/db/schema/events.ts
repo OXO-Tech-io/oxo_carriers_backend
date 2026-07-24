@@ -4,7 +4,7 @@ import { users } from './users';
 
 // Events Table - phase 1 is manual attendance recording by HR; a QR-based
 // automated check-in is a planned phase 2, not modeled here.
-export const events = pgTable('events', {
+export const events = pgTable('tbl_events', {
     id: serial('id').primaryKey(),
     name: varchar('name', { length: 255 }).notNull(),
     description: text('description'),
@@ -14,7 +14,7 @@ export const events = pgTable('events', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-export const eventParticipants = pgTable('event_participants', {
+export const eventParticipants = pgTable('tbl_event_participants', {
     id: serial('id').primaryKey(),
     eventId: integer('event_id').notNull().references(() => events.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

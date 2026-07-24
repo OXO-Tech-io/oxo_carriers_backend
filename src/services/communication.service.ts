@@ -16,12 +16,20 @@ export const communicationService = {
     recipientUserIds: number[],
     recipientGroupIds: number[],
     createdBy: number,
-    files: AttachmentFileInput[]
+    files: AttachmentFileInput[],
+    requiresAcknowledgement?: boolean,
+    deadlineAt?: string | null
   ) {
     const groupMemberIds = await groupService.resolveMemberUserIds(recipientGroupIds);
     const resolvedUserIds = [...new Set([...recipientUserIds, ...groupMemberIds])];
 
-    const communication = await CommunicationModel.create({ title, body, createdBy });
+    const communication = await CommunicationModel.create({
+      title,
+      body,
+      requiresAcknowledgement,
+      deadlineAt,
+      createdBy,
+    });
     const recipients = await CommunicationRecipientModel.createMany(communication.id, resolvedUserIds);
     if (files.length) {
       await AttachmentModel.createMany('communication', communication.id, files, createdBy);
@@ -99,5 +107,11 @@ export const communicationService = {
     });
 
     return workbook.xlsx.writeBuffer();
+  },
+
+  async delete(id: number) {
+    const existing = await CommunicationModel.findById(id);
+    if (!existing) throw new NotFoundError('Communication not found');
+    await CommunicationModel.delete(id);
   },
 };

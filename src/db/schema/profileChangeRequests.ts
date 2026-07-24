@@ -17,7 +17,7 @@ export const profileChangeStatusEnum = pgEnum('profile_change_status', [
 // A single Approve/Reject/Return decision applies atomically to the whole bundle.
 // See src/validators/profileChangeRequest.validator.ts for the exact shape of each
 // item in the `changes` array (discriminated by `entityType`).
-export const profileChangeRequests = pgTable('profile_change_requests', {
+export const profileChangeRequests = pgTable('tbl_profile_change_requests', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }), // employee affected
     submittedBy: integer('submitted_by').references(() => users.id, { onDelete: 'set null' }),

@@ -11,6 +11,7 @@ import { EmployeePiiModel } from "../../src/models/EmployeePii";
 import { ProfileChangeRequestModel } from "../../src/models/ProfileChangeRequest";
 import { profileChangeRequestService } from "../../src/services/profileChangeRequest.service";
 import { UserRole } from "../../src/types";
+import { decryptPII } from "../../src/utils/encryption";
 import type { SubmitProfileChangeRequestInput } from "../../src/validators/profileChangeRequest.validator";
 
 describe("Profile Change Request workflow (submit -> approve)", () => {
@@ -65,7 +66,12 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
           field: "address",
           operation: "update",
           before: null,
-          after: "123 Approval Street, Colombo",
+          after: {
+            addressLine1: "123 Approval Street",
+            addressLine2: null,
+            city: "Colombo",
+            district: "Colombo",
+          },
         },
         {
           entityType: "education",
@@ -117,11 +123,11 @@ describe("Profile Change Request workflow (submit -> approve)", () => {
 
     // 1. users.contactNumber updated and decrypts correctly
     const updatedEmployee = await EmployeeModel.findById(employee.id);
-    expect(updatedEmployee?.contactNumber).toBe("+94779999999");
+    expect(decryptPII(updatedEmployee?.contactNumber)).toBe("+94779999999");
 
     // 2. employeePii.address updated and decrypts correctly
     const pii = await EmployeePiiModel.findByEmployeeId(employeeIdTag);
-    expect(pii?.address).toBe("123 Approval Street, Colombo");
+    expect(pii?.addressLine1).toBe("123 Approval Street");
 
     // 3. employee_education row created
     const educationAfter = await db.query.employeeEducation.findMany({

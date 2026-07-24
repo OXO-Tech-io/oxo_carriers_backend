@@ -7,7 +7,7 @@ import { bytea } from './employeePii';
 // enforced in profileChangeRequest.service.ts, not at the DB level).
 // name/nic are encrypted like tbl_employee_pii; writes only ever happen via
 // ProfileChangeRequest approval (see profileChangeRequests.ts).
-export const employeeNominees = pgTable('employee_nominees', {
+export const employeeNominees = pgTable('tbl_employee_nominees', {
     id: serial('id').primaryKey(),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),
     nameWithInitials: bytea('name_with_initials'),

@@ -9,6 +9,7 @@ import { formQuestionTypeSchema, CHOICE_QUESTION_TYPES, GRID_QUESTION_TYPES } fr
 export const createFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
   description: z.string().max(2000).optional(),
+  closeAt: z.coerce.date().nullable().optional(),
 });
 export type CreateFormInput = z.infer<typeof createFormSchema>;
 
@@ -22,6 +23,7 @@ export const distributeFormSchema = z
   .object({
     userIds: z.array(z.coerce.number().int().positive()).optional().default([]),
     groupIds: z.array(z.coerce.number().int().positive()).optional().default([]),
+    closeAt: z.coerce.date().nullable().optional(),
   })
   .refine((data) => data.userIds.length > 0 || data.groupIds.length > 0, {
     message: 'At least one employee or group is required',

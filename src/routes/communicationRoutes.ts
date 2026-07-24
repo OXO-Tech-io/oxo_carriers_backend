@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as communicationController from '../controllers/communicationController';
-import { authenticate, requireHR, requireHRManager } from '../middleware/auth';
+import { authenticate, requireHR, requireHRManager, requireSuperAdmin } from '../middleware/auth';
 import { validate } from '../middleware/validate';
 import { uploadCommunicationAttachments } from '../middleware/upload';
 import { asyncHandler } from '../utils/asyncHandler';
@@ -31,5 +31,11 @@ router.post(
   asyncHandler(communicationController.create)
 );
 router.get('/report', requireHRManager, asyncHandler(communicationController.report));
+router.delete(
+  '/:id',
+  requireSuperAdmin,
+  validate(communicationIdParamSchema, 'params'),
+  asyncHandler(communicationController.deleteCommunication)
+);
 
 export default router;

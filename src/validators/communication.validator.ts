@@ -16,6 +16,11 @@ export const createCommunicationSchema = z
   .object({
     title: z.string().min(1, 'Title is required').max(255),
     body: z.string().min(1, 'Body is required'),
+    requiresAcknowledgement: z
+      .union([z.boolean(), z.string()])
+      .optional()
+      .transform((v) => (typeof v === 'string' ? v === 'true' : !!v)),
+    deadlineAt: z.string().nullable().optional(),
     recipientUserIds: idArrayField,
     recipientGroupIds: idArrayField,
   })

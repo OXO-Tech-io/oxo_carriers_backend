@@ -204,12 +204,25 @@ export const formService = {
   async create(input: CreateFormInput, createdBy: number) {
     const form = await FormModel.create({ title: input.title, description: input.description ?? null, createdBy });
     await FormSettingsModel.createDefault(form.id);
+    if (input.closeAt) {
+      await FormSettingsModel.update(form.id, { closeAt: input.closeAt });
+    }
     await FormThemeModel.createDefault(form.id);
     return form;
   },
 
   async list() {
-    return FormModel.listAll();
+    const allForms = await FormModel.listAll();
+    const results = await Promise.all(
+      allForms.map(async (form) => {
+        const settings = await FormSettingsModel.findByFormId(form.id);
+        return {
+          ...form,
+          closeAt: settings?.closeAt ?? null,
+        };
+      })
+    );
+    return results;
   },
 
   async update(formId: number, input: UpdateFormInput) {
@@ -334,12 +347,13 @@ export const formService = {
         const response = await FormResponseModel.findByFormAndUser(dist.formId, userId);
         const settings = form ? await FormSettingsModel.findByFormId(dist.formId) : null;
         return {
-          form,
+          form: form ? { ...form, closeAt: settings?.closeAt ?? null } : null,
           distributedAt: dist.distributedAt,
           submitted: response?.status === 'submitted',
           responseStatus: response?.status ?? null,
           // Flattened so the frontend can filter to accepting forms without a per-form fetch.
           acceptResponses: settings?.acceptResponses ?? true,
+          closeAt: settings?.closeAt ?? null,
         };
       })
     );
@@ -601,9 +615,12 @@ export const formService = {
 
   // ── Distribution ─────────────────────────────────────────────────────────
 
-  async distribute(formId: number, userIds: number[], groupIds: number[] = []) {
+  async distribute(formId: number, userIds: number[], groupIds: number[] = [], closeAt?: Date | null) {
     const form = await FormModel.findById(formId);
     if (!form) throw new NotFoundError('Form not found');
+    if (closeAt !== undefined) {
+      await FormSettingsModel.update(formId, { closeAt });
+    }
     const groupMemberIds = await groupService.resolveMemberUserIds(groupIds);
     const resolvedUserIds = [...new Set([...userIds, ...groupMemberIds])];
     const distributions = await FormDistributionModel.createMany(formId, resolvedUserIds);
@@ -665,9 +682,6 @@ export const formService = {
 
     const settings = await FormSettingsModel.findByFormId(formId);
     if (settings && !settings.acceptResponses) throw new BadRequestError('This form is not accepting responses');
-    if (settings?.closeAt && settings.closeAt.getTime() < Date.now()) {
-      throw new BadRequestError('This form is closed');
-    }
 
     const existing = await FormResponseModel.findByFormAndUser(formId, userId);
     if (existing?.status === 'submitted' && !settings?.allowEditAfterSubmit) {

@@ -1,19 +1,21 @@
-import { pgTable, serial, integer, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { users } from './users';
 
 // Employee Communications Table
-export const communications = pgTable('communications', {
+export const communications = pgTable('tbl_communications', {
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     body: text('body').notNull(),
+    requiresAcknowledgement: boolean('requires_acknowledgement').notNull().default(false),
+    deadlineAt: timestamp('deadline_at'),
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
 });
 
 // One row per recipient - carries email delivery + response tracking so lead
 // time (respondedAt - emailSentAt) can be computed per recipient.
-export const communicationRecipients = pgTable('communication_recipients', {
+export const communicationRecipients = pgTable('tbl_communication_recipients', {
     id: serial('id').primaryKey(),
     communicationId: integer('communication_id').notNull().references(() => communications.id, { onDelete: 'cascade' }),
     userId: integer('user_id').notNull().references(() => users.id, { onDelete: 'cascade' }),

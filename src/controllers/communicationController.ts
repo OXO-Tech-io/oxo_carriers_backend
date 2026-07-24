@@ -6,7 +6,7 @@ import { CreateCommunicationInput, RespondCommunicationInput, CommunicationIdPar
 
 export const create = async (req: Request, res: Response) => {
   if (!req.user) throw new UnauthorizedError();
-  const { title, body, recipientUserIds, recipientGroupIds } = req.body as CreateCommunicationInput;
+  const { title, body, recipientUserIds, recipientGroupIds, requiresAcknowledgement, deadlineAt } = req.body as CreateCommunicationInput;
   const files = (req.files as Express.Multer.File[] | undefined) ?? [];
   const communication = await communicationService.create(
     title,
@@ -14,7 +14,9 @@ export const create = async (req: Request, res: Response) => {
     recipientUserIds,
     recipientGroupIds,
     req.user.userId,
-    files
+    files,
+    requiresAcknowledgement,
+    deadlineAt
   );
   created(res, communication, 'Communication sent');
 };
@@ -44,4 +46,10 @@ export const report = async (req: Request, res: Response) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', 'attachment; filename=communications-report.xlsx');
   res.send(buffer);
+};
+
+export const deleteCommunication = async (req: Request, res: Response) => {
+  const { id } = req.params as unknown as CommunicationIdParam;
+  await communicationService.delete(id);
+  ok(res, {}, 'Communication deleted successfully');
 };
