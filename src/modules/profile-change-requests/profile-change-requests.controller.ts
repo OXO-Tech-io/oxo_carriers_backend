@@ -1,6 +1,6 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
-import { profileChangeRequestService } from '../../services/profileChangeRequest.service';
-import { EmployeeModel } from '../../models/Employee';
+import { profileChangeRequestService } from './profileChangeRequest.service';
+import { EmployeeModel } from '../../employees/Employee';
 import { UserRole, JwtPayload } from '../../types';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { RolesGuard } from '../../common/guards/roles.guard';

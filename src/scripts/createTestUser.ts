@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { EmployeeModel } from '../models/Employee';
+import { EmployeeModel } from '../employees/Employee';
 import { UserRole } from '../types';
 
 dotenv.config();

@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ConsultantWorkSubmissionModel } from '../../models/ConsultantWorkSubmission';
+import { ConsultantWorkSubmissionModel } from './ConsultantWorkSubmission';
 import { ConsultantSubmissionStatus, JwtPayload, UserRole } from '../../types';
 import { CreateConsultantSubmissionDto } from './dto/create-consultant-submission.dto';
 import { ResubmitConsultantSubmissionDto } from './dto/resubmit-consultant-submission.dto';

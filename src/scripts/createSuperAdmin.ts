@@ -15,7 +15,7 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-import { EmployeeModel } from '../models/Employee';
+import { EmployeeModel } from '../employees/Employee';
 import { UserRole } from '../types';
 
 // Goes through EmployeeModel (not raw INSERT/UPDATE) so email/first_name/

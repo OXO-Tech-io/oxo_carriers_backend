@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from '../../models/MedicalInsurance';
+import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
 import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import {

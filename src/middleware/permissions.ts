@@ -3,8 +3,8 @@ import {
   AccessLevel,
   PermissionAssignment,
   PermissionKey,
-} from "../constants/permissions";
-import { PERMISSION_QUERIES } from "../constants/dbQueries";
+} from "../common/constants/permissions";
+import { PERMISSION_QUERIES } from "../modules/permissions/dbQueries";
 
 // tbl_user_permissions is keyed by the caller's business employee_id (varchar),
 // not the numeric tbl_employee.id - callers should pass JwtPayload.employeeId.

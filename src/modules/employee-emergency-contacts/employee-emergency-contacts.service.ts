@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { EmployeeEmergencyContactModel } from '../../models/EmployeeEmergencyContact';
+import { EmployeeEmergencyContactModel } from './EmployeeEmergencyContact';
 import { UserRole } from '../../types';
 
 const SELF_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];

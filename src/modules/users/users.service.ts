@@ -1,11 +1,11 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
-import { EmployeeModel } from '../../models/Employee';
-import { EmployeePiiModel } from '../../models/EmployeePii';
+import { EmployeeModel } from '../../employees/Employee';
+import { EmployeePiiModel } from '../employee-pii/EmployeePii';
 import pool from '../../config/database';
 import { calculateProRatedAnnualLeave } from '../../utils/leaveCalculation';
-import { keycloakAdminService } from '../../services/keycloakAdmin.service';
+import { keycloakAdminService } from './keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../../utils/password';
-import { employeeProfileCreationService } from '../../services/employeeProfileCreation.service';
+import { employeeProfileCreationService } from './employeeProfileCreation.service';
 import { createEmployeeProfileSchema } from '../../validators/employeeProfileCreation.validator';
 import { UserRole, JwtPayload } from '../../types';
 import { logger } from '../../lib/logger';

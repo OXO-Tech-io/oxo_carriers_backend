@@ -3,7 +3,7 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload } from '../../types';
-import { PERMISSIONS } from '../../constants/permissions';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { PermissionsService } from './permissions.service';
 import { ReplaceUserPermissionsDto } from './dto/replace-user-permissions.dto';
 

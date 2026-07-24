@@ -6,10 +6,10 @@ import {
   PERMISSION_KEYS,
   PermissionAssignment,
   PermissionKey,
-} from '../../constants/permissions';
-import { PERMISSION_QUERIES } from '../../constants/dbQueries';
+} from '../../common/constants/permissions';
+import { PERMISSION_QUERIES } from './dbQueries';
 import { getUserPermissionAssignments } from '../../middleware/permissions';
-import { EmployeeModel } from '../../models/Employee';
+import { EmployeeModel } from '../../employees/Employee';
 
 @Injectable()
 export class PermissionsService {

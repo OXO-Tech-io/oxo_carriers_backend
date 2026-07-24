@@ -1,7 +1,7 @@
 import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload } from '../../types';
-import { EmployeeModel } from '../../models/Employee';
+import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeDependentsService } from './employee-dependents.service';
 
 @Controller('api/employees/:employeeId/dependents')

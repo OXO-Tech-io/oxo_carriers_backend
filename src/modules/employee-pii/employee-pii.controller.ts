@@ -1,6 +1,6 @@
 import { Controller, ForbiddenException, Get, NotFoundException, Param, ParseIntPipe } from '@nestjs/common';
-import { EmployeePiiModel } from '../../models/EmployeePii';
-import { EmployeeModel } from '../../models/Employee';
+import { EmployeePiiModel } from './EmployeePii';
+import { EmployeeModel } from '../../employees/Employee';
 import { UserRole, JwtPayload } from '../../types';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 

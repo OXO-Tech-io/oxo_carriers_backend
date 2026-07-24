@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { formService } from '../../services/form.service';
+import { formService } from './form.service';
 import { createFormSchema, distributeFormSchema, submitFormResponseSchema } from '../../validators/form.validator';
 
 /**

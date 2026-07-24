@@ -1,6 +1,6 @@
 import { db } from '../db';
 import * as schema from '../db/schema';
-import { EmployeeModel } from '../models/Employee';
+import { EmployeeModel } from '../employees/Employee';
 import { UserRole } from '../types';
 
 async function seed() {

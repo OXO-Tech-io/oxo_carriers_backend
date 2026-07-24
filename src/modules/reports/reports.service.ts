@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import pool from '../../config/database';
-import { EmployeeModel } from '../../models/Employee';
+import { EmployeeModel } from '../../employees/Employee';
 
 @Injectable()
 export class ReportsService {

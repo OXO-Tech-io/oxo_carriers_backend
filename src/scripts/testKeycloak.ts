@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { keycloakAdminService } from '../modules/users/keycloakAdmin.service';
 import { UserRole } from '../types';
 
 async function main() {

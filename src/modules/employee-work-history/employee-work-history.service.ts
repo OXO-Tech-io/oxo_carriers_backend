@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { EmployeeWorkHistoryModel } from '../../models/EmployeeWorkHistory';
-import { experienceSummaryService } from '../../services/experienceSummary.service';
+import { EmployeeWorkHistoryModel } from './EmployeeWorkHistory';
+import { experienceSummaryService } from './experienceSummary.service';
 import { UserRole } from '../../types';
 
 const SELF_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];

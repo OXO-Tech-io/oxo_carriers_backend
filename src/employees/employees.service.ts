@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { EmployeeModel } from '../models/Employee';
+import { EmployeeModel } from './Employee';
 import { UserRole } from '../types';
 
 /**

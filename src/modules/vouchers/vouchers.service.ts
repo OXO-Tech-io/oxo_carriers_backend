@@ -1,10 +1,10 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { PaymentVoucherModel } from '../../models/PaymentVoucher';
-import { VendorModel } from '../../models/Vendor';
+import { PaymentVoucherModel } from './PaymentVoucher';
+import { VendorModel } from '../vendors/Vendor';
 import { JwtPayload, UserRole, VoucherStatus } from '../../types';
 import { hasPermission } from '../../middleware/permissions';
-import { AccessLevel, PERMISSIONS, PermissionKey } from '../../constants/permissions';
-import { VOUCHER_ERRORS } from '../../constants/errorMessages';
+import { AccessLevel, PERMISSIONS, PermissionKey } from '../../common/constants/permissions';
+import { VOUCHER_ERRORS } from '../../common/constants/errorMessages';
 import { CreateVoucherDto } from './dto/create-voucher.dto';
 import { ReviewVoucherDto } from './dto/review-voucher.dto';
 

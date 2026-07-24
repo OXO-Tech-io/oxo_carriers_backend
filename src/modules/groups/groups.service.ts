@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { groupService } from '../../services/group.service';
+import { groupService } from './group.service';
 import { CreateGroupDto } from './dto/create-group.dto';
 import { RenameGroupDto } from './dto/rename-group.dto';
 import { AddGroupMembersDto } from './dto/add-group-members.dto';

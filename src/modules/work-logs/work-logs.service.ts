@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { workLogService } from '../../services/workLog.service';
+import { workLogService } from './workLog.service';
 import { SubmitWorkLogsDto } from './dto/submit-work-logs.dto';
 import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
 

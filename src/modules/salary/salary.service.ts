@@ -2,8 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import ExcelJS from 'exceljs';
 import fs from 'fs';
 import path from 'path';
-import { SalaryModel } from '../../models/Salary';
-import { EmployeeModel } from '../../models/Employee';
+import { SalaryModel } from './Salary';
+import { EmployeeModel } from '../../employees/Employee';
 import { JwtPayload, SalaryStatus, UserRole } from '../../types';
 import pool from '../../config/database';
 import { generateSalarySlipPDF as generatePDF } from '../../utils/pdfGenerator';

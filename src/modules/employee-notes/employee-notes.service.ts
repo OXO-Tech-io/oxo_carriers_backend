@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { employeeNoteService } from '../../services/employeeNote.service';
-import { EmployeeModel } from '../../models/Employee';
+import { employeeNoteService } from './employeeNote.service';
+import { EmployeeModel } from '../../employees/Employee';
 import { JwtPayload, UserRole } from '../../types';
 import { CreateEmployeeNoteDto } from './dto/create-employee-note.dto';
 import { UpdateEmployeeNoteDto } from './dto/update-employee-note.dto';

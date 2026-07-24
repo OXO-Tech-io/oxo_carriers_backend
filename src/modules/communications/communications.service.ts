@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { communicationService } from '../../services/communication.service';
+import { communicationService } from './communication.service';
 import { createCommunicationSchema } from '../../validators/communication.validator';
 import { RespondCommunicationDto } from './dto/respond-communication.dto';
 

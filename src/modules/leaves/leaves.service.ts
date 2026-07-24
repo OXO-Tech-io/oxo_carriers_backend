@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { leaveService } from '../../services/leave.service';
+import { leaveService } from './leave.service';
 import { createLeaveRequestSchema } from '../../validators/leave.validator';
 import { JwtPayload } from '../../types';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';

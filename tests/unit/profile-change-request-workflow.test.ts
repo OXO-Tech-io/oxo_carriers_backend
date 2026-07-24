@@ -6,10 +6,10 @@ import {
   auditLogs,
   notifications,
 } from "../../src/db/schema";
-import { EmployeeModel } from "../../src/models/Employee";
-import { EmployeePiiModel } from "../../src/models/EmployeePii";
-import { ProfileChangeRequestModel } from "../../src/models/ProfileChangeRequest";
-import { profileChangeRequestService } from "../../src/services/profileChangeRequest.service";
+import { EmployeeModel } from "../../src/employees/Employee";
+import { EmployeePiiModel } from "../../src/modules/employee-pii/EmployeePii";
+import { ProfileChangeRequestModel } from "../../src/modules/profile-change-requests/ProfileChangeRequest";
+import { profileChangeRequestService } from "../../src/modules/profile-change-requests/profileChangeRequest.service";
 import { UserRole } from "../../src/types";
 import type { SubmitProfileChangeRequestInput } from "../../src/validators/profileChangeRequest.validator";
 

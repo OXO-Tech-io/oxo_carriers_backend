@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
-import { VendorModel } from '../../models/Vendor';
+import { VendorModel } from './Vendor';
 import { CreateVendorDto } from './dto/create-vendor.dto';
 
 @Injectable()

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { eventService } from '../../services/event.service';
+import { eventService } from './event.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { RecordParticipationDto } from './dto/record-participation.dto';
 

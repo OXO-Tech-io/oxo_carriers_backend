@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { FacilityModel } from '../../models/Facility';
-import { FacilityBookingModel } from '../../models/FacilityBooking';
-import { EmployeeModel } from '../../models/Employee';
+import { FacilityModel } from './Facility';
+import { FacilityBookingModel } from './FacilityBooking';
+import { EmployeeModel } from '../../employees/Employee';
 import { BookingStatus, FacilityType, JwtPayload, UserRole } from '../../types';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityDto } from './dto/update-facility.dto';

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
-import { EmployeeModel } from "../../src/models/Employee";
-import { EmployeeWorkHistoryModel } from "../../src/models/EmployeeWorkHistory";
+import { EmployeeModel } from "../../src/employees/Employee";
+import { EmployeeWorkHistoryModel } from "../../src/modules/employee-work-history/EmployeeWorkHistory";
 import { UserRole } from "../../src/types";
 
 describe("EmployeeWorkHistoryModel", () => {

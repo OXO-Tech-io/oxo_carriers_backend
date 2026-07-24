@@ -1,5 +1,5 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { LeaveCalendarModel } from '../../models/LeaveCalendar';
+import { LeaveCalendarModel } from './LeaveCalendar';
 import { CreateLeaveCalendarEntryDto } from './dto/create-leave-calendar-entry.dto';
 import { UpdateLeaveCalendarEntryDto } from './dto/update-leave-calendar-entry.dto';
 
