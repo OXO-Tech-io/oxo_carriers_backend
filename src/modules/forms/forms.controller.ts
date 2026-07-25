@@ -87,7 +87,7 @@ export class FormsController {
     return { success: true, message: 'Form published', data: form };
   }
 
-  @Post(':id/distribution')
+  @Post(':id/distributes')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async distribute(@Param('id') idParam: string, @Body() body: unknown) {
