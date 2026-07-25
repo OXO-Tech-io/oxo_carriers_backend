@@ -44,41 +44,42 @@ const optionalUrl = z.preprocess(
 
 const Schema = z.object({
   // ─── Runtime ────────────────────────────────────────────────────────────
-  NODE_ENV: z
-    .enum(['development', 'production', 'test'])
-    .default('development'),
-  PORT: z.coerce.number().int().positive().default(5000),
+  NODE_ENV: z.enum(['development', 'production', 'test']),
+  PORT: z.coerce.number().int().positive(),
   LOG_LEVEL: z
     .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
     .optional(),
 
   // ─── Database (Postgres) ────────────────────────────────────────────────
-  DB_HOST: z.string().min(1).default('localhost'),
-  DB_PORT: z.coerce.number().int().positive().default(5432),
-  DB_USER: z.string().min(1).default('postgres'),
-  DB_PASSWORD: z.string().default(''),
+  DB_HOST: z.string().min(1),
+  DB_PORT: z.coerce.number().int().positive(),
+  DB_USER: z.string().min(1),
+  // Intentionally optional (not merely defaulted): some deployments (e.g.
+  // Cloud SQL IAM auth) legitimately run with no password. Its absence is
+  // warned about at server startup in app.ts, not enforced here.
+  DB_PASSWORD: z.string().optional(),
   DB_PASSWORD_FILE: optionalString,
-  DB_NAME: z.string().min(1).default('oxo_carriers'),
-  DB_SCHEMA: z.string().min(1).default('public'),
-  DB_SSL: boolish.default(false),
+  DB_NAME: z.string().min(1),
+  DB_SCHEMA: z.string().min(1),
+  DB_SSL: boolish,
 
   // ─── Cloud SQL (GCP) ────────────────────────────────────────────────────
   /** When true, use Cloud SQL proxy socket connection (e.g., /cloudsql/PROJECT:REGION:INSTANCE) */
   CLOUD_SQL_CONNECTION_NAME: optionalString,
   /** Path to the Cloud SQL proxy socket (computed if CLOUD_SQL_CONNECTION_NAME is set) */
   DB_SOCKET_PATH: optionalString,
-  /** Port where Cloud SQL proxy listens (only used when running proxy separately) */
-  CLOUD_SQL_PROXY_PORT: z.coerce.number().int().positive().default(5433),
+  /** Port where Cloud SQL proxy listens (only used when running the proxy separately; not read by the app itself). */
+  CLOUD_SQL_PROXY_PORT: z.coerce.number().int().positive().optional(),
 
   // ─── Keycloak ───────────────────────────────────────────────────────────
   KC_URL: z.preprocess(
     (v) => (typeof v === 'string' && v.trim() === '' ? undefined : v),
-    z.string().url().default('http://localhost:5400'),
+    z.string().url(),
   ),
-  KC_REALM: z.string().min(1).default('hris'),
+  KC_REALM: z.string().min(1),
   /** Comma-separated list of accepted audiences. Empty disables aud check. */
   KC_AUDIENCE: optionalString,
-  KC_BACKEND_CLIENT_ID: z.string().default('oxo-hris-backend'),
+  KC_BACKEND_CLIENT_ID: z.string().min(1),
   /** Required only when the backend calls Keycloak's admin API. */
   KC_BACKEND_CLIENT_SECRET: optionalString,
   KC_FRONTEND_CLIENT_ID: optionalString,
@@ -97,21 +98,21 @@ const Schema = z.object({
   EMAILJS_PRIVATE_KEY: optionalString,
 
   // ─── SMTP ───────────────────────────────────────────────────────────────
-  SMTP_HOST: z.string().default('localhost'),
-  SMTP_PORT: z.coerce.number().int().positive().default(587),
-  SMTP_SECURE: boolish.default(false),
+  SMTP_HOST: z.string().min(1),
+  SMTP_PORT: z.coerce.number().int().positive(),
+  SMTP_SECURE: boolish,
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
   SMTP_FROM: optionalString,
 
   // ─── JWT Authentication ─────────────────────────────────────────────────
-  JWT_SECRET: z.string().min(32).default('your-super-secret-key-min-32-chars-required'),
-  JWT_EXPIRES_IN: z.string().default('24h'),
+  JWT_SECRET: z.string().min(32),
+  JWT_EXPIRES_IN: z.string().min(1),
   // ─── Encryption ─────────────────────────────────────────────────────────
   /** Used to derive the AES-256 key for PII fields (tbl_employee.bankName/contactNumber/etc, via encryptPII) and pgcrypto's pgp_sym_encrypt (tbl_employee_pii). */
-  PII_ENCRYPTION_KEY: z.string().min(1).default('default-pii-encryption-key-must-change-in-prod'),
+  PII_ENCRYPTION_KEY: z.string().min(1),
   /** 64-character hex string (32 bytes). Used by encryptSalary/decryptSalary. */
-  SALARY_ENCRYPTION_KEY: z.string().default('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'),
+  SALARY_ENCRYPTION_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof Schema>;
