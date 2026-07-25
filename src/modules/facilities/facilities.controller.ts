@@ -75,19 +75,23 @@ export class FacilitiesController {
     return this.facilitiesService.createBooking(employee, dto);
   }
 
-  @Get('bookings/mine')
-  getMyBookings(@CurrentEmployee() employee: JwtPayload) {
-    return this.facilitiesService.getMyBookings(employee);
-  }
-
+  /**
+   * GET /facilities/bookings?facility_id=1&status=confirmed
+   * GET /facilities/bookings?mine=true - the caller's own bookings.
+   */
   @Get('bookings')
   getAllBookings(
+    @CurrentEmployee() employee: JwtPayload,
+    @Query('mine') mine?: string,
     @Query('user_id') userId?: string,
     @Query('facility_id') facilityId?: string,
     @Query('status') status?: string,
     @Query('start_date') startDate?: string,
     @Query('end_date') endDate?: string,
   ) {
+    if (mine === 'true') {
+      return this.facilitiesService.getMyBookings(employee);
+    }
     return this.facilitiesService.getAllBookings({
       user_id: userId ? Number(userId) : undefined,
       facility_id: facilityId ? Number(facilityId) : undefined,
