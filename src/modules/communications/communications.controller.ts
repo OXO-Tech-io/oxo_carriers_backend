@@ -75,13 +75,24 @@ export class CommunicationsController {
     return { success: true, message: 'Communication sent', data: communication };
   }
 
-  @Get('report')
+  @Get('reports')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER)
-  async report(@Query('id') idParam: string | undefined, @Res() res: Response) {
-    const buffer = await this.communicationsService.generateReport(idParam ? Number(idParam) : undefined);
+  async report(@Res() res: Response) {
+    const buffer = await this.communicationsService.generateReport();
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
     res.setHeader('Content-Disposition', 'attachment; filename=communications-report.xlsx');
+    res.send(buffer);
+  }
+
+  @Get(':id/reports')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HR_MANAGER)
+  async reportById(@Param('id') idParam: string, @Res() res: Response) {
+    const id = this.parseId(idParam);
+    const buffer = await this.communicationsService.generateReport(id);
+    res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
+    res.setHeader('Content-Disposition', `attachment; filename=communication-${id}-report.xlsx`);
     res.send(buffer);
   }
 

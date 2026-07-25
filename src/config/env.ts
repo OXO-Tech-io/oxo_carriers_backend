@@ -113,6 +113,10 @@ const Schema = z.object({
   PII_ENCRYPTION_KEY: z.string().min(1),
   /** 64-character hex string (32 bytes). Used by encryptSalary/decryptSalary. */
   SALARY_ENCRYPTION_KEY: z.string().min(1),
+
+  // ─── Uploads ────────────────────────────────────────────────────────────
+  /** Comma-separated multer field names routed to uploads/documents instead of uploads/others (communications attachments). */
+  COMMUNICATIONS_DOCUMENT_FIELDS: z.string().min(1),
 });
 
 export type Env = z.infer<typeof Schema>;
