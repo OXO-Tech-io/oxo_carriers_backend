@@ -10,16 +10,15 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { BookingStatus, FacilityType, JwtPayload, UserRole } from '../../types';
+import { PERMISSIONS } from '../../common/constants/permissions';
+import { BookingStatus, FacilityType, JwtPayload } from '../../types';
 import { FacilitiesService } from './facilities.service';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityDto } from './dto/update-facility.dto';
 import { CreateBookingDto } from './dto/create-booking.dto';
-
-const REQUIRE_HR = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 
 @Controller('facilities')
 export class FacilitiesController {
@@ -44,23 +43,23 @@ export class FacilitiesController {
 
   @Post()
   @HttpCode(201)
-  @UseGuards(RolesGuard)
-  @Roles(...REQUIRE_HR)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FACILITIES, 'write')
   createFacility(@Body() dto: CreateFacilityDto) {
     return this.facilitiesService.create(dto);
   }
 
   @Put(':id')
-  @UseGuards(RolesGuard)
-  @Roles(...REQUIRE_HR)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FACILITIES, 'write')
   updateFacility(@Param('id') idParam: string, @Body() dto: UpdateFacilityDto) {
     const id = parseInt(idParam, 10);
     return this.facilitiesService.update(id, dto);
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(...REQUIRE_HR)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FACILITIES, 'write')
   deleteFacility(@Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     return this.facilitiesService.delete(id);
