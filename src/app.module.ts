@@ -28,6 +28,7 @@ import { EmployeeNotesModule } from './modules/employee-notes/employee-notes.mod
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
 import { EmployeePiiModule } from './modules/employee-pii/employee-pii.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
+import { LeaveTypesModule } from './modules/leave-types/leave-types.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
 import { EventsModule } from './modules/events/events.module';
 import { FormsModule } from './modules/forms/forms.module';
@@ -63,6 +64,7 @@ import { FormsModule } from './modules/forms/forms.module';
     ProfileChangeRequestsModule,
     EmployeePiiModule,
     LeavesModule,
+    LeaveTypesModule,
     CommunicationsModule,
     EventsModule,
     FormsModule,

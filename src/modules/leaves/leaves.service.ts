@@ -1,11 +1,13 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { leaveService } from './leave.service';
 import { createLeaveRequestSchema } from '../../validators/leave.validator';
-import { JwtPayload } from '../../types';
+import { JwtPayload, UserRole } from '../../types';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ApproveLeaveRequestDto } from './dto/approve-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
+
+const SELF_ONLY_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
 /**
  * Thin wrapper around the existing `leaveService` (src/services/leave.service.ts),
@@ -25,12 +27,11 @@ export class LeavesService {
     return employee.employeeId;
   }
 
-  async getLeaveTypes() {
-    return leaveService.getLeaveTypes();
-  }
-
-  async getLeaveBalance(employee: JwtPayload, query: LeaveBalanceQueryDto) {
-    return leaveService.getLeaveBalance(this.requireEmployeeId(employee), query);
+  async getLeaveBalance(employee: JwtPayload, targetEmployeeId: string, query: LeaveBalanceQueryDto) {
+    if (SELF_ONLY_ROLES.includes(employee.role) && employee.employeeId !== targetEmployeeId) {
+      throw new ForbiddenException();
+    }
+    return leaveService.getLeaveBalance(targetEmployeeId, query);
   }
 
   async listLeaveRequests(employee: JwtPayload, query: ListLeaveRequestsQueryDto) {

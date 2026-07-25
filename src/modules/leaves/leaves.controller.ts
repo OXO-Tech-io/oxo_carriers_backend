@@ -31,15 +31,13 @@ import { DOCUMENT_FIELD, leaveDocumentMulterOptions } from './leaves.upload';
 export class LeavesController {
   constructor(private readonly leavesService: LeavesService) {}
 
-  @Get('types')
-  async getLeaveTypes() {
-    const types = await this.leavesService.getLeaveTypes();
-    return { success: true, message: 'Leave types fetched', data: types };
-  }
-
-  @Get('balance')
-  async getLeaveBalance(@CurrentEmployee() employee: JwtPayload, @Query() query: LeaveBalanceQueryDto) {
-    const balances = await this.leavesService.getLeaveBalance(employee, query);
+  @Get(':employeeId/balances')
+  async getLeaveBalance(
+    @CurrentEmployee() employee: JwtPayload,
+    @Param('employeeId') employeeId: string,
+    @Query() query: LeaveBalanceQueryDto,
+  ) {
+    const balances = await this.leavesService.getLeaveBalance(employee, employeeId, query);
     return { success: true, message: 'Leave balance fetched', data: balances };
   }
 
