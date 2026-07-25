@@ -18,9 +18,7 @@ import { LeaveCalendarService } from './leave-calendar.service';
 import { CreateLeaveCalendarEntryDto } from './dto/create-leave-calendar-entry.dto';
 import { UpdateLeaveCalendarEntryDto } from './dto/update-leave-calendar-entry.dto';
 
-// Dual-mounted to match the old Express app.ts, which serves this router at
-// both '/api/leave-calendar' and the legacy bare '/leave-calendar'.
-@Controller('leave-calendar-entries')
+@Controller('leave-calendars')
 export class LeaveCalendarController {
   constructor(private readonly leaveCalendarService: LeaveCalendarService) {}
 
