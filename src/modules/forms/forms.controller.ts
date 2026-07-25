@@ -78,7 +78,7 @@ export class FormsController {
     return { success: true, message: 'Form created', data: result };
   }
 
-  @Post(':id/publication')
+  @Post(':id/publishes')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async publish(@Param('id') idParam: string) {
