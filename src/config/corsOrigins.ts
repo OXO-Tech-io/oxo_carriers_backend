@@ -6,9 +6,6 @@ export const normalizeOrigin = (origin?: string | null): string => {
 };
 
 const rawAllowedOrigins = [
-  'https://oxo-carriers-frontend-297614602590.us-central1.run.app',
-  'http://localhost:3000',
-  'http://localhost:5173',
   env.FRONTEND_URL,
   ...(env.ALLOWED_ORIGINS?.split(',').map((o) => o.trim()) ?? []),
 ].filter(Boolean) as string[];
