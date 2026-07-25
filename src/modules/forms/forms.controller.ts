@@ -2,9 +2,11 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
+  Query,
   Res,
   UploadedFiles,
   UseGuards,
@@ -20,20 +22,11 @@ import { FormsService } from './forms.service';
 import { formResponseMulterOptions } from './forms.upload';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const HR_ROLES = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] as const;
+const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 
 @Controller('forms')
 export class FormsController {
   constructor(private readonly formsService: FormsService) {}
-
-  // Employee-facing: forms assigned to me + submission. Matches the original
-  // formRoutes.ts, where these three routes are registered before
-  // `router.use(requireHR)` and are open to any authenticated employee.
-  @Get('mine')
-  async listAssignedToMe(@CurrentEmployee() employee: JwtPayload) {
-    const result = await this.formsService.listAssignedToMe(employee.userId);
-    return { success: true, message: 'Assigned forms fetched', data: result };
-  }
 
   @Get(':id')
   async getById(@Param('id') idParam: string) {
@@ -55,14 +48,24 @@ export class FormsController {
     return { success: true, message: 'Response submitted', data: response };
   }
 
-  // HR-facing: create/distribute/view responses. "Only HR Team should be
-  // able to view form responses" per the requirements doc - requireHR covers
-  // both hr_executive and hr_manager, with no further manager-only
-  // restriction (matches the original formRoutes.ts comment).
+  /**
+   * GET /forms?mine=true - forms assigned to the caller (any authenticated
+   * employee, matches the original formRoutes.ts routes registered before
+   * `router.use(requireHR)`).
+   * GET /forms - all forms. "Only HR Team should be able to view form
+   * responses" per the requirements doc - requireHR covers both
+   * hr_executive and hr_manager, with no further manager-only restriction
+   * (matches the original formRoutes.ts comment).
+   */
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
-  async list() {
+  async list(@CurrentEmployee() employee: JwtPayload, @Query('mine') mine?: string) {
+    if (mine === 'true') {
+      const result = await this.formsService.listAssignedToMe(employee.userId);
+      return { success: true, message: 'Assigned forms fetched', data: result };
+    }
+    if (employee.role !== UserRole.SUPER_ADMIN && !HR_ROLES.includes(employee.role)) {
+      throw new ForbiddenException('Forbidden: Insufficient permissions');
+    }
     const forms = await this.formsService.list();
     return { success: true, message: 'Forms fetched', data: forms };
   }
