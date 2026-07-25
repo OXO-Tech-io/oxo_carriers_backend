@@ -50,7 +50,7 @@ export class ConsultantSubmissionsController {
     return this.consultantSubmissionsService.submit(employee, dto, file);
   }
 
-  @Put(':id/decision')
+  @Put(':id/decisions')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   decideSubmission(
