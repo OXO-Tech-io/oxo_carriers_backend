@@ -16,7 +16,7 @@ export class EmployeeWorkHistoryController {
     return { success: true, message: 'Work history records fetched', data: records };
   }
 
-  @Get('experience-summary')
+  @Get('experience-summaries')
   async getExperienceSummary(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
     const target = await EmployeeModel.findByEmployeeId(employeeId);
     if (!target) throw new NotFoundException('Employee not found');
