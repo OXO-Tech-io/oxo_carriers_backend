@@ -12,7 +12,7 @@ import { workLogsExcelMulterOptions } from './work-logs.upload';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-@Controller('api/work-logs')
+@Controller('work-logs')
 export class WorkLogsController {
   constructor(private readonly workLogsService: WorkLogsService) {}
 
@@ -73,7 +73,7 @@ export class WorkLogsController {
     return { success: true, message: 'Work log entries submitted', data: result };
   }
 
-  @Post('bulk-upload')
+  @Post('bulk-uploads')
   @UseInterceptors(FileInterceptor('excel', workLogsExcelMulterOptions))
   async bulkUpload(@UploadedFile() file: Express.Multer.File, @CurrentEmployee() employee: JwtPayload) {
     const result = await this.workLogsService.bulkUpload(employee.employeeId!, file);

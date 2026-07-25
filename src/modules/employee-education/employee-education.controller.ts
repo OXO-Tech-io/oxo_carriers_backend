@@ -4,7 +4,7 @@ import { JwtPayload } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeEducationService } from './employee-education.service';
 
-@Controller('api/employees/:employeeId/educations')
+@Controller('employees/:employeeId/educations')
 export class EmployeeEducationController {
   constructor(private readonly employeeEducationService: EmployeeEducationService) {}
 

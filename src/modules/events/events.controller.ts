@@ -10,7 +10,7 @@ import { RecordParticipationDto } from './dto/record-participation.dto';
 // The original eventRoutes.ts applies `router.use(requireHR)` for the whole
 // router (HR_MANAGER/HR_EXECUTIVE only, super_admin always bypasses) -
 // replicated here at the controller level.
-@Controller('api/events')
+@Controller('events')
 @UseGuards(RolesGuard)
 @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
 export class EventsController {

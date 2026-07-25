@@ -27,7 +27,7 @@ import { DOCUMENT_FIELD, leaveDocumentMulterOptions } from './leaves.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
 // both '/api/leaves' and the legacy bare '/leaves'.
-@Controller(['api/leaves', 'leaves'])
+@Controller('leaves')
 export class LeavesController {
   constructor(private readonly leavesService: LeavesService) {}
 
@@ -74,7 +74,7 @@ export class LeavesController {
     return { success: true, message: 'Leave request created', data: request };
   }
 
-  @Put(':id/approve')
+  @Put(':id/approval')
   async approveLeaveRequest(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -90,7 +90,7 @@ export class LeavesController {
     return { success: true, message: 'Leave request updated', data: updated };
   }
 
-  @Put(':id/reject')
+  @Put(':id/rejection')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async rejectLeaveRequest(

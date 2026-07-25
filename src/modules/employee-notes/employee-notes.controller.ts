@@ -23,7 +23,7 @@ import { ATTACHMENTS_FIELD, ATTACHMENTS_MAX_COUNT, noteAttachmentsMulterOptions 
 // '/api/employee-notes' only - the old app.ts does not dual-mount this
 // router at a bare '/employee-notes' path (unlike medical-insurance,
 // consultant-submissions, vouchers and leave-calendar).
-@Controller('api/employee-notes')
+@Controller('employee-notes')
 export class EmployeeNotesController {
   constructor(private readonly employeeNotesService: EmployeeNotesService) {}
 

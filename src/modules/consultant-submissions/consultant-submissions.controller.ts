@@ -24,7 +24,7 @@ import { consultantLogSheetMulterOptions, LOG_SHEET_FIELD } from './consultant-s
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
 // both '/api/consultant-submissions' and the legacy bare '/consultant-submissions'.
-@Controller(['api/consultant-submissions', 'consultant-submissions'])
+@Controller('consultant-submissions')
 export class ConsultantSubmissionsController {
   constructor(private readonly consultantSubmissionsService: ConsultantSubmissionsService) {}
 
@@ -63,7 +63,7 @@ export class ConsultantSubmissionsController {
     return this.consultantSubmissionsService.decideSubmission(employee, id, dto);
   }
 
-  @Post(':id/resubmit')
+  @Post(':id/resubmissions')
   @UseInterceptors(FileInterceptor(LOG_SHEET_FIELD, consultantLogSheetMulterOptions))
   resubmit(
     @CurrentEmployee() employee: JwtPayload,

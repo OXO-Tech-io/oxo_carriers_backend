@@ -18,7 +18,7 @@ export class HealthController {
   }
 
   @Public()
-  @Get(['api/db-health', 'db-health'])
+  @Get('health/database')
   async dbHealth(@Res({ passthrough: true }) res: Response) {
     const resolvedDbPassword = String(env.DB_PASSWORD ?? '');
     const hasResolvedDbPassword = resolvedDbPassword.trim().length > 0;
@@ -78,7 +78,7 @@ export class HealthController {
   }
 
   @Public()
-  @Get(['api/cors-check', 'cors-check'])
+  @Get('health/cors')
   corsCheck(@Req() req: Request) {
     const origin = req.headers.origin;
     const isAllowed = !!origin && allowedOrigins.includes(origin);
@@ -95,7 +95,7 @@ export class HealthController {
   }
 
   @Public()
-  @Get(['api/email-config-check', 'email-config-check'])
+  @Get('health/email-config')
   emailConfigCheck() {
     return {
       success: true,
@@ -118,17 +118,17 @@ export class HealthController {
   }
 
   @Public()
-  @Get(['api/test-email', 'test-email'])
+  @Get('health/email-tests')
   testEmailInfo() {
     return {
       success: true,
       message: 'Test email endpoint is available. Use POST method to send emails.',
-      usage: 'POST /api/test-email { "email": "your-email@example.com" }',
+      usage: 'POST /api/v1/health/email-tests { "email": "your-email@example.com" }',
     };
   }
 
   @Public()
-  @Post(['api/test-email', 'test-email'])
+  @Post('health/email-tests')
   async sendTestEmail(
     @Body() body: { email?: string; subject?: string; message?: string },
     @Res({ passthrough: true }) res: Response,

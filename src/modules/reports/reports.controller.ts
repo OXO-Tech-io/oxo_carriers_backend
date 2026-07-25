@@ -5,7 +5,7 @@ import { Roles } from '../../common/decorators/roles.decorator';
 import { UserRole } from '../../types';
 import { ReportsService } from './reports.service';
 
-@Controller(['api/reports', 'reports'])
+@Controller('reports')
 @UseGuards(RolesGuard)
 @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
 export class ReportsController {

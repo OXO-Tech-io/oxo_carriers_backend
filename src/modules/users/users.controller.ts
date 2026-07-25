@@ -8,7 +8,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 
-@Controller(['api/users', 'users'])
+@Controller('users')
 export class UsersController {
   constructor(private readonly usersService: UsersService) {}
 
@@ -44,14 +44,14 @@ export class UsersController {
   async create(@Body() dto: CreateUserDto, @CurrentEmployee() employee: JwtPayload) {
     const { keycloak, ...user } = await this.usersService.create(dto, employee);
     const message = !keycloak.provisioned
-      ? 'User created successfully. Keycloak provisioning was skipped or failed - use POST /users/:id/keycloak to provision manually.'
+      ? 'User created successfully. Keycloak provisioning was skipped or failed - use POST /users/:id/keycloak-accounts to provision manually.'
       : keycloak.onboardingEmailSent
         ? 'User created and provisioned in Keycloak successfully. An onboarding email has been sent.'
         : 'User created and provisioned in Keycloak successfully, but the onboarding email could not be sent.';
     return { success: true, message, user };
   }
 
-  @Post(':id/keycloak')
+  @Post(':id/keycloak-accounts')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async provisionKeycloak(@Param('id', ParseIntPipe) id: number) {
@@ -87,7 +87,7 @@ export class UsersController {
     return { success: true, message: `Role updated from '${result.previous_role}' to '${result.new_role}'`, user: result };
   }
 
-  @Post(':id/reset-password')
+  @Post(':id/password-resets')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async resetPassword(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {

@@ -23,7 +23,7 @@ import { ATTACHMENTS_FIELD, communicationAttachmentsMulterOptions, MAX_ATTACHMEN
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-@Controller('api/communications')
+@Controller('communications')
 export class CommunicationsController {
   constructor(private readonly communicationsService: CommunicationsService) {}
 
@@ -33,7 +33,7 @@ export class CommunicationsController {
     return { success: true, message: 'Communications fetched', data: communications };
   }
 
-  @Post(':id/respond')
+  @Post(':id/responses')
   async respond(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,

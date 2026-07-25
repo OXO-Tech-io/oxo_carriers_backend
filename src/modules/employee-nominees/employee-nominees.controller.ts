@@ -4,7 +4,7 @@ import { JwtPayload } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeNomineesService } from './employee-nominees.service';
 
-@Controller('api/employees/:employeeId/nominees')
+@Controller('employees/:employeeId/nominees')
 export class EmployeeNomineesController {
   constructor(private readonly employeeNomineesService: EmployeeNomineesService) {}
 

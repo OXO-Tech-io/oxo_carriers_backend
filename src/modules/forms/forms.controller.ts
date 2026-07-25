@@ -22,7 +22,7 @@ import { formResponseMulterOptions } from './forms.upload';
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 const HR_ROLES = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] as const;
 
-@Controller('api/forms')
+@Controller('forms')
 export class FormsController {
   constructor(private readonly formsService: FormsService) {}
 
@@ -75,7 +75,7 @@ export class FormsController {
     return { success: true, message: 'Form created', data: result };
   }
 
-  @Post(':id/publish')
+  @Post(':id/publication')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async publish(@Param('id') idParam: string) {
@@ -84,7 +84,7 @@ export class FormsController {
     return { success: true, message: 'Form published', data: form };
   }
 
-  @Post(':id/distribute')
+  @Post(':id/distribution')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async distribute(@Param('id') idParam: string, @Body() body: unknown) {

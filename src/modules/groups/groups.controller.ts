@@ -9,7 +9,7 @@ import { CreateGroupDto } from './dto/create-group.dto';
 import { RenameGroupDto } from './dto/rename-group.dto';
 import { AddGroupMembersDto } from './dto/add-group-members.dto';
 
-@Controller('api/groups')
+@Controller('groups')
 export class GroupsController {
   constructor(private readonly groupsService: GroupsService) {}
 

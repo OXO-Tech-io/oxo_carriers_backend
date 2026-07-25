@@ -11,9 +11,9 @@ const SELF_ONLY_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, Use
  * elsewhere) matches what the frontend's profileService.getEmployeePii has
  * always expected from this endpoint.
  */
-@Controller('api/employee-pii')
+@Controller('employees/:userId/pii')
 export class EmployeePiiController {
-  @Get(':userId')
+  @Get()
   async getByUserId(@Param('userId', ParseIntPipe) userId: number, @CurrentEmployee() employee: JwtPayload) {
     if (SELF_ONLY_ROLES.includes(employee.role) && employee.userId !== userId) {
       throw new ForbiddenException();

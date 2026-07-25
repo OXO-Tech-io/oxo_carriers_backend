@@ -24,7 +24,7 @@ import { MEDICAL_DOCUMENT_FIELDS, medicalDocumentsMulterOptions } from './medica
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
 // both '/api/medical-insurance' and the legacy bare '/medical-insurance'.
-@Controller(['api/medical-insurance', 'medical-insurance'])
+@Controller('medical-insurance-claims')
 export class MedicalInsuranceController {
   constructor(private readonly medicalInsuranceService: MedicalInsuranceService) {}
 
@@ -72,7 +72,7 @@ export class MedicalInsuranceController {
     return this.medicalInsuranceService.decideClaim(employee, id, dto);
   }
 
-  @Post(':id/resubmit')
+  @Post(':id/resubmissions')
   @UseInterceptors(FileFieldsInterceptor(MEDICAL_DOCUMENT_FIELDS, medicalDocumentsMulterOptions))
   resubmit(
     @CurrentEmployee() employee: JwtPayload,

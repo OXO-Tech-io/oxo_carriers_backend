@@ -15,7 +15,7 @@ const parseUserId = (idParam: string): number => {
   return id;
 };
 
-@Controller(['api/permissions', 'permissions'])
+@Controller('permissions')
 export class PermissionsController {
   constructor(private readonly permissionsService: PermissionsService) {}
 
@@ -30,7 +30,7 @@ export class PermissionsController {
     return { success: true, ...result };
   }
 
-  @Get('manage-users')
+  @Get('manageable-users')
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.PERMISSIONS, 'read')
   async getManageableUsers() {

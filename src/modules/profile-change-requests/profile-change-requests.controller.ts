@@ -31,7 +31,7 @@ import { logger } from '../../lib/logger';
  * ZodError is already handled identically to a DTO validation failure by
  * the global AllExceptionsFilter.
  */
-@Controller('api/profile-change-requests')
+@Controller('profile-change-requests')
 export class ProfileChangeRequestsController {
   @Post()
   async submit(@Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
@@ -62,35 +62,13 @@ export class ProfileChangeRequestsController {
     return { success: true, message: 'Profile change request fetched', data: request };
   }
 
-  // Aliases for /:id/decision - the frontend calls these dedicated paths
-  // (sending { decision, reviewerComments } in the body, same as /decision)
-  // rather than the generic decision endpoint. All four share the same
-  // handler; the decision always comes from the body, not the URL.
+  // A single noun-based endpoint for all decision outcomes (approved /
+  // rejected / returned_for_modification), selected via `decision` in the
+  // body rather than separate verb-named routes.
   @Put(':id/decision')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   decision(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
-    return this.decideAndNotify(params, body, employee);
-  }
-
-  @Put(':id/approve')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
-  approve(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
-    return this.decideAndNotify(params, body, employee);
-  }
-
-  @Put(':id/reject')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
-  reject(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
-    return this.decideAndNotify(params, body, employee);
-  }
-
-  @Put(':id/return')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
-  return_(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
     return this.decideAndNotify(params, body, employee);
   }
 

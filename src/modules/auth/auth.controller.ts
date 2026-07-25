@@ -9,7 +9,7 @@ import { JwtPayload } from '../../types';
  * verification and password setup/reset are handled entirely by Keycloak's
  * own hosted flows (see keycloakAdminService.sendRequiredActionsEmail).
  */
-@Controller(['api/auth', 'auth'])
+@Controller('auth')
 export class AuthController {
   constructor(private readonly employeesService: EmployeesService) {}
 

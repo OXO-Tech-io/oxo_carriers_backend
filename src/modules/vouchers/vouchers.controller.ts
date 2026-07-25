@@ -21,7 +21,7 @@ import { INVOICE_FIELD, voucherInvoiceMulterOptions } from './vouchers.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
 // both '/api/vouchers' and the legacy bare '/vouchers'.
-@Controller(['api/vouchers', 'vouchers'])
+@Controller('vouchers')
 export class VouchersController {
   constructor(private readonly vouchersService: VouchersService) {}
 
@@ -60,7 +60,7 @@ export class VouchersController {
     return this.vouchersService.review(employee, id, dto);
   }
 
-  @Put(':id/resubmit')
+  @Put(':id/resubmission')
   resubmit(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid voucher id');

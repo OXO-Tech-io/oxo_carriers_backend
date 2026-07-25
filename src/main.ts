@@ -32,6 +32,9 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
+  // All API routes are versioned under /api/v1; uploads are served separately below.
+  app.setGlobalPrefix('api/v1');
+
   logger.info(
     { allowedOrigins, nodeEnv: env.NODE_ENV, frontendUrl: env.FRONTEND_URL ?? null },
     'CORS configuration',

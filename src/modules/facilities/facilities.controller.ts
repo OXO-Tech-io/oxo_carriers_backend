@@ -21,7 +21,7 @@ import { CreateBookingDto } from './dto/create-booking.dto';
 
 const REQUIRE_HR = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 
-@Controller(['api/facilities', 'facilities'])
+@Controller('facilities')
 export class FacilitiesController {
   constructor(private readonly facilitiesService: FacilitiesService) {}
 
@@ -68,18 +68,18 @@ export class FacilitiesController {
 
   // ─── Booking management ─────────────────────────────────────────────────
 
-  @Post('book')
+  @Post('bookings')
   @HttpCode(201)
   createBooking(@Body() dto: CreateBookingDto, @CurrentEmployee() employee: JwtPayload) {
     return this.facilitiesService.createBooking(employee, dto);
   }
 
-  @Get('my-bookings')
+  @Get('bookings/mine')
   getMyBookings(@CurrentEmployee() employee: JwtPayload) {
     return this.facilitiesService.getMyBookings(employee);
   }
 
-  @Get('all-bookings')
+  @Get('bookings')
   getAllBookings(
     @Query('user_id') userId?: string,
     @Query('facility_id') facilityId?: string,
@@ -96,7 +96,7 @@ export class FacilitiesController {
     });
   }
 
-  @Put('bookings/:id/cancel')
+  @Put('bookings/:id/cancellation')
   cancelBooking(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = parseInt(idParam, 10);
     return this.facilitiesService.cancelBooking(id, employee);

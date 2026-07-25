@@ -12,7 +12,7 @@ const CAN_ACCESS_VENDORS = [
   UserRole.FINANCE_EXECUTIVE,
 ];
 
-@Controller(['api/vendors', 'vendors'])
+@Controller('vendors')
 @UseGuards(RolesGuard)
 @Roles(...CAN_ACCESS_VENDORS)
 export class VendorsController {

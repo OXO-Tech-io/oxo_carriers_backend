@@ -67,7 +67,7 @@ const fileFilter = (_req: any, file: Express.Multer.File, cb: any) => {
   }
 };
 
-@Controller(['api/salary', 'salary'])
+@Controller('salaries')
 export class SalaryController {
   constructor(private readonly salaryService: SalaryService) {}
 
@@ -109,13 +109,13 @@ export class SalaryController {
     res.send(pdfBuffer);
   }
 
-  @Get('structure/:userId')
+  @Get('structures/:userId')
   async getStructure(@Param('userId', ParseIntPipe) userId: number, @CurrentEmployee() employee: JwtPayload) {
     const structure = await this.salaryService.getEmployeeSalaryStructure(userId, employee);
     return { success: true, structure };
   }
 
-  @Post('generate')
+  @Post()
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async generate(@Body() dto: GenerateSalaryDto, @CurrentEmployee() employee: JwtPayload) {
@@ -123,7 +123,7 @@ export class SalaryController {
     return { success: true, message: 'Salary generated successfully', salary };
   }
 
-  @Post('bulk-upload')
+  @Post('bulk-uploads')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   @UseInterceptors(FileInterceptor('excel', { storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } }))
@@ -143,7 +143,7 @@ export class SalaryController {
     };
   }
 
-  @Put('structure/:userId')
+  @Put('structures/:userId')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER)
   async updateStructure(

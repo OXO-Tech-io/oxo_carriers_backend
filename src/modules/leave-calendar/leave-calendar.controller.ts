@@ -20,7 +20,7 @@ import { UpdateLeaveCalendarEntryDto } from './dto/update-leave-calendar-entry.d
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
 // both '/api/leave-calendar' and the legacy bare '/leave-calendar'.
-@Controller(['api/leave-calendar', 'leave-calendar'])
+@Controller('leave-calendar-entries')
 export class LeaveCalendarController {
   constructor(private readonly leaveCalendarService: LeaveCalendarService) {}
 
@@ -45,7 +45,7 @@ export class LeaveCalendarController {
     return this.leaveCalendarService.getHolidayCount(startDate, endDate);
   }
 
-  @Get('check-holiday')
+  @Get('holiday-status')
   checkIsHoliday(@Query('date') date?: string) {
     return this.leaveCalendarService.checkIsHoliday(date);
   }
