@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  ForbiddenException,
   Get,
   Param,
   Post,
@@ -27,12 +28,6 @@ const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreads
 export class CommunicationsController {
   constructor(private readonly communicationsService: CommunicationsService) {}
 
-  @Get('mine')
-  async listMine(@CurrentEmployee() employee: JwtPayload) {
-    const communications = await this.communicationsService.listMine(employee.employeeId!);
-    return { success: true, message: 'Communications fetched', data: communications };
-  }
-
   @Post(':id/responses')
   async respond(
     @CurrentEmployee() employee: JwtPayload,
@@ -44,10 +39,25 @@ export class CommunicationsController {
     return { success: true, message: 'Response recorded', data: result };
   }
 
+  // Without ?employee_id=, this is the HR-only "all communications" list.
+  // With ?employee_id=, it's the recipient's own inbox (formerly GET
+  // /communications/mine) - callers may only pass their own employeeId
+  // unless they're HR/super_admin, matching the access /mine used to give.
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
-  async listAll() {
+  async list(@Query('employee_id') employeeId: string | undefined, @CurrentEmployee() employee: JwtPayload) {
+    const isHr = employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN;
+
+    if (employeeId) {
+      if (employeeId !== employee.employeeId && !isHr) {
+        throw new ForbiddenException('You can only view your own communications');
+      }
+      const communications = await this.communicationsService.listMine(employeeId);
+      return { success: true, message: 'Communications fetched', data: communications };
+    }
+
+    if (!isHr) {
+      throw new ForbiddenException('Forbidden: Insufficient permissions');
+    }
     const communications = await this.communicationsService.listAll();
     return { success: true, message: 'Communications fetched', data: communications };
   }
