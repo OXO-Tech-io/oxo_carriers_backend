@@ -35,7 +35,7 @@ export class EventsController {
     return { success: true, message: 'Event fetched', data };
   }
 
-  @Post(':id/participation')
+  @Post(':id/participations')
   async recordParticipation(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
