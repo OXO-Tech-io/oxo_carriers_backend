@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Body, Inject, Res, Req } from '@nestjs/common';
+import { Controller, Get, Inject, Res, Req } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import type { Pool } from 'pg';
 import { Public } from '../common/decorators/public.decorator';
@@ -117,57 +117,4 @@ export class HealthController {
     };
   }
 
-  @Public()
-  @Get('health/email-tests')
-  testEmailInfo() {
-    return {
-      success: true,
-      message: 'Test email endpoint is available. Use POST method to send emails.',
-      usage: 'POST /api/v1/health/email-tests { "email": "your-email@example.com" }',
-    };
-  }
-
-  @Public()
-  @Post('health/email-tests')
-  async sendTestEmail(
-    @Body() body: { email?: string; subject?: string; message?: string },
-    @Res({ passthrough: true }) res: Response,
-  ) {
-    try {
-      const testEmail = body.email || 'info@oxocareers.com';
-      const emailSubject = body.subject || 'SMTP Test Email';
-
-      const { sendEmail } = await import('../config/email');
-
-      const params = {
-        message: body.message || 'This is a test email to verify SMTP configuration is working correctly.',
-        timestamp: new Date().toISOString(),
-        to_email: testEmail,
-      };
-
-      const result = await sendEmail(testEmail, emailSubject, params);
-
-      if (result) {
-        return {
-          success: true,
-          message: `Test email sent successfully via SMTP to ${testEmail}`,
-          status: result.status,
-        };
-      }
-      res.status(500);
-      return {
-        success: false,
-        message: 'Failed to send test email via SMTP. Check server logs for details.',
-        hint: 'Make sure SMTP variables are set in .env',
-      };
-    } catch (error: any) {
-      logger.error({ err: error }, 'Test email failed');
-      res.status(500);
-      return {
-        success: false,
-        message: 'Error sending test email',
-        error: error.message,
-      };
-    }
-  }
 }
