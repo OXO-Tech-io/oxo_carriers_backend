@@ -26,19 +26,21 @@ export class FacilitiesController {
 
   // ─── Facility management (Admin) ────────────────────────────────────────
 
+  /**
+   * GET /facilities?type=workstation
+   * GET /facilities?type=workstation&start_time=ISO&end_time=ISO - passing
+   * start_time/end_time filters down to facilities available in that window.
+   */
   @Get()
-  getAllFacilities(@Query('type') type?: FacilityType) {
-    return this.facilitiesService.getAll(type);
-  }
-
-  /** GET /facilities/available?type=workstation&start_time=ISO&end_time=ISO */
-  @Get('available')
-  getAvailable(
-    @Query('type') type: FacilityType,
-    @Query('start_time') startTime: string,
-    @Query('end_time') endTime: string,
+  getAllFacilities(
+    @Query('type') type?: FacilityType,
+    @Query('start_time') startTime?: string,
+    @Query('end_time') endTime?: string,
   ) {
-    return this.facilitiesService.getAvailable(type, startTime, endTime);
+    if (startTime || endTime) {
+      return this.facilitiesService.getAvailable(type as FacilityType, startTime as string, endTime as string);
+    }
+    return this.facilitiesService.getAll(type);
   }
 
   @Post()
