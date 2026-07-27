@@ -1,6 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { EmployeeModel } from '../../employees/Employee';
-import { EmployeePiiModel } from '../employee-pii/EmployeePii';
 import pool from '../../config/database';
 import { calculateProRatedAnnualLeave } from '../../utils/leaveCalculation';
 import { keycloakAdminService } from './keycloakAdmin.service';
@@ -48,11 +47,7 @@ export class UsersService {
     }
     const user = await EmployeeModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
-
-    // PII is returned inline rather than through a separate endpoint so
-    // there's a single access-controlled place to view an employee's profile.
-    const pii = user.employeeId ? await EmployeePiiModel.findByEmployeeId(user.employeeId) : null;
-    return { ...user, pii };
+    return user;
   }
 
   async create(dto: CreateUserDto, requester: JwtPayload) {
