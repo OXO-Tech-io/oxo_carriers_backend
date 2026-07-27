@@ -9,8 +9,9 @@ const NOTE_CREATOR_ROLES: UserRole[] = [UserRole.HR_EXECUTIVE, UserRole.HR_MANAG
 
 @Injectable()
 export class EmployeeNotesService {
-  private async resolveEmployeeId(userId: number): Promise<string> {
-    const employee = await EmployeeModel.findById(userId);
+  // id here is the employee.id primary key - never the Keycloak sub/id.
+  private async resolveEmployeeId(id: number): Promise<string> {
+    const employee = await EmployeeModel.findById(id);
     if (!employee?.employeeId) {
       throw new BadRequestException('This user has no employee ID assigned yet');
     }
@@ -21,14 +22,14 @@ export class EmployeeNotesService {
     if (!NOTE_CREATOR_ROLES.includes(employee.role)) {
       throw new ForbiddenException('Only HR Team or HR Manager can add employee notes');
     }
-    const employeeId = await this.resolveEmployeeId(dto.employeeUserId);
+    const employeeId = await this.resolveEmployeeId(dto.employeeId);
     const note = await employeeNoteService.create(employeeId, employee.userId, dto.content, files);
     return { success: true, message: 'Note added', data: note };
   }
 
-  async listForEmployee(employeeUserId: number) {
-    const employeeId = await this.resolveEmployeeId(employeeUserId);
-    const notes = await employeeNoteService.listForEmployee(employeeId);
+  async listForEmployee(employeeId: number) {
+    const businessEmployeeId = await this.resolveEmployeeId(employeeId);
+    const notes = await employeeNoteService.listForEmployee(businessEmployeeId);
     return { success: true, message: 'Notes fetched', data: notes };
   }
 

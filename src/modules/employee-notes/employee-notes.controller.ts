@@ -40,13 +40,15 @@ export class EmployeeNotesController {
     return this.employeeNotesService.create(employee, dto, files ?? []);
   }
 
-  @Get('employee/:employeeUserId')
+  // :employeeId is the internal employee.id primary key - never the
+  // Keycloak-issued sub/id.
+  @Get('employee/:employeeId')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER)
-  listForEmployee(@Param('employeeUserId') employeeUserIdParam: string) {
-    const employeeUserId = parseInt(employeeUserIdParam, 10);
-    if (isNaN(employeeUserId)) throw new BadRequestException('Invalid employee user id');
-    return this.employeeNotesService.listForEmployee(employeeUserId);
+  listForEmployee(@Param('employeeId') employeeIdParam: string) {
+    const employeeId = parseInt(employeeIdParam, 10);
+    if (isNaN(employeeId)) throw new BadRequestException('Invalid employee id');
+    return this.employeeNotesService.listForEmployee(employeeId);
   }
 
   @Get(':id')
