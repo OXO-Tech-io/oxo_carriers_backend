@@ -16,12 +16,14 @@ export const communicationService = {
     recipientUserIds: number[],
     recipientGroupIds: number[],
     createdBy: number,
-    files: AttachmentFileInput[]
+    files: AttachmentFileInput[],
+    requiresAcknowledgement = false,
+    deadlineAt: Date | null = null
   ) {
     const groupMemberIds = await groupService.resolveMemberUserIds(recipientGroupIds);
     const resolvedUserIds = [...new Set([...recipientUserIds, ...groupMemberIds])];
 
-    const communication = await CommunicationModel.create({ title, body, createdBy });
+    const communication = await CommunicationModel.create({ title, body, createdBy, requiresAcknowledgement, deadlineAt });
     const recipientEmployees = await EmployeeModel.findByIds(resolvedUserIds);
     const recipientEmployeeIds = recipientEmployees
       .map((employee) => employee.employeeId)
@@ -63,11 +65,60 @@ export const communicationService = {
   },
 
   async listAll() {
-    return CommunicationModel.listAll();
+    const list = await CommunicationModel.listAll();
+    return Promise.all(
+      list.map(async (communication) => {
+        const recipientRows = await CommunicationRecipientModel.listByCommunicationId(communication.id);
+        const employeeMap = await EmployeeModel.findByEmployeeIds(recipientRows.map((r) => r.employeeId));
+        const deadline = communication.deadlineAt ? new Date(communication.deadlineAt) : null;
+
+        const recipients = recipientRows.map((r) => {
+          const emp = employeeMap.get(r.employeeId);
+          const isAcknowledged = !!r.respondedAt;
+          const isLate = isAcknowledged && !!deadline && new Date(r.respondedAt!) > deadline;
+          const isOnTime = isAcknowledged && !isLate;
+          return {
+            id: r.id,
+            userId: emp?.id ?? 0,
+            name: emp ? `${emp.firstName} ${emp.lastName}` : r.employeeId,
+            email: emp?.email ?? '',
+            emailSentAt: r.emailSentAt,
+            respondedAt: r.respondedAt,
+            responseText: r.responseText,
+            isAcknowledged,
+            isOnTime,
+            isLate,
+          };
+        });
+
+        const totalRecipients = recipients.length;
+        const acknowledgedCount = recipients.filter((r) => r.isAcknowledged).length;
+        const onTimeCount = recipients.filter((r) => r.isOnTime).length;
+        const lateCount = recipients.filter((r) => r.isLate).length;
+        const pendingCount = totalRecipients - acknowledgedCount;
+
+        return {
+          ...communication,
+          totalRecipients,
+          acknowledgedCount,
+          onTimeCount,
+          lateCount,
+          pendingCount,
+          recipients,
+        };
+      }),
+    );
   },
 
   async listMine(employeeId: string) {
     return CommunicationRecipientModel.listForUser(employeeId);
+  },
+
+  async delete(communicationId: number) {
+    const communication = await CommunicationModel.findById(communicationId);
+    if (!communication) throw new NotFoundError('Communication not found');
+    await AttachmentModel.deleteByEntity('communication', communicationId);
+    await CommunicationModel.deleteById(communicationId);
   },
 
   async respond(communicationId: number, employeeId: string, responseText?: string) {

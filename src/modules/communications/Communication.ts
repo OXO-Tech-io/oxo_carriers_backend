@@ -6,6 +6,8 @@ export type CommunicationInput = {
   title: string;
   body: string;
   createdBy: number;
+  requiresAcknowledgement?: boolean;
+  deadlineAt?: Date | null;
 };
 
 export class CommunicationModel {
@@ -22,5 +24,11 @@ export class CommunicationModel {
 
   static async listAll(): Promise<DrizzleCommunication[]> {
     return db.query.communications.findMany({ orderBy: (t, { desc }) => [desc(t.createdAt)] });
+  }
+
+  // Recipients cascade at the DB level (tbl_communication_recipients FK); attachments
+  // are polymorphic (no FK) and must be deleted separately by the caller.
+  static async deleteById(id: number): Promise<void> {
+    await db.delete(communications).where(eq(communications.id, id));
   }
 }

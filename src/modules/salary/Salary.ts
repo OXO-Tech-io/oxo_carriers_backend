@@ -341,10 +341,12 @@ export class SalaryModel {
 
       const existingColumns = (columnsResult.rows as any[]).map(c => c.column_name);
 
+      // varchar(500), not numeric - this column stores encryptSalary() ciphertext,
+      // same as every other amount column on this table.
       if (!existingColumns.includes('local_salary')) {
         await pool.query(`
           ALTER TABLE tbl_monthly_salaries
-          ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0
+          ADD COLUMN local_salary VARCHAR(500) DEFAULT '0'
         `);
         log.info('Added local_salary column');
       }
@@ -352,7 +354,7 @@ export class SalaryModel {
       if (!existingColumns.includes('oxo_international_salary')) {
         await pool.query(`
           ALTER TABLE tbl_monthly_salaries
-          ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0
+          ADD COLUMN oxo_international_salary VARCHAR(500) DEFAULT '0'
         `);
         log.info('Added oxo_international_salary column');
       }

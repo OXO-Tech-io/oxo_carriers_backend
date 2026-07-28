@@ -12,12 +12,27 @@ const idArrayField = z
   })
   .pipe(z.array(z.coerce.number().int().positive()));
 
+// Multipart form-data (required whenever attachments are included) encodes
+// booleans/dates as plain strings, so this accepts either the native JSON
+// type or its string form - same reasoning as idArrayField above.
+const booleanField = z
+  .union([z.boolean(), z.string()])
+  .optional()
+  .transform((v) => v === true || v === 'true');
+
+const nullableDateField = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => (v ? new Date(v) : null));
+
 export const createCommunicationSchema = z
   .object({
     title: z.string().min(1, 'Title is required').max(255),
     body: z.string().min(1, 'Body is required'),
     recipientUserIds: idArrayField,
     recipientGroupIds: idArrayField,
+    requiresAcknowledgement: booleanField,
+    deadlineAt: nullableDateField,
   })
   .refine((data) => data.recipientUserIds.length > 0 || data.recipientGroupIds.length > 0, {
     message: 'At least one recipient or group is required',

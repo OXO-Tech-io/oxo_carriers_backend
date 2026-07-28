@@ -37,7 +37,7 @@ export class SalaryService {
   }
 
   async updateSalaryStructure(userId: number, dto: UpdateSalaryStructureDto, requester: JwtPayload) {
-    if (requester.role !== UserRole.HR_MANAGER) {
+    if (requester.role !== UserRole.HR_MANAGER && requester.role !== UserRole.SUPER_ADMIN) {
       throw new ForbiddenException('Only HR Manager can update salary structure');
     }
     const employeeId = await this.resolveEmployeeId(userId);
@@ -45,7 +45,11 @@ export class SalaryService {
   }
 
   async generateSalary(dto: GenerateSalaryDto, requester: JwtPayload) {
-    if (requester.role !== UserRole.HR_MANAGER && requester.role !== UserRole.HR_EXECUTIVE) {
+    if (
+      requester.role !== UserRole.HR_MANAGER &&
+      requester.role !== UserRole.HR_EXECUTIVE &&
+      requester.role !== UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Only HR can generate salaries');
     }
 
@@ -164,7 +168,11 @@ export class SalaryService {
   }
 
   async updateSalaryStatus(id: number, dto: UpdateSalaryStatusDto, requester: JwtPayload) {
-    if (requester.role !== UserRole.HR_MANAGER && requester.role !== UserRole.HR_EXECUTIVE) {
+    if (
+      requester.role !== UserRole.HR_MANAGER &&
+      requester.role !== UserRole.HR_EXECUTIVE &&
+      requester.role !== UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Only HR can update salary status');
     }
     if (!dto.status) {
@@ -215,7 +223,11 @@ export class SalaryService {
     dto: BulkUploadSalaryDtoLike,
     requester: JwtPayload,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
-    if (requester.role !== UserRole.HR_MANAGER && requester.role !== UserRole.HR_EXECUTIVE) {
+    if (
+      requester.role !== UserRole.HR_MANAGER &&
+      requester.role !== UserRole.HR_EXECUTIVE &&
+      requester.role !== UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Only HR Manager and HR Executive can upload bulk salaries');
     }
     if (!dto.month || !dto.year) {
@@ -247,6 +259,18 @@ export class SalaryService {
     for (let rowNum = 1; rowNum <= 10; rowNum++) {
       const row = worksheet.getRow(rowNum);
       let foundHeaders = 0;
+      // Column indices must reset per candidate row - otherwise a stray match on an
+      // earlier row (e.g. a title/instructions row) poisons detection for the real
+      // header row, since each `col === 0` guard below would already be false.
+      idCol = 0;
+      nameCol = 0;
+      fullSalaryCol = 0;
+      localSalaryCol = 0;
+      oxoSalaryCol = 0;
+      workingDaysCol = 0;
+      epfCol = 0;
+      allowancesCol = 0;
+      deductionsCol = 0;
 
       row.eachCell({ includeEmpty: false }, (cell, colNumber) => {
         const cellValue = cell.value?.toString().toLowerCase().trim() || '';

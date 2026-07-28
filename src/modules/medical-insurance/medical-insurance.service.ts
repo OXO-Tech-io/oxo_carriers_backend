@@ -90,7 +90,7 @@ export class MedicalInsuranceService {
 
   /** Single list endpoint - branches on role so the frontend only calls one route. */
   async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType) {
-    if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE) {
+    if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN) {
       return this.getAll(status, type);
     }
     return this.getMyClaims(this.requireEmployeeId(employee), status);
@@ -111,7 +111,11 @@ export class MedicalInsuranceService {
   async decideClaim(employee: JwtPayload, id: number, dto: DecideMedicalClaimDto) {
     const { action, admin_comment } = dto;
 
-    if (employee.role !== UserRole.HR_MANAGER && employee.role !== UserRole.HR_EXECUTIVE) {
+    if (
+      employee.role !== UserRole.HR_MANAGER &&
+      employee.role !== UserRole.HR_EXECUTIVE &&
+      employee.role !== UserRole.SUPER_ADMIN
+    ) {
       throw new ForbiddenException('Only HR can review medical claims');
     }
 

@@ -26,11 +26,24 @@ export class CommunicationsService {
    */
   async create(userId: number, body: unknown, files: Express.Multer.File[]) {
     const input = createCommunicationSchema.parse(body);
-    return communicationService.create(input.title, input.body, input.recipientUserIds, input.recipientGroupIds, userId, files);
+    return communicationService.create(
+      input.title,
+      input.body,
+      input.recipientUserIds,
+      input.recipientGroupIds,
+      userId,
+      files,
+      input.requiresAcknowledgement,
+      input.deadlineAt,
+    );
   }
 
   async listAll() {
     return communicationService.listAll();
+  }
+
+  async delete(communicationId: number) {
+    return communicationService.delete(communicationId);
   }
 
   async listMine(employeeId: string) {

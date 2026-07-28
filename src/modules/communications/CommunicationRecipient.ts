@@ -34,6 +34,8 @@ export class CommunicationRecipientModel {
         responseText: communicationRecipients.responseText,
         title: communications.title,
         body: communications.body,
+        requiresAcknowledgement: communications.requiresAcknowledgement,
+        deadlineAt: communications.deadlineAt,
         createdAt: communications.createdAt,
       })
       .from(communicationRecipients)

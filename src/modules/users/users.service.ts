@@ -24,19 +24,23 @@ export class UsersService {
       EmployeeModel.getAll({ search: search as any }),
     ]);
 
-    const employeesByEmail = new Map(employees.map((e) => [e.email.toLowerCase(), e]));
+    const kcByEmail = new Map(kcUsers.map((kc) => [kc.email?.toLowerCase(), kc]));
 
-    return kcUsers.map((kc) => {
-      const employee = employeesByEmail.get(kc.email?.toLowerCase());
+    // Driven by the employee table, not Keycloak - an employee who was never
+    // provisioned in Keycloak (or whose provisioning failed, a state the
+    // create flow explicitly allows) is still a real employee and must still
+    // show up here, just without Keycloak status attached.
+    return employees.map((employee) => {
+      const kc = kcByEmail.get(employee.email.toLowerCase());
       return {
-        keycloakId: kc.id,
-        email: kc.email,
-        firstName: kc.firstName,
-        lastName: kc.lastName,
-        enabled: kc.enabled,
-        emailVerified: kc.emailVerified,
-        requiredActions: kc.requiredActions ?? [],
-        employee: employee ?? null,
+        keycloakId: kc?.id ?? null,
+        email: employee.email,
+        firstName: kc?.firstName ?? employee.firstName,
+        lastName: kc?.lastName ?? employee.lastName,
+        enabled: kc?.enabled ?? null,
+        emailVerified: kc?.emailVerified ?? null,
+        requiredActions: kc?.requiredActions ?? [],
+        employee,
       };
     });
   }

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -73,6 +74,15 @@ export class CommunicationsController {
   ) {
     const communication = await this.communicationsService.create(employee.userId, body, files ?? []);
     return { success: true, message: 'Communication sent', data: communication };
+  }
+
+  @Delete(':id')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN)
+  async delete(@Param('id') idParam: string) {
+    const id = this.parseId(idParam);
+    await this.communicationsService.delete(id);
+    return { success: true, message: 'Communication deleted' };
   }
 
   @Get('reports')

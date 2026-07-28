@@ -4,46 +4,33 @@ import {
   formResponseAnswers,
   type FormResponse as DrizzleFormResponse,
   type FormResponseAnswer as DrizzleFormResponseAnswer,
-  type NewFormResponseAnswer,
 } from '../../db/schema';
 import { and, eq } from 'drizzle-orm';
 import { EmployeeModel } from '../../employees/Employee';
 
 export type SubmitAnswerInput = {
-  fieldId: number;
-  valueText?: string | null;
+  questionId: number;
+  value: unknown;
+  valueText: string | null;
 };
 
 export class FormResponseModel {
   // `userId` is the numeric tbl_employee.id used throughout the Forms API;
   // tbl_form_responses stores the business employee_id (varchar) FK, so it is
   // resolved via EmployeeModel before being persisted/queried.
-  static async create(formId: number, userId: number, answers: SubmitAnswerInput[]): Promise<DrizzleFormResponse> {
+  static async findOrCreate(formId: number, userId: number): Promise<DrizzleFormResponse> {
     const employee = await EmployeeModel.findById(userId);
     if (!employee?.employeeId) throw new Error('Employee has no employee_id assigned');
     const employeeId = employee.employeeId;
 
-    return db.transaction(async (tx) => {
-      const [response] = await tx.insert(formResponses).values({ formId, employeeId }).returning();
-      if (!response) throw new Error('Failed to create form response');
-
-      const answerRows: NewFormResponseAnswer[] = answers.map((a) => ({
-        responseId: response.id,
-        fieldId: a.fieldId,
-        valueText: a.valueText ?? null,
-      }));
-      if (answerRows.length) {
-        await tx.insert(formResponseAnswers).values(answerRows).returning();
-      }
-      return response;
+    const existing = await db.query.formResponses.findFirst({
+      where: and(eq(formResponses.formId, formId), eq(formResponses.employeeId, employeeId)),
     });
-  }
+    if (existing) return existing;
 
-  /** File-type answers are added after `create()` once the file has been saved to disk. */
-  static async addFileAnswer(responseId: number, fieldId: number): Promise<DrizzleFormResponseAnswer> {
-    const [answer] = await db.insert(formResponseAnswers).values({ responseId, fieldId, valueText: null }).returning();
-    if (!answer) throw new Error('Failed to create form response file answer');
-    return answer;
+    const [created] = await db.insert(formResponses).values({ formId, employeeId }).returning();
+    if (!created) throw new Error('Failed to create form response');
+    return created;
   }
 
   static async findByFormAndUser(formId: number, userId: number): Promise<DrizzleFormResponse | null> {
@@ -69,5 +56,35 @@ export class FormResponseModel {
   static async getAnswerById(answerId: number): Promise<DrizzleFormResponseAnswer | null> {
     const record = await db.query.formResponseAnswers.findFirst({ where: eq(formResponseAnswers.id, answerId) });
     return record ?? null;
+  }
+
+  // The frontend always sends the full current answer set (autosave and real
+  // submit alike), so each call replaces every existing answer for this
+  // response rather than diffing. Callers must clean up any attachments
+  // belonging to the old answers (via AttachmentModel.deleteByEntity) BEFORE
+  // calling this, since those answer rows are about to be deleted.
+  static async replaceAnswers(responseId: number, answers: SubmitAnswerInput[]): Promise<DrizzleFormResponseAnswer[]> {
+    return db.transaction(async (tx) => {
+      await tx.delete(formResponseAnswers).where(eq(formResponseAnswers.responseId, responseId));
+      if (!answers.length) return [];
+      return tx
+        .insert(formResponseAnswers)
+        .values(
+          answers.map((a) => ({
+            responseId,
+            questionId: a.questionId,
+            value: a.value,
+            valueText: a.valueText,
+          })),
+        )
+        .returning();
+    });
+  }
+
+  static async markSubmitted(responseId: number, completionMs: number): Promise<void> {
+    await db
+      .update(formResponses)
+      .set({ status: 'submitted', submittedAt: new Date(), completionMs })
+      .where(eq(formResponses.id, responseId));
   }
 }

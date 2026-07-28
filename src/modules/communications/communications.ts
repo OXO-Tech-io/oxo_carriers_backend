@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
 
@@ -7,6 +7,8 @@ export const communications = pgTable('tbl_communications', {
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     body: text('body').notNull(),
+    requiresAcknowledgement: boolean('requires_acknowledgement').notNull().default(false),
+    deadlineAt: timestamp('deadline_at'),
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
 });

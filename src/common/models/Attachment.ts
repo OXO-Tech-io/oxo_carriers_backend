@@ -63,4 +63,8 @@ export class AttachmentModel {
   static async deleteById(id: number): Promise<void> {
     await db.delete(attachments).where(eq(attachments.id, id));
   }
+
+  static async deleteByEntity(entityType: string, entityId: number): Promise<void> {
+    await db.delete(attachments).where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)));
+  }
 }
