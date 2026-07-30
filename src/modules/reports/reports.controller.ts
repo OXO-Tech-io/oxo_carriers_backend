@@ -65,4 +65,41 @@ export class ReportsController {
     const metrics = await this.reportsService.getDashboardMetrics();
     return { success: true, metrics };
   }
+
+  @Get('submissions-breakdown')
+  async submissionsBreakdown(
+    @Res() res: Response,
+    @Query('department') department?: string,
+    @Query('employeeId') employeeId?: string,
+    @Query('formId') formId?: string,
+    @Query('communicationId') communicationId?: string,
+    @Query('status') status?: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+    @Query('search') search?: string,
+    @Query('format') format?: string,
+  ) {
+    const data = await this.reportsService.getSubmissionsBreakdown({
+      department,
+      employeeId,
+      formId: formId ? Number(formId) : undefined,
+      communicationId: communicationId ? Number(communicationId) : undefined,
+      status,
+      startDate,
+      endDate,
+      search,
+    });
+
+    if (format === 'excel') {
+      const workbook = this.reportsService.buildSubmissionsBreakdownWorkbook(data);
+      const filename = `submissions-compliance-report-${new Date().toISOString().slice(0, 10)}.xlsx`;
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename=${filename}`);
+      await workbook.xlsx.write(res);
+      res.end();
+      return;
+    }
+
+    res.json({ success: true, ...data });
+  }
 }

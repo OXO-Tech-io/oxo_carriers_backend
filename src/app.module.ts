@@ -26,7 +26,6 @@ import { VouchersModule } from './modules/vouchers/vouchers.module';
 import { LeaveCalendarModule } from './modules/leave-calendar/leave-calendar.module';
 import { EmployeeNotesModule } from './modules/employee-notes/employee-notes.module';
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
-import { EmployeePiiModule } from './modules/employee-pii/employee-pii.module';
 import { LeavesModule } from './modules/leaves/leaves.module';
 import { LeaveTypesModule } from './modules/leave-types/leave-types.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
@@ -62,7 +61,6 @@ import { FormsModule } from './modules/forms/forms.module';
     LeaveCalendarModule,
     EmployeeNotesModule,
     ProfileChangeRequestsModule,
-    EmployeePiiModule,
     LeavesModule,
     LeaveTypesModule,
     CommunicationsModule,

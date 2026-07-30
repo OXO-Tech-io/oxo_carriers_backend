@@ -65,7 +65,7 @@ export class ProfileChangeRequestsController {
   // A single noun-based endpoint for all decision outcomes (approved /
   // rejected / returned_for_modification), selected via `decision` in the
   // body rather than separate verb-named routes.
-  @Put(':id/decision')
+  @Put(':id/decisions')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   decision(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {

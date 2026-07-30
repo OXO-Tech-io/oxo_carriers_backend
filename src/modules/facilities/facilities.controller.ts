@@ -101,7 +101,7 @@ export class FacilitiesController {
     });
   }
 
-  @Put('bookings/:id/cancellation')
+  @Put('bookings/:id/cancellations')
   cancelBooking(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = parseInt(idParam, 10);
     return this.facilitiesService.cancelBooking(id, employee);

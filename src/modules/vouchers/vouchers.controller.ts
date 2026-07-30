@@ -53,28 +53,28 @@ export class VouchersController {
     return this.vouchersService.getById(employee, id);
   }
 
-  @Put(':id/review')
+  @Put(':id/reviews')
   review(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string, @Body() dto: ReviewVoucherDto) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid voucher id');
     return this.vouchersService.review(employee, id, dto);
   }
 
-  @Put(':id/resubmission')
+  @Put(':id/resubmissions')
   resubmit(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid voucher id');
     return this.vouchersService.resubmit(employee, id);
   }
 
-  @Put(':id/bank-upload')
+  @Put(':id/bank-uploads')
   bankUpload(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid voucher id');
     return this.vouchersService.bankUpload(employee, id);
   }
 
-  @Put(':id/paid')
+  @Put(':id/payments')
   markPaid(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid voucher id');

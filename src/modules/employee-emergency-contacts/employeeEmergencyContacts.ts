@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
-import { bytea } from '../employee-pii/employeePii.schema';
+import { bytea } from '../../employees/employeePii.schema';
 
 // Employee Emergency Contacts Table (Tab D - multi-record).
 // Supersedes the single-row emergencyContactName/Phone/Relationship columns

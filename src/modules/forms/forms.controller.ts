@@ -100,7 +100,7 @@ export class FormsController {
     return { success: true, message: 'Form published', data: form };
   }
 
-  @Post(':id/unpublish')
+  @Post(':id/unpublishes')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async unpublish(@Param('id') idParam: string) {
@@ -109,7 +109,7 @@ export class FormsController {
     return { success: true, message: 'Form unpublished', data: form };
   }
 
-  @Post(':id/archive')
+  @Post(':id/archives')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async archive(@Param('id') idParam: string) {

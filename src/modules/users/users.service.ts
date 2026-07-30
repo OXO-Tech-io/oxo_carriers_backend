@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { EmployeeModel } from '../../employees/Employee';
+import { EmployeePiiModel } from '../../employees/EmployeePii';
 import pool from '../../config/database';
 import { calculateProRatedAnnualLeave } from '../../utils/leaveCalculation';
 import { keycloakAdminService } from './keycloakAdmin.service';
@@ -52,6 +53,20 @@ export class UsersService {
     const user = await EmployeeModel.findById(userId);
     if (!user) throw new NotFoundException('User not found');
     return user;
+  }
+
+  /**
+   * Response shape ({ success, pii }, not the { success, data } envelope used
+   * elsewhere) matches what the frontend's profileService.getEmployeePii has
+   * always expected from this endpoint.
+   */
+  async getPii(userId: number, requester: JwtPayload) {
+    if (SELF_ONLY_ROLES.includes(requester.role) && requester.userId !== userId) {
+      throw new ForbiddenException();
+    }
+    const target = await EmployeeModel.findById(userId);
+    if (!target) throw new NotFoundException('Employee not found');
+    return target.employeeId ? await EmployeePiiModel.findByEmployeeId(target.employeeId) : null;
   }
 
   async create(dto: CreateUserDto, requester: JwtPayload) {

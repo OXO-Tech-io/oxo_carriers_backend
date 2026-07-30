@@ -1,6 +1,6 @@
 // Export all schemas
 export * from '../../employees/employee.schema';
-export * from '../../modules/employee-pii/employeePii.schema';
+export * from '../../employees/employeePii.schema';
 export * from '../../modules/permissions/permissions';
 export * from '../../modules/leaves/leaves';
 export * from '../../modules/salary/salary.schema';

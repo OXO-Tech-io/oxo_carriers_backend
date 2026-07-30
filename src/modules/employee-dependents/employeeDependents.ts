@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
-import { bytea, employeeSexEnum } from '../employee-pii/employeePii.schema';
+import { bytea, employeeSexEnum } from '../../employees/employeePii.schema';
 
 // Enums
 export const dependentRelationshipEnum = pgEnum('dependent_relationship', ['spouse', 'child']);

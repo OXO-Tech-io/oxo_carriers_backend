@@ -7,7 +7,7 @@ import {
   notifications,
 } from "../../src/db/schema";
 import { EmployeeModel } from "../../src/employees/Employee";
-import { EmployeePiiModel } from "../../src/modules/employee-pii/EmployeePii";
+import { EmployeePiiModel } from "../../src/employees/EmployeePii";
 import { ProfileChangeRequestModel } from "../../src/modules/profile-change-requests/ProfileChangeRequest";
 import { profileChangeRequestService } from "../../src/modules/profile-change-requests/profileChangeRequest.service";
 import { UserRole } from "../../src/types";

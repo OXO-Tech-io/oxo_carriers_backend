@@ -1,5 +1,5 @@
 import { db } from '../../db';
-import { EmployeePiiModel } from '../employee-pii/EmployeePii';
+import { EmployeePiiModel } from '../../employees/EmployeePii';
 import { EmployeeNomineeModel } from '../employee-nominees/EmployeeNominee';
 import { EmployeeDependentModel } from '../employee-dependents/EmployeeDependent';
 import { EmployeeEmergencyContactModel } from '../employee-emergency-contacts/EmployeeEmergencyContact';

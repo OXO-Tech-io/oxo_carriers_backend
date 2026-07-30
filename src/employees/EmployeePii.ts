@@ -1,8 +1,8 @@
-import { db } from '../../db';
-import { employeePii } from '../../db/schema';
+import { db } from '../db';
+import { employeePii } from '../db/schema';
 import { eq, sql } from 'drizzle-orm';
-import { env } from '../../config/env';
-import { pgpDecrypt, pgpEncrypt } from '../../utils/pgpCrypto';
+import { env } from '../config/env';
+import { pgpDecrypt, pgpEncrypt } from '../utils/pgpCrypto';
 
 type DbExecutor = Pick<typeof db, 'select' | 'insert' | 'delete'>;
 

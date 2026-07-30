@@ -1,18 +1,18 @@
-import { Controller, Get, NotFoundException, Param } from '@nestjs/common';
+import { Controller, Get, NotFoundException, Param, ParseIntPipe } from '@nestjs/common';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeEmergencyContactsService } from './employee-emergency-contacts.service';
 
-@Controller('employees/:employeeId/emergency-contacts')
+@Controller('employees/:employeeUserId/emergency-contacts')
 export class EmployeeEmergencyContactsController {
   constructor(private readonly employeeEmergencyContactsService: EmployeeEmergencyContactsService) {}
 
   @Get()
-  async list(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
-    const target = await EmployeeModel.findByEmployeeId(employeeId);
+  async list(@Param('employeeUserId', ParseIntPipe) employeeUserId: number, @CurrentEmployee() employee: JwtPayload) {
+    const target = await EmployeeModel.findById(employeeUserId);
     if (!target) throw new NotFoundException('Employee not found');
-    const records = await this.employeeEmergencyContactsService.list(employee.employeeId, employee.role, employeeId);
+    const records = await this.employeeEmergencyContactsService.list(employee.employeeId, employee.role, target.employeeId ?? undefined);
     return { success: true, message: 'Emergency contact records fetched', data: records };
   }
 }

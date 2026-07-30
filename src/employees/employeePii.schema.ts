@@ -8,7 +8,7 @@ import {
     customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { employee } from '../../employees/employee.schema';
+import { employee } from './employee.schema';
 
 // Enums
 export const employeeSexEnum = pgEnum('employee_sex', ['male', 'female']);

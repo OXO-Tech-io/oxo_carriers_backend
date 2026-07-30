@@ -72,7 +72,7 @@ export class LeavesController {
     return { success: true, message: 'Leave request created', data: request };
   }
 
-  @Put(':id/approval')
+  @Put(':id/approvals')
   async approveLeaveRequest(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -88,7 +88,7 @@ export class LeavesController {
     return { success: true, message: 'Leave request updated', data: updated };
   }
 
-  @Put(':id/rejection')
+  @Put(':id/rejections')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async rejectLeaveRequest(

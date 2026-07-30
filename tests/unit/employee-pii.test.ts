@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { db } from "../../src/db";
 import { EmployeeModel } from "../../src/employees/Employee";
-import { EmployeePiiModel } from "../../src/modules/employee-pii/EmployeePii";
+import { EmployeePiiModel } from "../../src/employees/EmployeePii";
 import { employeePii, employee } from "../../src/db/schema";
 import { eq } from "drizzle-orm";
 import { UserRole } from "../../src/types";

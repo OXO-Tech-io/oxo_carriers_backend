@@ -10,7 +10,7 @@ import {
   type ProfileChangeRequest as DrizzleProfileChangeRequest,
 } from '../../db/schema';
 import { ProfileChangeRequestModel } from './ProfileChangeRequest';
-import { EmployeePiiModel } from '../employee-pii/EmployeePii';
+import { EmployeePiiModel } from '../../employees/EmployeePii';
 import { EmployeeNomineeModel } from '../employee-nominees/EmployeeNominee';
 import { EmployeeDependentModel } from '../employee-dependents/EmployeeDependent';
 import { EmployeeEmergencyContactModel } from '../employee-emergency-contacts/EmployeeEmergencyContact';

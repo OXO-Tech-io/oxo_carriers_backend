@@ -59,7 +59,7 @@ export class MedicalInsuranceController {
     return this.medicalInsuranceService.apply(employee, dto, files);
   }
 
-  @Put(':id/decision')
+  @Put(':id/decisions')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   decideClaim(

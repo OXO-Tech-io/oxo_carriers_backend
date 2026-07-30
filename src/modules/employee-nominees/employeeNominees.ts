@@ -1,7 +1,7 @@
 import { pgTable, serial, varchar, decimal, timestamp } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
-import { bytea } from '../employee-pii/employeePii.schema';
+import { bytea } from '../../employees/employeePii.schema';
 
 // Employee Nominees Table (Tab 1a - EPF/ETF beneficiaries, max 2 per employee,
 // enforced in profileChangeRequest.service.ts, not at the DB level).
