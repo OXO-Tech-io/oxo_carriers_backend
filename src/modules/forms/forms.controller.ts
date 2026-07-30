@@ -127,7 +127,7 @@ export class FormsController {
     return { success: true, message: 'Form distributed', data: result };
   }
 
-  @Get(':id/my-response')
+  @Get(':id/my-responses')
   async getMyResponse(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = this.parseId(idParam);
     const data = await this.formsService.getMyResponse(id, employee.userId);
@@ -290,7 +290,7 @@ export class FormsController {
     return { success: true, message: 'Settings updated', data: settings };
   }
 
-  @Get(':formId/theme')
+  @Get(':formId/themes')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   async getTheme(@Param('formId') formIdParam: string) {
@@ -299,7 +299,7 @@ export class FormsController {
     return { success: true, message: 'Theme fetched', data: theme };
   }
 
-  @Put(':formId/theme')
+  @Put(':formId/themes')
   @UseGuards(RolesGuard)
   @Roles(...HR_ROLES)
   @UseInterceptors(FileInterceptor('headerImage', formThemeMulterOptions))

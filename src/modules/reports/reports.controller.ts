@@ -66,7 +66,7 @@ export class ReportsController {
     return { success: true, metrics };
   }
 
-  @Get('submissions-breakdown')
+  @Get('submission-breakdowns')
   async submissionsBreakdown(
     @Res() res: Response,
     @Query('department') department?: string,

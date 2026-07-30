@@ -42,7 +42,7 @@ export class EmployeeNotesController {
 
   // :employeeId is the internal employee.id primary key - never the
   // Keycloak-issued sub/id.
-  @Get('employee/:employeeId')
+  @Get('employees/:employeeId')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER)
   listForEmployee(@Param('employeeId') employeeIdParam: string) {
