@@ -25,8 +25,8 @@ export const employeeProfileCreationService = {
             ...(profile.statutory
               ? {
                   nationalId: profile.statutory.nationalId,
-                  fullNameAsNic: profile.statutory.fullNameAsNic,
-                  nameWithInitials: profile.statutory.nameWithInitials,
+                  legalName: profile.statutory.legalName,
+                  initialsName: profile.statutory.initialsName,
                   addressLine1: profile.statutory.addressLine1,
                   addressLine2: profile.statutory.addressLine2 ?? null,
                   city: profile.statutory.city,

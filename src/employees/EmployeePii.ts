@@ -33,8 +33,8 @@ export class EmployeePiiModel {
         emergencyContactPhone: sql<string | null>`CASE WHEN ${employeePii.emergencyContactPhone} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactPhone}, ${key}) END`,
         emergencyContactRelationship: sql<string | null>`CASE WHEN ${employeePii.emergencyContactRelationship} IS NULL THEN NULL ELSE pgp_sym_decrypt(${employeePii.emergencyContactRelationship}, ${key}) END`,
         // Tab 1 (statutory) fields
-        fullNameAsNic: pgpDecrypt(employeePii.fullNameAsNic),
-        nameWithInitials: pgpDecrypt(employeePii.nameWithInitials),
+        legalName: pgpDecrypt(employeePii.legalName),
+        initialsName: pgpDecrypt(employeePii.initialsName),
         dateOfBirth: employeePii.dateOfBirth,
         birthPlace: pgpDecrypt(employeePii.birthPlace),
         sex: employeePii.sex,
@@ -72,8 +72,8 @@ export class EmployeePiiModel {
       emergencyContactName?: string | null;
       emergencyContactPhone?: string | null;
       emergencyContactRelationship?: string | null;
-      fullNameAsNic?: string | null;
-      nameWithInitials?: string | null;
+      legalName?: string | null;
+      initialsName?: string | null;
       birthPlace?: string | null;
       spouseName?: string | null;
       motherName?: string | null;
@@ -109,8 +109,8 @@ export class EmployeePiiModel {
       'emergencyContactName',
       'emergencyContactPhone',
       'emergencyContactRelationship',
-      'fullNameAsNic',
-      'nameWithInitials',
+      'legalName',
+      'initialsName',
       'birthPlace',
       'spouseName',
       'motherName',

@@ -56,11 +56,11 @@ export class UsersService {
   }
 
   /**
-   * Response shape ({ success, pii }, not the { success, data } envelope used
-   * elsewhere) matches what the frontend's profileService.getEmployeePii has
-   * always expected from this endpoint.
+   * Response shape ({ success, personalDetails }, not the { success, data }
+   * envelope used elsewhere) matches what the frontend's
+   * profileService.getEmployeePersonalDetails expects from this endpoint.
    */
-  async getPii(userId: number, requester: JwtPayload) {
+  async getPersonalDetails(userId: number, requester: JwtPayload) {
     if (SELF_ONLY_ROLES.includes(requester.role) && requester.userId !== userId) {
       throw new ForbiddenException();
     }

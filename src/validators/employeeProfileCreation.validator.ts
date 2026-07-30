@@ -14,8 +14,8 @@ const isoDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in Y
 // employee-creation time instead of via the employee's own change-request wizard.
 const statutorySchema = z.object({
   nationalId: z.string().min(1, 'NIC number is required').max(20),
-  fullNameAsNic: z.string().min(1, 'Full name is required').max(255),
-  nameWithInitials: z.string().min(1, 'Name with initials is required').max(255),
+  legalName: z.string().min(1, 'Full name is required').max(255),
+  initialsName: z.string().min(1, 'Name with initials is required').max(255),
   addressLine1: z.string().min(1, 'Address line 1 is required').max(255),
   addressLine2: z.string().max(255).nullable().optional(),
   city: z.string().min(1, 'City is required').max(100),

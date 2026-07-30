@@ -38,10 +38,10 @@ export class UsersController {
     return { success: true, user };
   }
 
-  @Get(':employeeUserId/pii')
-  async getPii(@Param('employeeUserId', ParseIntPipe) employeeUserId: number, @CurrentEmployee() employee: JwtPayload) {
-    const pii = await this.usersService.getPii(employeeUserId, employee);
-    return { success: true, pii };
+  @Get(':employeeUserId/personal-details')
+  async getPersonalDetails(@Param('employeeUserId', ParseIntPipe) employeeUserId: number, @CurrentEmployee() employee: JwtPayload) {
+    const personalDetails = await this.usersService.getPersonalDetails(employeeUserId, employee);
+    return { success: true, personalDetails };
   }
 
   /** Only HR (and super_admin) can create employees; Finance can only create service providers via Create Service Provider. */

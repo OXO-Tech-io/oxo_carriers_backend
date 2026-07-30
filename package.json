@@ -29,7 +29,8 @@
     "db:drop-email-verification-columns": "ts-node src/scripts/dropEmailVerificationColumns.ts",
     "db:rename-tables-tbl-prefix-batch2": "ts-node src/scripts/renameTablesToTblPrefixBatch2.ts",
     "db:rename-user-id-to-employee-id-fk": "ts-node src/scripts/renameUserIdToEmployeeIdFk.ts",
-    "db:encrypt-email-and-name-columns": "ts-node src/scripts/encryptEmailAndNameColumns.ts"
+    "db:encrypt-email-and-name-columns": "ts-node src/scripts/encryptEmailAndNameColumns.ts",
+    "db:rename-pii-name-columns": "ts-node src/scripts/renamePiiNameColumns.ts"
   },
   "keywords": [],
   "author": "",

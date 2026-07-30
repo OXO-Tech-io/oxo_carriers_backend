@@ -58,12 +58,12 @@ export const employeePii = pgTable('tbl_employee_pii', {
     emergencyContactPhone: bytea('emergency_contact_phone'),
     emergencyContactRelationship: bytea('emergency_contact_relationship'),
     // Statutory (Tab 1) fields - added for the EPF/ETF profile enhancement.
-    // fullNameAsNic/nameWithInitials/birthPlace/spouseName/motherName/fatherName
+    // legalName/initialsName/birthPlace/spouseName/motherName/fatherName
     // are encrypted like the rest of this table; dateOfBirth/sex/maritalStatus/
     // nationality stay plain since maritalStatus gates Tab C visibility and
     // dateOfBirth feeds a client-side age calculation.
-    fullNameAsNic: bytea('full_name_as_nic'),
-    nameWithInitials: bytea('name_with_initials'),
+    legalName: bytea('legal_name'),
+    initialsName: bytea('initials_name'),
     dateOfBirth: date('date_of_birth'),
     birthPlace: bytea('birth_place'),
     sex: employeeSexEnum('sex'),

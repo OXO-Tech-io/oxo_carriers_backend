@@ -76,8 +76,8 @@ const summarizeChanges = (changes: ProfileChangeItem[]): string[] =>
 // camelCase columns.
 const PII_SCALAR_FIELD_TO_MODEL_KEY: Record<string, string> = {
   blood_type: 'bloodType',
-  full_name_as_nic: 'fullNameAsNic',
-  name_with_initials: 'nameWithInitials',
+  full_name_as_nic: 'legalName',
+  name_with_initials: 'initialsName',
   date_of_birth: 'dateOfBirth',
   birth_place: 'birthPlace',
   sex: 'sex',
