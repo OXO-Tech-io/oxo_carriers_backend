@@ -129,6 +129,11 @@ jobs:
           SMTP_SECURE: ${{ secrets.SMTP_SECURE }}
           SMTP_USER: ${{ secrets.SMTP_USER }}
           SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          JWT_EXPIRES_IN: ${{ secrets.JWT_EXPIRES_IN }}
+          PII_ENCRYPTION_KEY: ${{ secrets.PII_ENCRYPTION_KEY }}
+          SALARY_ENCRYPTION_KEY: ${{ secrets.SALARY_ENCRYPTION_KEY }}
+          COMMUNICATIONS_DOCUMENT_FIELDS: ${{ secrets.COMMUNICATIONS_DOCUMENT_FIELDS }}
         run: |
           set -euo pipefail
 
@@ -147,6 +152,11 @@ jobs:
             SMTP_SECURE
             SMTP_USER
             SMTP_PASS
+            JWT_SECRET
+            JWT_EXPIRES_IN
+            PII_ENCRYPTION_KEY
+            SALARY_ENCRYPTION_KEY
+            COMMUNICATIONS_DOCUMENT_FIELDS
           )
 
           missing=0
@@ -212,6 +222,11 @@ jobs:
             --set-env-vars="KC_REALM=${{ secrets.KC_REALM }}" \
             --set-env-vars="KC_BACKEND_CLIENT_ID=${{ secrets.KC_BACKEND_CLIENT_ID }}" \
             --set-env-vars="KC_BACKEND_CLIENT_SECRET=${{ secrets.KC_BACKEND_CLIENT_SECRET }}" \
+            --set-env-vars="JWT_SECRET=${{ secrets.JWT_SECRET }}" \
+            --set-env-vars="JWT_EXPIRES_IN=${{ secrets.JWT_EXPIRES_IN }}" \
+            --set-env-vars="PII_ENCRYPTION_KEY=${{ secrets.PII_ENCRYPTION_KEY }}" \
+            --set-env-vars="SALARY_ENCRYPTION_KEY=${{ secrets.SALARY_ENCRYPTION_KEY }}" \
+            --set-env-vars="COMMUNICATIONS_DOCUMENT_FIELDS=${{ secrets.COMMUNICATIONS_DOCUMENT_FIELDS }}" \
             --revision-suffix=${{ github.sha }}-${{ github.run_attempt }} \
             --labels="commit=${{ github.sha }},branch=develop,app=oxo-carriers-backend" \
             --quiet

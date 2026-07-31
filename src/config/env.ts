@@ -51,8 +51,11 @@ const Schema = z.object({
     .optional(),
 
   // ─── Database (Postgres) ────────────────────────────────────────────────
-  DB_HOST: z.string().min(1),
-  DB_PORT: z.coerce.number().int().positive(),
+  // DB_HOST and DB_PORT are only required for direct TCP connections.
+  // When CLOUD_SQL_CONNECTION_NAME is set (Cloud Run), the Unix socket is
+  // used instead and these values are ignored by database.ts.
+  DB_HOST: optionalString,
+  DB_PORT: z.coerce.number().int().positive().optional(),
   DB_USER: z.string().min(1),
   // Intentionally optional (not merely defaulted): some deployments (e.g.
   // Cloud SQL IAM auth) legitimately run with no password. Its absence is
@@ -61,7 +64,8 @@ const Schema = z.object({
   DB_PASSWORD_FILE: optionalString,
   DB_NAME: z.string().min(1),
   DB_SCHEMA: z.string().min(1),
-  DB_SSL: boolish,
+  // DB_SSL is only relevant for TCP connections; ignored in Cloud SQL socket mode.
+  DB_SSL: boolish.optional().default(false),
 
   // ─── Cloud SQL (GCP) ────────────────────────────────────────────────────
   /** When true, use Cloud SQL proxy socket connection (e.g., /cloudsql/PROJECT:REGION:INSTANCE) */
