@@ -10,6 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:integration": "vitest run tests/integration",
     "deploy:check": "node scripts/check-deployment.js",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
