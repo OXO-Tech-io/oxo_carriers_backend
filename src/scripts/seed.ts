@@ -1,36 +1,33 @@
 import { db } from '../db';
 import * as schema from '../db/schema';
-import bcrypt from 'bcryptjs';
+import { EmployeeModel } from '../employees/Employee';
+import { UserRole } from '../types';
 
 async function seed() {
     console.log('🌱 Starting database seeding...');
 
     try {
         // Check if super admin already exists
-        const existingAdmin = await db.query.users.findFirst({
-            where: (users, { eq }) => eq(users.email, 'admin@oxocarriers.com'),
-        });
+        const existingAdmin = await EmployeeModel.findByEmail('admin@oxocarriers.com');
 
         if (existingAdmin) {
             console.log('✅ Super admin already exists. Skipping seed.');
             return;
         }
 
-        // Create default super admin
-        const hashedPassword = await bcrypt.hash('Admin@123', 10);
-
-        const [admin] = await db.insert(schema.users).values({
-            employeeId: 'EMP001',
+        // Create default super admin - via EmployeeModel (not a raw insert) so
+        // email/first_name/last_name get encrypted and email_hash gets
+        // populated the same way the live app does it.
+        const admin = await EmployeeModel.create({
+            employee_id: 'EMP001',
             email: 'admin@oxocarriers.com',
-            password: hashedPassword,
-            firstName: 'Super',
-            lastName: 'Admin',
-            role: 'super_admin',
-            emailVerified: true,
+            first_name: 'Super',
+            last_name: 'Admin',
+            role: UserRole.SUPER_ADMIN,
             department: 'Administration',
             position: 'System Administrator',
-            hireDate: new Date().toISOString().split('T')[0],
-        }).returning();
+            hire_date: new Date(),
+        });
 
         console.log('✅ Super admin created:', admin.email);
 

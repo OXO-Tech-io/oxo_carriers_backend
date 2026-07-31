@@ -1,43 +1,35 @@
-import pool from '../config/database';
-import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { EmployeeModel } from '../employees/Employee';
+import { UserRole } from '../types';
 
 dotenv.config();
 
 async function createTestUser() {
   try {
     const email = 'test@gmail.com';
-    const password = 'admin@12';
-    const hashedPassword = await bcrypt.hash(password, 10);
 
     // Check if user already exists
-    const existing = await pool.query(
-      'SELECT id FROM users WHERE email = $1',
-      [email]
-    );
-    const existingUsers = existing.rows as any[];
+    const existing = await EmployeeModel.findByEmail(email);
 
-    if (existingUsers.length > 0) {
-      console.log('User already exists. Updating password...');
-      await pool.query(
-        'UPDATE users SET password = $1, must_change_password = false WHERE email = $2',
-        [hashedPassword, email]
-      );
-      console.log('✅ Password updated for test@gmail.com');
+    if (existing) {
+      console.log('User already exists.');
     } else {
-      // Create new user
+      // Create new user - via EmployeeModel (not a raw insert) so
+      // email/first_name/last_name get encrypted and email_hash gets
+      // populated the same way the live app does it.
       const employeeId = `EMP${new Date().getFullYear()}0001`;
-      await pool.query(
-        `INSERT INTO users (employee_id, email, password, first_name, last_name, role, must_change_password)
-         VALUES ($1, $2, $3, $4, $5, 'hr_manager', false)`,
-        [employeeId, email, hashedPassword, 'Test', 'User']
-      );
+      await EmployeeModel.create({
+        employee_id: employeeId,
+        email,
+        first_name: 'Test',
+        last_name: 'User',
+        role: UserRole.HR_MANAGER,
+      });
       console.log('✅ Test user created successfully!');
     }
 
     console.log('\n📋 Login Credentials:');
     console.log('   Email: test@gmail.com');
-    console.log('   Password: admin@12');
     console.log('   Role: HR Manager\n');
 
     process.exit(0);
