@@ -45,7 +45,7 @@ describe("profileChangeRequest.validator", () => {
       field: "address",
       operation: "update",
       before: null,
-      after: "123 Main Street, Colombo",
+      after: { addressLine1: "123 Main Street", addressLine2: null, city: "Colombo", district: "Western" },
     });
     expect(result.success).toBe(true);
   });
