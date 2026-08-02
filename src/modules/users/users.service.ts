@@ -185,13 +185,19 @@ export class UsersService {
     // failure here doesn't roll back the already-created employee row; HR can
     // retry via the existing manual POST /users/:id/keycloak endpoint.
     const skipProvisioning = dto.skipKeycloakProvisioning === true && isSuperAdmin(requester);
-    let keycloak: { provisioned: boolean; onboardingEmailSent?: boolean } = { provisioned: false };
+    let keycloak: { provisioned: boolean; onboardingEmailSent?: boolean; error?: string } = { provisioned: false };
     if (!skipProvisioning) {
       try {
         const result = await this.provisionKeycloak(user.id);
-        keycloak = { provisioned: true, onboardingEmailSent: result.onboardingEmailSent ?? true };
+        keycloak = {
+          provisioned: true,
+          onboardingEmailSent: result.onboardingEmailSent ?? true,
+          error: result.emailErrorReason,
+        };
       } catch (kcError: any) {
+        const reason = kcError?.message || String(kcError);
         logger.error({ err: kcError, userId: user.id }, 'Failed to auto-provision Keycloak account for new employee');
+        keycloak = { provisioned: false, error: reason };
       }
     }
 
@@ -333,14 +339,16 @@ export class UsersService {
     logger.info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
 
     let onboardingEmailSent = true;
+    let emailErrorReason: string | undefined;
     try {
       await keycloakAdminService.sendRequiredActionsEmail(kcSub, ['VERIFY_EMAIL', 'UPDATE_PASSWORD']);
       logger.info({ email: user.email }, 'Keycloak onboarding email sent');
     } catch (emailError: any) {
       onboardingEmailSent = false;
+      emailErrorReason = emailError?.message || String(emailError);
       logger.error({ err: emailError }, 'Failed to send Keycloak onboarding email');
     }
 
-    return { alreadyProvisioned: false as const, keycloakSub: kcSub, onboardingEmailSent };
+    return { alreadyProvisioned: false as const, keycloakSub: kcSub, onboardingEmailSent, emailErrorReason };
   }
 }
