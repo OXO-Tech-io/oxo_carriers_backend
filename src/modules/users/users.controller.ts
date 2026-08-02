@@ -44,11 +44,11 @@ export class UsersController {
   async create(@Body() dto: CreateUserDto, @CurrentEmployee() employee: JwtPayload) {
     const { keycloak, ...user } = await this.usersService.create(dto, employee);
     const message = !keycloak.provisioned
-      ? 'User created successfully. Keycloak provisioning was skipped or failed - use POST /users/:id/keycloak-accounts to provision manually.'
+      ? `User created successfully, but Keycloak provisioning failed${keycloak.error ? `: ${keycloak.error}` : ''} - use POST /users/:id/keycloak-accounts to retry.`
       : keycloak.onboardingEmailSent
         ? 'User created and provisioned in Keycloak successfully. An onboarding email has been sent.'
-        : 'User created and provisioned in Keycloak successfully, but the onboarding email could not be sent.';
-    return { success: true, message, user };
+        : `User created and provisioned in Keycloak successfully, but the onboarding email could not be sent${keycloak.error ? `: ${keycloak.error}` : ''}.`;
+    return { success: true, message, user, keycloak };
   }
 
   @Post(':id/keycloak-accounts')
@@ -63,7 +63,7 @@ export class UsersController {
       success: true,
       message: result.onboardingEmailSent
         ? 'User provisioned in Keycloak successfully. An onboarding email has been sent.'
-        : 'User provisioned in Keycloak successfully, but the onboarding email could not be sent.',
+        : `User provisioned in Keycloak successfully, but the onboarding email could not be sent${result.emailErrorReason ? `: ${result.emailErrorReason}` : ''}.`,
       keycloakSub: result.keycloakSub,
       onboardingEmailSent: result.onboardingEmailSent,
     };
