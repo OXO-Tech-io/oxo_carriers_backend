@@ -24,4 +24,5 @@ export * from '../../modules/communications/communications';
 export * from '../../modules/events/events';
 export * from '../../modules/forms/forms';
 export * from '../../modules/work-logs/workLogs';
+export * from '../../modules/work-logs/workLogSettings';
 export * from '../../modules/groups/groups';

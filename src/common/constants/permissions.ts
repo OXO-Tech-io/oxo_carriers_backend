@@ -189,7 +189,8 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   {
     key: PERMISSIONS.WORK_LOGS,
     label: "Work Logs",
-    description: "Write access lets HR Manager view all employee work log submissions.",
+    description:
+      "Write access lets HR Manager view all employee work log submissions and set the daily submission deadline.",
     group: "work_logs",
   },
   {
