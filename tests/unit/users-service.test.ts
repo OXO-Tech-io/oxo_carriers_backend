@@ -245,7 +245,7 @@ describe("UsersService", () => {
       kc.createUser.mockRejectedValue(new Error("kc down"));
 
       const result = await service.create(baseDto, hr);
-      expect(result.keycloak).toEqual({ provisioned: false });
+      expect(result.keycloak).toEqual({ provisioned: false, error: "kc down" });
     });
   });
 
