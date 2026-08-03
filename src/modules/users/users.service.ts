@@ -9,6 +9,8 @@ import { employeeProfileCreationService } from './employeeProfileCreation.servic
 import { createEmployeeProfileSchema } from '../../validators/employeeProfileCreation.validator';
 import { UserRole, JwtPayload } from '../../types';
 import { logger } from '../../lib/logger';
+import { env } from '../../config/env';
+import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from '../../config/email';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 
@@ -16,6 +18,10 @@ const SELF_ONLY_ROLES = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVIC
 const VALID_ROLES: string[] = Object.values(UserRole);
 
 const isSuperAdmin = (employee: JwtPayload) => employee.role === UserRole.SUPER_ADMIN;
+
+/** Login URL to point users at from onboarding/reset emails; omitted if FRONTEND_URL isn't configured. */
+const buildLoginUrl = (): string | undefined =>
+  env.FRONTEND_URL ? `${env.FRONTEND_URL.replace(/\/$/, '')}/login` : undefined;
 
 @Injectable()
 export class UsersService {
@@ -263,17 +269,36 @@ export class UsersService {
       throw new ConflictException('User is not provisioned in Keycloak yet, so their password cannot be reset.');
     }
 
+    const tempPassword = generateSecureTemporaryPassword();
+
     try {
-      await keycloakAdminService.sendRequiredActionsEmail(user.keycloakSub, ['UPDATE_PASSWORD']);
-      logger.info({ email: user.email }, 'Keycloak password reset email sent');
-    } catch (emailError: any) {
-      logger.error({ err: emailError }, 'Error sending Keycloak password reset email');
-      // Matches the original controller's 502 (bad gateway to Keycloak).
+      // temporary=true forces the user to set a new password on next login.
+      await keycloakAdminService.updatePassword(user.keycloakSub, tempPassword, true);
+    } catch (kcError: any) {
+      logger.error({ err: kcError, userId }, 'Failed to update password in Keycloak');
       throw new HttpException(
-        'Failed to send reset email via Keycloak. Verify the realm SMTP settings are configured.',
+        `Failed to reset password in Keycloak${kcError?.message ? `: ${kcError.message}` : ''}.`,
         502,
       );
     }
+
+    // Password is already changed in Keycloak at this point; an email failure
+    // here doesn't roll that back, it just means HR needs to relay the new
+    // temporary password to the user another way.
+    const emailResult = await sendPasswordResetCredentialsEmail(user.email, {
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      employeeId: user.employeeId ?? undefined,
+      password: tempPassword,
+      loginUrl: buildLoginUrl(),
+    });
+    const emailSent = emailResult?.success === true;
+    if (emailSent) {
+      logger.info({ email: user.email }, 'Password reset credentials email sent via SMTP');
+    } else {
+      logger.error({ email: user.email, error: emailResult?.error }, 'Failed to send password reset credentials email via SMTP');
+    }
+
+    return { emailSent, emailErrorReason: emailSent ? undefined : emailResult?.error };
   }
 
   async getDepartments() {
@@ -338,15 +363,18 @@ export class UsersService {
     await EmployeeModel.linkKeycloakSub(user.id, kcSub);
     logger.info({ userId, kcSub }, 'Keycloak user provisioned and linked successfully.');
 
-    let onboardingEmailSent = true;
-    let emailErrorReason: string | undefined;
-    try {
-      await keycloakAdminService.sendRequiredActionsEmail(kcSub, ['VERIFY_EMAIL', 'UPDATE_PASSWORD']);
-      logger.info({ email: user.email }, 'Keycloak onboarding email sent');
-    } catch (emailError: any) {
-      onboardingEmailSent = false;
-      emailErrorReason = emailError?.message || String(emailError);
-      logger.error({ err: emailError }, 'Failed to send Keycloak onboarding email');
+    const emailResult = await sendWelcomeCredentialsEmail(user.email, {
+      name: `${user.firstName} ${user.lastName}`.trim(),
+      employeeId: user.employeeId ?? undefined,
+      password: tempPassword,
+      loginUrl: buildLoginUrl(),
+    });
+    const onboardingEmailSent = emailResult?.success === true;
+    const emailErrorReason = onboardingEmailSent ? undefined : emailResult?.error;
+    if (onboardingEmailSent) {
+      logger.info({ email: user.email }, 'Onboarding credentials email sent via SMTP');
+    } else {
+      logger.error({ email: user.email, error: emailErrorReason }, 'Failed to send onboarding credentials email via SMTP');
     }
 
     return { alreadyProvisioned: false as const, keycloakSub: kcSub, onboardingEmailSent, emailErrorReason };

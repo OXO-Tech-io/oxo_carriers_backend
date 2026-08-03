@@ -31,7 +31,7 @@ vi.mock("../../src/modules/users/keycloakAdmin.service", () => ({
   keycloakAdminService: {
     listUsers: vi.fn(),
     createUser: vi.fn(),
-    sendRequiredActionsEmail: vi.fn(),
+    updatePassword: vi.fn(),
     deleteUser: vi.fn(),
   },
 }));
@@ -40,6 +40,10 @@ vi.mock("../../src/utils/password", () => ({
 }));
 vi.mock("../../src/modules/users/employeeProfileCreation.service", () => ({
   employeeProfileCreationService: { applyToNewEmployee: vi.fn() },
+}));
+vi.mock("../../src/config/email", () => ({
+  sendWelcomeCredentialsEmail: vi.fn(),
+  sendPasswordResetCredentialsEmail: vi.fn(),
 }));
 vi.mock("../../src/lib/logger", () => ({
   logger: { info: vi.fn(), error: vi.fn(), warn: vi.fn() },
@@ -50,6 +54,7 @@ import { EmployeePiiModel } from "../../src/employees/EmployeePii";
 import pool from "../../src/config/database";
 import { keycloakAdminService } from "../../src/modules/users/keycloakAdmin.service";
 import { employeeProfileCreationService } from "../../src/modules/users/employeeProfileCreation.service";
+import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from "../../src/config/email";
 import { UsersService } from "../../src/modules/users/users.service";
 
 const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -59,6 +64,8 @@ const kc = keycloakAdminService as unknown as Record<string, ReturnType<typeof v
 const applyToNewEmployeeMock = employeeProfileCreationService.applyToNewEmployee as unknown as ReturnType<
   typeof vi.fn
 >;
+const sendWelcomeCredentialsEmailMock = sendWelcomeCredentialsEmail as unknown as ReturnType<typeof vi.fn>;
+const sendPasswordResetCredentialsEmailMock = sendPasswordResetCredentialsEmail as unknown as ReturnType<typeof vi.fn>;
 
 const hr = { userId: 1, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
 const superAdmin = { userId: 2, employeeId: "SA1", role: UserRole.SUPER_ADMIN } as any;
@@ -202,7 +209,7 @@ describe("UsersService", () => {
       });
       em.findById.mockResolvedValue({ id: 10, employeeId: "EMP100", email: baseDto.email, keycloakSub: null });
       kc.createUser.mockResolvedValue("kc-sub-1");
-      kc.sendRequiredActionsEmail.mockResolvedValue(undefined);
+      sendWelcomeCredentialsEmailMock.mockResolvedValue({ success: true });
 
       const result = await service.create(baseDto, hr);
 
@@ -317,17 +324,31 @@ describe("UsersService", () => {
       await expect(service.resetPassword(1, hr)).rejects.toThrow(ConflictException);
     });
 
-    it("sends the reset email successfully", async () => {
+    it("updates the password in keycloak and sends the reset email successfully", async () => {
       em.findById.mockResolvedValue({ id: 1, keycloakSub: "kc-1", email: "a@b.com" });
-      kc.sendRequiredActionsEmail.mockResolvedValue(undefined);
-      await expect(service.resetPassword(1, hr)).resolves.toBeUndefined();
-      expect(kc.sendRequiredActionsEmail).toHaveBeenCalledWith("kc-1", ["UPDATE_PASSWORD"]);
+      kc.updatePassword.mockResolvedValue(undefined);
+      sendPasswordResetCredentialsEmailMock.mockResolvedValue({ success: true });
+
+      const result = await service.resetPassword(1, hr);
+
+      expect(kc.updatePassword).toHaveBeenCalledWith("kc-1", "Temp1234!@#", true);
+      expect(result).toEqual({ emailSent: true, emailErrorReason: undefined });
     });
 
-    it("throws HttpException(502) when keycloak email sending fails", async () => {
+    it("throws HttpException(502) when the keycloak password update fails", async () => {
       em.findById.mockResolvedValue({ id: 1, keycloakSub: "kc-1", email: "a@b.com" });
-      kc.sendRequiredActionsEmail.mockRejectedValue(new Error("smtp down"));
+      kc.updatePassword.mockRejectedValue(new Error("kc down"));
       await expect(service.resetPassword(1, hr)).rejects.toThrow(HttpException);
+      expect(sendPasswordResetCredentialsEmailMock).not.toHaveBeenCalled();
+    });
+
+    it("does not throw when the reset email fails, and reports emailSent=false", async () => {
+      em.findById.mockResolvedValue({ id: 1, keycloakSub: "kc-1", email: "a@b.com" });
+      kc.updatePassword.mockResolvedValue(undefined);
+      sendPasswordResetCredentialsEmailMock.mockResolvedValue({ success: false, error: "smtp down" });
+
+      const result = await service.resetPassword(1, hr);
+      expect(result).toEqual({ emailSent: false, emailErrorReason: "smtp down" });
     });
   });
 
@@ -383,18 +404,19 @@ describe("UsersService", () => {
     it("provisions a new keycloak user and sends the onboarding email", async () => {
       em.findById.mockResolvedValue({ id: 1, keycloakSub: null, email: "a@b.com", firstName: "A", lastName: "B", role: UserRole.EMPLOYEE });
       kc.createUser.mockResolvedValue("kc-new");
-      kc.sendRequiredActionsEmail.mockResolvedValue(undefined);
+      sendWelcomeCredentialsEmailMock.mockResolvedValue({ success: true });
       const result = await service.provisionKeycloak(1);
       expect(em.linkKeycloakSub).toHaveBeenCalledWith(1, "kc-new");
-      expect(result).toEqual({ alreadyProvisioned: false, keycloakSub: "kc-new", onboardingEmailSent: true });
+      expect(result).toEqual({ alreadyProvisioned: false, keycloakSub: "kc-new", onboardingEmailSent: true, emailErrorReason: undefined });
     });
 
     it("still succeeds but flags onboardingEmailSent=false when the email fails", async () => {
       em.findById.mockResolvedValue({ id: 1, keycloakSub: null, email: "a@b.com", firstName: "A", lastName: "B", role: UserRole.EMPLOYEE });
       kc.createUser.mockResolvedValue("kc-new");
-      kc.sendRequiredActionsEmail.mockRejectedValue(new Error("smtp down"));
+      sendWelcomeCredentialsEmailMock.mockResolvedValue({ success: false, error: "smtp down" });
       const result = await service.provisionKeycloak(1);
       expect(result.onboardingEmailSent).toBe(false);
+      expect(result.emailErrorReason).toBe("smtp down");
     });
   });
 });
