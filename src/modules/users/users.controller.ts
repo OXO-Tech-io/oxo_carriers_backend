@@ -91,8 +91,11 @@ export class UsersController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async resetPassword(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {
-    await this.usersService.resetPassword(id, employee);
-    return { success: true, message: 'Password reset email has been sent to the user' };
+    const result = await this.usersService.resetPassword(id, employee);
+    const message = result.emailSent
+      ? 'Password has been reset. An email with the new temporary password has been sent to the user.'
+      : `Password has been reset, but the notification email could not be sent${result.emailErrorReason ? `: ${result.emailErrorReason}` : ''}.`;
+    return { success: true, message };
   }
 
   @Delete(':id')

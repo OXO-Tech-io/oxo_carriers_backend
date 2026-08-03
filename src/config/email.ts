@@ -6,6 +6,7 @@ import {
   getPasswordResetEmailHtml,
   getEmailVerificationEmailHtml,
   getWelcomeCredentialsEmailHtml,
+  getPasswordResetCredentialsEmailHtml,
   AuthEmailParams
 } from '../templates/authTemplates';
 import {
@@ -90,8 +91,9 @@ export const sendHtmlEmail = async (
 ): Promise<any> => {
   const transporter = getTransporter();
   if (!transporter) {
-    log.error('Email configuration incomplete — SMTP transporter could not be initialized');
-    return null;
+    const error = 'Email configuration incomplete — SMTP transporter could not be initialized';
+    log.error(error);
+    return { success: false, error };
   }
 
   const from = env.SMTP_FROM || `"OXO Carriers" <${env.SMTP_USER}>`;
@@ -114,8 +116,9 @@ export const sendHtmlEmail = async (
       success: true,
     };
   } catch (error: any) {
+    const reason = error?.message || String(error);
     log.error({ err: error, to }, 'SMTP send failed');
-    return null;
+    return { success: false, error: reason };
   }
 };
 
@@ -182,6 +185,20 @@ export const sendEmail = async (
 
   const text = templateParams.message || templateParams.message_body || subject;
   return sendHtmlEmail(to, subject, html, text);
+};
+
+// ─── Auth / credentials email helpers ─────────────────────────────────────────
+// Sent directly via SMTP (Brevo) instead of Keycloak's own required-actions
+// email, which depends on the realm's SMTP config being set up separately.
+
+export const sendWelcomeCredentialsEmail = async (email: string, params: AuthEmailParams) => {
+  const html = getWelcomeCredentialsEmailHtml(params);
+  return sendHtmlEmail(email, 'Welcome to OXO Carriers - Account Credentials', html, `Your temporary password: ${params.password}`);
+};
+
+export const sendPasswordResetCredentialsEmail = async (email: string, params: AuthEmailParams) => {
+  const html = getPasswordResetCredentialsEmailHtml(params);
+  return sendHtmlEmail(email, 'Password Reset - OXO Carriers', html, `Your temporary password: ${params.password}`);
 };
 
 // ─── Leave management email helpers ───────────────────────────────────────────

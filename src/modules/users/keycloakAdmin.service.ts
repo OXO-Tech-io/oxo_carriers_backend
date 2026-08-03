@@ -227,13 +227,13 @@ export const keycloakAdminService = {
     }
   },
 
-  async updatePassword(userId: string, password: string): Promise<void> {
+  async updatePassword(userId: string, password: string, temporary = false): Promise<void> {
     const res = await adminFetch(`/users/${userId}/reset-password`, {
       method: 'PUT',
       body: JSON.stringify({
         type: 'password',
         value: password,
-        temporary: false,
+        temporary,
       }),
     });
     if (!res.ok) {

@@ -98,10 +98,19 @@ describe("UsersController", () => {
     expect(result.message).toBe("Role updated from 'employee' to 'hr_manager'");
   });
 
-  it("resetPassword returns a success envelope", async () => {
-    service.resetPassword.mockResolvedValue(undefined);
+  it("resetPassword returns a success envelope when the email sends", async () => {
+    service.resetPassword.mockResolvedValue({ emailSent: true });
     const result = await controller.resetPassword(1, employee);
-    expect(result).toEqual({ success: true, message: "Password reset email has been sent to the user" });
+    expect(result).toEqual({
+      success: true,
+      message: "Password has been reset. An email with the new temporary password has been sent to the user.",
+    });
+  });
+
+  it("resetPassword reports the email failure when it fails", async () => {
+    service.resetPassword.mockResolvedValue({ emailSent: false, emailErrorReason: "smtp down" });
+    const result = await controller.resetPassword(1, employee);
+    expect(result.message).toContain("smtp down");
   });
 
   it("delete returns a success envelope", async () => {
