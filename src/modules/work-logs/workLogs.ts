@@ -1,4 +1,4 @@
-import { pgTable, serial, varchar, text, date, numeric, timestamp } from 'drizzle-orm/pg-core';
+import { pgTable, serial, varchar, text, date, numeric, timestamp, boolean } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
 
@@ -14,6 +14,13 @@ export const workLogs = pgTable('tbl_work_logs', {
     taskDescription: text('task_description').notNull(),
     hoursSpent: numeric('hours_spent', { precision: 5, scale: 2 }).notNull(),
     remarks: text('remarks'),
+    // Submission deadline outcome, stamped at insert time by
+    // WorkLogDeadlineService (see workLogSettings.ts). Late entries are
+    // accepted, never rejected - the flag exists so HR can see lateness.
+    // deadlineAt is null when no deadline applied (feature disabled, or the
+    // work date fell on a weekend or a leave-calendar holiday).
+    isLate: boolean('is_late').notNull().default(false),
+    deadlineAt: timestamp('deadline_at'),
     createdAt: timestamp('created_at').defaultNow(),
 });
 

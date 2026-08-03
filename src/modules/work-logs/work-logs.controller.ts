@@ -1,13 +1,20 @@
-import { Body, Controller, Get, HttpCode, Post, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
+import { PermissionGuard } from '../../common/guards/permission.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
+import { hasPermission } from '../../middleware/permissions';
 import { JwtPayload, UserRole } from '../../types';
 import { WorkLogsService } from './work-logs.service';
 import { SubmitWorkLogsDto } from './dto/submit-work-logs.dto';
 import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
+import { UpdateWorkLogDeadlineDto } from './dto/update-work-log-deadline.dto';
+import { GetWorkLogDeadlineQueryDto } from './dto/get-work-log-deadline-query.dto';
+import { GetWorkLogDailyStatusQueryDto } from './dto/get-work-log-daily-status-query.dto';
 import { workLogsExcelMulterOptions } from './work-logs.upload';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -22,6 +29,30 @@ export class WorkLogsController {
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
     res.setHeader('Content-Disposition', 'attachment; filename=work-log-template.xlsx');
     res.send(buffer);
+  }
+
+  /**
+   * Readable by every authenticated employee - the Work Log page shows the
+   * cut-off so people know when a submission starts counting as late.
+   * `canEdit` mirrors what PUT below will allow, so the settings card only
+   * renders for callers who can actually save it.
+   */
+  @Get('deadline')
+  async getDeadline(@Query() query: GetWorkLogDeadlineQueryDto, @CurrentEmployee() employee: JwtPayload) {
+    const deadline = await this.workLogsService.getDeadline(query.workDate);
+    const canEdit =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.WORK_LOGS, 'write')));
+    return { success: true, message: 'Work log deadline fetched', data: { ...deadline, canEdit } };
+  }
+
+  @Put('deadline')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
+  async updateDeadline(@Body() dto: UpdateWorkLogDeadlineDto, @CurrentEmployee() employee: JwtPayload) {
+    const deadline = await this.workLogsService.updateDeadline(employee.userId ?? null, dto);
+    // The guard already established the caller may edit.
+    return { success: true, message: 'Work log deadline updated', data: { ...deadline, canEdit: true } };
   }
 
   @Get('mine')
@@ -44,6 +75,16 @@ export class WorkLogsController {
   async getSummary(@Query() query: ListWorkLogsQueryDto) {
     const summary = await this.workLogsService.getSummary(query);
     return { success: true, message: 'Work log summary fetched', data: summary };
+  }
+
+  /** Attendance-style snapshot for the All Work Logs admin page: how many of the
+   *  employees expected to log work today have done so, and on time. */
+  @Get('daily-status')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HR_MANAGER)
+  async getDailyStatus(@Query() query: GetWorkLogDailyStatusQueryDto) {
+    const status = await this.workLogsService.getDailyStatus(query);
+    return { success: true, message: 'Work log daily status fetched', data: status };
   }
 
   @Get('reports/summary')

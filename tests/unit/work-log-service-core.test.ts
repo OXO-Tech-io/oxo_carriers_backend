@@ -15,6 +15,18 @@ vi.mock("../../src/modules/work-logs/WorkLog", () => ({
 vi.mock("../../src/employees/Employee", () => ({
   EmployeeModel: { findById: vi.fn() },
 }));
+// The deadline stamp hits tbl_work_log_settings + tbl_leave_calendar; it has its
+// own coverage in work-log-deadline.test.ts, so it's stubbed here to keep these
+// DB-free. "No deadline applied" is what an unconfigured install returns.
+vi.mock("../../src/modules/work-logs/work-log-deadline.service", () => ({
+  WorkLogDeadlineService: class {
+    async evaluateMany(workDates: string[]) {
+      return workDates.map(() => ({ deadlineAt: null, isLate: false, exemptReason: "disabled" as const }));
+    }
+  },
+}));
+const { poolQuery } = vi.hoisted(() => ({ poolQuery: vi.fn() }));
+vi.mock("../../src/config/database", () => ({ default: { query: poolQuery } }));
 
 import { WorkLogModel } from "../../src/modules/work-logs/WorkLog";
 import { EmployeeModel } from "../../src/employees/Employee";
@@ -51,7 +63,15 @@ describe("workLogService (core)", () => {
       { workDate: "2026-01-01", taskDescription: "Task", hoursSpent: 4 },
     ] as any);
     expect(wlm.createMany).toHaveBeenCalledWith([
-      { employeeId: "EMP1", workDate: "2026-01-01", taskDescription: "Task", hoursSpent: 4, remarks: null },
+      {
+        employeeId: "EMP1",
+        workDate: "2026-01-01",
+        taskDescription: "Task",
+        hoursSpent: 4,
+        remarks: null,
+        isLate: false,
+        deadlineAt: null,
+      },
     ]);
   });
 
@@ -67,6 +87,50 @@ describe("workLogService (core)", () => {
     await workLogService.listAll({});
     expect(wlm.listAll).toHaveBeenCalledWith({ employeeId: undefined, from: undefined, to: undefined });
     expect(em.findById).not.toHaveBeenCalled();
+  });
+
+  describe("getDailyStatus", () => {
+    it("combines eligible-employee count with the day's summary rows", async () => {
+      wlm.summaryByUser.mockResolvedValue([
+        { employeeId: "EMP1", firstName: "A", lastName: "B", totalHours: 4, entryCount: 1, lateCount: 0 },
+        { employeeId: "EMP2", firstName: "C", lastName: "D", totalHours: 2, entryCount: 1, lateCount: 1 },
+      ]);
+      poolQuery.mockResolvedValue({ rows: [{ count: "5" }] });
+
+      const status = await workLogService.getDailyStatus("2026-08-03");
+
+      expect(wlm.summaryByUser).toHaveBeenCalledWith({ from: "2026-08-03", to: "2026-08-03" });
+      expect(poolQuery).toHaveBeenCalledWith(expect.stringContaining("tbl_user_permissions"), ["work_logs"]);
+      expect(status).toEqual({
+        date: "2026-08-03",
+        totalEligible: 5,
+        submittedCount: 2,
+        onTimeCount: 1,
+        lateCount: 1,
+        pendingCount: 3,
+      });
+    });
+
+    it("defaults to today when no date is given", async () => {
+      wlm.summaryByUser.mockResolvedValue([]);
+      poolQuery.mockResolvedValue({ rows: [{ count: "0" }] });
+
+      const today = new Date().toISOString().slice(0, 10);
+      const status = await workLogService.getDailyStatus();
+
+      expect(status.date).toBe(today);
+      expect(wlm.summaryByUser).toHaveBeenCalledWith({ from: today, to: today });
+    });
+
+    it("clamps pendingCount at zero when more employees submitted than are recorded eligible", async () => {
+      wlm.summaryByUser.mockResolvedValue([
+        { employeeId: "EMP1", firstName: "A", lastName: "B", totalHours: 4, entryCount: 1, lateCount: 0 },
+      ]);
+      poolQuery.mockResolvedValue({ rows: [{ count: "0" }] });
+
+      const status = await workLogService.getDailyStatus("2026-08-03");
+      expect(status.pendingCount).toBe(0);
+    });
   });
 
   it("generateSummaryReport builds a workbook with one row per summary entry", async () => {

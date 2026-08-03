@@ -9,6 +9,9 @@ export type WorkLogInput = {
   taskDescription: string;
   hoursSpent: number;
   remarks?: string | null;
+  // Stamped by WorkLogDeadlineService before insert - see work-log-deadline.service.ts.
+  isLate?: boolean;
+  deadlineAt?: Date | null;
 };
 
 export interface WorkLogUserSummary {
@@ -18,13 +21,19 @@ export interface WorkLogUserSummary {
   lastName: string;
   totalHours: number;
   entryCount: number;
+  lateCount: number;
 }
 
 export class WorkLogModel {
   static async create(data: WorkLogInput): Promise<DrizzleWorkLog> {
     const [inserted] = await db
       .insert(workLogs)
-      .values({ ...data, hoursSpent: String(data.hoursSpent) })
+      .values({
+        ...data,
+        hoursSpent: String(data.hoursSpent),
+        isLate: data.isLate ?? false,
+        deadlineAt: data.deadlineAt ?? null,
+      })
       .returning();
     if (!inserted) throw new Error('Failed to create work log');
     return inserted;
@@ -73,6 +82,7 @@ export class WorkLogModel {
         employeeId: workLogs.employeeId,
         totalHours: sql<string>`SUM(${workLogs.hoursSpent})`,
         entryCount: sql<string>`COUNT(*)`,
+        lateCount: sql<string>`COUNT(*) FILTER (WHERE ${workLogs.isLate})`,
       })
       .from(workLogs)
       .innerJoin(users, eq(workLogs.employeeId, users.employeeId))
@@ -89,6 +99,7 @@ export class WorkLogModel {
         lastName: emp?.lastName ?? '',
         totalHours: Number(row.totalHours),
         entryCount: Number(row.entryCount),
+        lateCount: Number(row.lateCount),
       };
     });
     summaries.sort((a, b) => a.firstName.localeCompare(b.firstName) || a.lastName.localeCompare(b.lastName));
