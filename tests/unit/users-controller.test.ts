@@ -48,7 +48,7 @@ describe("UsersController", () => {
     it("returns the 'provisioning skipped' message when keycloak wasn't provisioned", async () => {
       service.create.mockResolvedValue({ id: 1, keycloak: { provisioned: false } });
       const result = await controller.create({} as any, employee);
-      expect(result.message).toContain("provisioning was skipped or failed");
+      expect(result.message).toContain("Keycloak provisioning failed");
     });
 
     it("returns the onboarding-email-sent message when provisioned successfully", async () => {
