@@ -6,7 +6,7 @@ async function fixLeaveBalances() {
 
     // Update all remaining_days to be calculated from total_days - used_days
     const updateResult = await pool.query(
-      `UPDATE employee_leave_balance
+      `UPDATE tbl_employee_leave_balance
        SET remaining_days = total_days - used_days
        WHERE remaining_days != (total_days - used_days) OR remaining_days IS NULL`
     );
@@ -15,8 +15,8 @@ async function fixLeaveBalances() {
 
     // Also ensure all users have leave balances for current year
     const currentYear = new Date().getFullYear();
-    const usersResult = await pool.query('SELECT id FROM users');
-    const leaveTypesResult = await pool.query('SELECT id, max_days FROM leave_types WHERE is_active = true');
+    const usersResult = await pool.query('SELECT id FROM tbl_employee');
+    const leaveTypesResult = await pool.query('SELECT id, max_days FROM tbl_leave_types WHERE is_active = true');
 
     const userList = usersResult.rows as any[];
     const typesList = leaveTypesResult.rows as any[];
@@ -26,7 +26,7 @@ async function fixLeaveBalances() {
       for (const type of typesList) {
         // Check if balance exists
         const existing = await pool.query(
-          'SELECT id FROM employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
+          'SELECT id FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
           [user.id, type.id, currentYear]
         );
 
@@ -34,7 +34,7 @@ async function fixLeaveBalances() {
         if (existingList.length === 0) {
           // Create missing balance
           await pool.query(
-            'INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+            'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
             [user.id, type.id, type.max_days, type.max_days, currentYear]
           );
           created++;

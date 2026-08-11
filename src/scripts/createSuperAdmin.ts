@@ -15,9 +15,12 @@ import dotenv from 'dotenv';
 import path from 'path';
 dotenv.config({ path: path.resolve(process.cwd(), '.env') });
 
-import pool from '../config/database';
+import { EmployeeModel } from '../employees/Employee';
 import { UserRole } from '../types';
 
+// Goes through EmployeeModel (not raw INSERT/UPDATE) so email/first_name/
+// last_name get encrypted and email_hash gets populated the same way the
+// live app does it - see src/models/Employee.ts.
 async function run() {
   const email    = process.env.SA_EMAIL    || 'superadmin@oxocareers.com';
   const firstName = process.env.SA_FNAME   || 'Super';
@@ -26,45 +29,34 @@ async function run() {
 
   console.log(`[Seed] Creating Super Admin: ${email}`);
 
-  const client = await pool.connect();
   try {
-    // Check if user already exists
-    const existing = await client.query<{ id: number; role: string }>(
-      'SELECT id, role FROM users WHERE email = $1 LIMIT 1',
-      [email]
-    );
+    const existing = await EmployeeModel.findByEmail(email);
 
-    if (existing.rows.length > 0) {
-      const user = existing.rows[0];
-      if (user.role === UserRole.SUPER_ADMIN) {
-        console.log(`[Seed] ✅ Super Admin already exists (id=${user.id}). Nothing to do.`);
+    if (existing) {
+      if (existing.role === UserRole.SUPER_ADMIN) {
+        console.log(`[Seed] ✅ Super Admin already exists (id=${existing.id}). Nothing to do.`);
         return;
       }
-      // Upgrade existing user to super_admin
-      await client.query(
-        "UPDATE users SET role = 'super_admin' WHERE id = $1",
-        [user.id]
-      );
-      console.log(`[Seed] ✅ Upgraded existing user (id=${user.id}) to super_admin.`);
+      await EmployeeModel.update(existing.id, { role: UserRole.SUPER_ADMIN });
+      console.log(`[Seed] ✅ Upgraded existing user (id=${existing.id}) to super_admin.`);
       return;
     }
 
-    const result = await client.query<{ id: number }>(
-      `INSERT INTO users
-         (employee_id, email, first_name, last_name, role, email_verified)
-       VALUES ($1, $2, $3, $4, 'super_admin', true)
-       RETURNING id`,
-      [employeeId, email, firstName, lastName]
-    );
+    const created = await EmployeeModel.create({
+      employee_id: employeeId,
+      email,
+      first_name: firstName,
+      last_name: lastName,
+      role: UserRole.SUPER_ADMIN,
+    });
 
     console.log(`[Seed] ✅ Super Admin created successfully.`);
-    console.log(`       ID:       ${result.rows[0].id}`);
+    console.log(`       ID:       ${created.id}`);
     console.log(`       Email:    ${email}`);
   } catch (err: any) {
     console.error('[Seed] ❌ Error:', err.message);
     process.exit(1);
   } finally {
-    client.release();
     process.exit(0);
   }
 }

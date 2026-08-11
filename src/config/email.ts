@@ -6,6 +6,7 @@ import {
   getPasswordResetEmailHtml,
   getEmailVerificationEmailHtml,
   getWelcomeCredentialsEmailHtml,
+  getPasswordResetCredentialsEmailHtml,
   AuthEmailParams
 } from '../templates/authTemplates';
 import {
@@ -29,6 +30,17 @@ import {
   getVoucherRejectedHtml,
   VoucherEmailParams
 } from '../templates/voucherTemplates';
+import {
+  getProfileChangeSubmittedEmailHtml,
+  getProfileChangeApprovedEmailHtml,
+  getProfileChangeRejectedEmailHtml,
+  getProfileChangeReturnedEmailHtml,
+  ProfileChangeEmailParams
+} from '../templates/profileChangeTemplates';
+import {
+  getCommunicationEmailHtml,
+  CommunicationEmailParams
+} from '../templates/communicationTemplates';
 
 const log = baseLogger.child({ module: 'email' });
 
@@ -79,8 +91,9 @@ export const sendHtmlEmail = async (
 ): Promise<any> => {
   const transporter = getTransporter();
   if (!transporter) {
-    log.error('Email configuration incomplete — SMTP transporter could not be initialized');
-    return null;
+    const error = 'Email configuration incomplete — SMTP transporter could not be initialized';
+    log.error(error);
+    return { success: false, error };
   }
 
   const from = env.SMTP_FROM || `"OXO Carriers" <${env.SMTP_USER}>`;
@@ -103,8 +116,9 @@ export const sendHtmlEmail = async (
       success: true,
     };
   } catch (error: any) {
+    const reason = error?.message || String(error);
     log.error({ err: error, to }, 'SMTP send failed');
-    return null;
+    return { success: false, error: reason };
   }
 };
 
@@ -173,87 +187,18 @@ export const sendEmail = async (
   return sendHtmlEmail(to, subject, html, text);
 };
 
-// ─── Template helpers ─────────────────────────────────────────────────────
+// ─── Auth / credentials email helpers ─────────────────────────────────────────
+// Sent directly via SMTP (Brevo) instead of Keycloak's own required-actions
+// email, which depends on the realm's SMTP config being set up separately.
 
-export const sendEmployeeCredentials = async (
-  email: string,
-  employeeId: string,
-  password: string,
-  firstName: string,
-) => {
-  const subject = 'Welcome to OXO Carriers - Your Login Credentials';
-  const params = {
-    firstName,
-    employeeId,
-    email,
-    password,
-    message_body:
-      'Your account for the OXO Carriers Portal has been successfully created. Please use the temporary credentials below to access your portal.',
-    button_text: 'Go to Login Portal',
-    loginUrl: env.FRONTEND_URL ?? FRONTEND_FALLBACK,
-  };
-
-  return sendEmail(email, subject, params);
+export const sendWelcomeCredentialsEmail = async (email: string, params: AuthEmailParams) => {
+  const html = getWelcomeCredentialsEmailHtml(params);
+  return sendHtmlEmail(email, 'Welcome to OXO Carriers - Account Credentials', html, `Your temporary password: ${params.password}`);
 };
 
-export const sendPasswordSetupEmail = async (
-  email: string,
-  setupToken: string,
-  firstName: string,
-  employeeId: string,
-) => {
-  const subject = 'Set Up Your Password - OXO Carriers';
-  const setupLink = `${env.FRONTEND_URL ?? FRONTEND_FALLBACK}/reset-password?token=${setupToken}`;
-
-  const params = {
-    firstName,
-    employeeId,
-    setupLink,
-    expiry: '7 days',
-    message_body:
-      'We are excited to have you on board! To get started, please use the button below to set up your secure account password.',
-    button_text: 'Complete Password Setup',
-  };
-
-  return sendEmail(email, subject, params);
-};
-
-export const sendPasswordResetEmail = async (
-  email: string,
-  resetToken: string,
-  firstName: string,
-) => {
-  const subject = 'Password Reset - OXO Carriers';
-  const resetLink = `${env.FRONTEND_URL ?? FRONTEND_FALLBACK}/reset-password?token=${resetToken}`;
-
-  const params = {
-    firstName,
-    resetLink,
-    expiry: '1 hour',
-    message_body:
-      'We received a request to reset your password. If you did not make this request, you can safely ignore this email.',
-    button_text: 'Reset My Password',
-  };
-
-  return sendEmail(email, subject, params);
-};
-
-export const sendEmailVerificationEmail = async (
-  email: string,
-  verificationToken: string,
-  firstName: string,
-) => {
-  const subject = 'Verify Your Email Address - OXO Carriers';
-  const frontendUrl = env.FRONTEND_URL ?? FRONTEND_FALLBACK;
-  const verificationLink = `${frontendUrl}/verify-email?token=${verificationToken}`;
-
-  const params = {
-    firstName,
-    verificationLink,
-    expiry: '24 hours',
-  };
-
-  return sendEmail(email, subject, params);
+export const sendPasswordResetCredentialsEmail = async (email: string, params: AuthEmailParams) => {
+  const html = getPasswordResetCredentialsEmailHtml(params);
+  return sendHtmlEmail(email, 'Password Reset - OXO Carriers', html, `Your temporary password: ${params.password}`);
 };
 
 // ─── Leave management email helpers ───────────────────────────────────────────
@@ -316,6 +261,39 @@ export const sendVoucherRejectedEmail = async (email: string, params: VoucherEma
   const html = getVoucherRejectedHtml(params);
   const subject = `Voucher Request Rejected`;
   return sendHtmlEmail(email, subject, html);
+};
+
+// ─── Profile change request email helpers ─────────────────────────────────────
+
+export const sendProfileChangeSubmittedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeSubmittedEmailHtml(params);
+  const subject = `Profile Change Request Submitted - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeApprovedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeApprovedEmailHtml(params);
+  const subject = `Profile Change Request Approved - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeRejectedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeRejectedEmailHtml(params);
+  const subject = `Profile Change Request Rejected - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+export const sendProfileChangeReturnedEmail = async (email: string, params: ProfileChangeEmailParams) => {
+  const html = getProfileChangeReturnedEmailHtml(params);
+  const subject = `Profile Change Request Returned for Modification - ${params.referenceNumber}`;
+  return sendHtmlEmail(email, subject, html);
+};
+
+// ─── Employee communication email helpers ─────────────────────────────────────
+
+export const sendCommunicationEmail = async (email: string, params: CommunicationEmailParams) => {
+  const html = getCommunicationEmailHtml(params);
+  return sendHtmlEmail(email, params.title, html);
 };
 
 // ─── Diagnostic helpers ───────────────────────────────────────────────────────

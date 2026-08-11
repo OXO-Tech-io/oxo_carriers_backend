@@ -3,15 +3,17 @@ import {
   AccessLevel,
   PermissionAssignment,
   PermissionKey,
-} from "../constants/permissions";
-import { PERMISSION_QUERIES } from "../constants/dbQueries";
+} from "../common/constants/permissions";
+import { PERMISSION_QUERIES } from "../modules/permissions/dbQueries";
 
+// tbl_user_permissions is keyed by the caller's business employee_id (varchar),
+// not the numeric tbl_employee.id - callers should pass JwtPayload.employeeId.
 export const getUserPermissionAssignments = async (
-  userId: number,
+  employeeId: string,
 ): Promise<PermissionAssignment[]> => {
   const result = await pool.query(
     PERMISSION_QUERIES.GET_USER_PERMISSIONS,
-    [userId],
+    [employeeId],
   );
 
   return (
@@ -23,20 +25,20 @@ export const getUserPermissionAssignments = async (
 };
 
 export const getUserPermissionKeys = async (
-  userId: number,
+  employeeId: string,
 ): Promise<PermissionKey[]> => {
-  const assignments = await getUserPermissionAssignments(userId);
+  const assignments = await getUserPermissionAssignments(employeeId);
   return assignments.map((item) => item.key);
 };
 
 export const hasPermission = async (
-  userId: number,
+  employeeId: string,
   permissionKey: PermissionKey,
   requiredLevel: AccessLevel = "read",
 ): Promise<boolean> => {
   const result = await pool.query(
     PERMISSION_QUERIES.CHECK_PERMISSION,
-    [userId, permissionKey, requiredLevel],
+    [employeeId, permissionKey, requiredLevel],
   );
 
   return (result.rows as any[]).length > 0;

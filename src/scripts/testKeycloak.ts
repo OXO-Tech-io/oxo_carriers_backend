@@ -1,5 +1,5 @@
 import { env } from '../config/env';
-import { keycloakAdminService } from '../services/keycloakAdmin.service';
+import { keycloakAdminService } from '../modules/users/keycloakAdmin.service';
 import { UserRole } from '../types';
 
 async function main() {
@@ -31,10 +31,6 @@ async function main() {
     console.log('\n🔑 Step 3: Testing password update (reset-password)...');
     await keycloakAdminService.updatePassword(kcSub, 'UpdatedPassword@123');
     console.log('✓ Success! Password updated in Keycloak.');
-
-    console.log('\n📧 Step 4: Testing email verification update...');
-    await keycloakAdminService.verifyEmail(kcSub);
-    console.log('✓ Success! Email marked as verified in Keycloak.');
 
     console.log('\n========================================================================');
     console.log('🎉 Diagnostics Completed: Keycloak integration is fully functional!');
