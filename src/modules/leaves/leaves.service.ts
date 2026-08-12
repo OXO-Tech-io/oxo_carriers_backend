@@ -35,7 +35,20 @@ export class LeavesService {
   }
 
   async listLeaveRequests(employee: JwtPayload, query: ListLeaveRequestsQueryDto) {
-    return leaveService.listLeaveRequests(this.requireEmployeeId(employee), employee.role, query);
+    const employeeId = this.requireEmployeeId(employee);
+    const requests = await leaveService.listLeaveRequests(employeeId, employee.role, query);
+
+    // The Pending Approvals tab (status=pending, non-employee role) is for
+    // reviewing OTHER people's leave - an approver's own pending request
+    // would otherwise show up in their own approval queue, which reads as
+    // self-approval. Excluded here rather than in the shared LeaveModel
+    // query since other callers (e.g. the History tab) still want every
+    // request, including the requester's own.
+    if (query.status === 'pending' && employee.role !== UserRole.EMPLOYEE) {
+      return requests.filter((request) => request.employee_id !== employeeId);
+    }
+
+    return requests;
   }
 
   async getLeaveRequestById(employee: JwtPayload, id: number) {

@@ -22,6 +22,7 @@ export const PERMISSIONS = {
   FORMS: "forms",
   WORK_LOGS: "work_logs",
   GROUPS: "groups",
+  NOTICES: "notices",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -54,7 +55,8 @@ export interface PermissionDefinition {
     | "events"
     | "forms"
     | "work_logs"
-    | "groups";
+    | "groups"
+    | "notices";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -199,6 +201,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     description:
       "Can create and manage employee groups (name, members), and use them as recipients for communications and forms.",
     group: "groups",
+  },
+  {
+    key: PERMISSIONS.NOTICES,
+    label: "Notices",
+    description:
+      "Write access lets a user create and update notice board announcements, visible to every employee and system user on their dashboard.",
+    group: "notices",
   },
 ];
 

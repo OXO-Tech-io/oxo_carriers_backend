@@ -7,7 +7,7 @@ import { keycloakAdminService } from './keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../../utils/password';
 import { employeeProfileCreationService } from './employeeProfileCreation.service';
 import { createEmployeeProfileSchema } from '../../validators/employeeProfileCreation.validator';
-import { UserRole, JwtPayload } from '../../types';
+import { UserRole, EmployeeStatus, JwtPayload } from '../../types';
 import { logger } from '../../lib/logger';
 import { env } from '../../config/env';
 import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from '../../config/email';
@@ -337,6 +337,49 @@ export class UsersService {
     );
 
     return { id: userId, previous_role: previousRole, new_role: role };
+  }
+
+  /**
+   * Active: can log in normally. Inactive/on_hold: JwtAuthGuard rejects them
+   * even with a still-valid JWT (see jwt-auth.guard.ts), and the Keycloak
+   * account is disabled alongside this so they're also blocked at the SSO
+   * login screen itself - best-effort, doesn't roll back the DB change if
+   * Keycloak sync fails (matches how Keycloak provisioning failures are
+   * handled elsewhere in this service).
+   */
+  async updateStatus(userId: number, status: EmployeeStatus, requester: JwtPayload) {
+    const canManageStatus =
+      isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    if (!canManageStatus) {
+      throw new ForbiddenException('Only HR or Super Admin can change employee status');
+    }
+    if (requester.userId === userId) {
+      throw new BadRequestException('Cannot change your own account status');
+    }
+
+    const targetUser = await EmployeeModel.findById(userId);
+    if (!targetUser) throw new NotFoundException('User not found');
+
+    const previousStatus = targetUser.status;
+    const updated = await EmployeeModel.update(userId, { status });
+    if (!updated) {
+      throw new BadRequestException('Failed to update status');
+    }
+
+    if (targetUser.keycloakSub) {
+      try {
+        await keycloakAdminService.setEnabled(targetUser.keycloakSub, status === EmployeeStatus.ACTIVE);
+      } catch (kcError: any) {
+        logger.error({ err: kcError, userId }, 'Failed to sync employee status to Keycloak');
+      }
+    }
+
+    logger.info(
+      { actorId: requester.userId, targetUserId: userId, previousStatus, newStatus: status },
+      'Employee status changed',
+    );
+
+    return { id: userId, previous_status: previousStatus, new_status: status };
   }
 
   async provisionKeycloak(userId: number) {

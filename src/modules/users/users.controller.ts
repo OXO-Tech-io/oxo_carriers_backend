@@ -7,6 +7,7 @@ import { UsersService } from './users.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
+import { UpdateUserStatusDto } from './dto/update-user-status.dto';
 
 @Controller('users')
 export class UsersController {
@@ -85,6 +86,18 @@ export class UsersController {
   ) {
     const result = await this.usersService.updateRole(id, dto.role, employee);
     return { success: true, message: `Role updated from '${result.previous_role}' to '${result.new_role}'`, user: result };
+  }
+
+  @Patch(':id/status')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  async updateStatus(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateUserStatusDto,
+    @CurrentEmployee() employee: JwtPayload,
+  ) {
+    const result = await this.usersService.updateStatus(id, dto.status, employee);
+    return { success: true, message: `Status updated from '${result.previous_status}' to '${result.new_status}'`, user: result };
   }
 
   @Post(':id/password-resets')

@@ -26,3 +26,5 @@ export * from '../../modules/forms/forms';
 export * from '../../modules/work-logs/workLogs';
 export * from '../../modules/work-logs/workLogSettings';
 export * from '../../modules/groups/groups';
+export * from '../../modules/notices/notices';
+export * from '../../modules/attendance/attendance.schema';

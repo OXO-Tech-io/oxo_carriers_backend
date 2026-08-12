@@ -23,6 +23,8 @@ export const userRoleEnum = pgEnum('user_role', [
 
 export const userTitleEnum = pgEnum('user_title', ['mr', 'ms', 'mrs', 'dr', 'prof']);
 
+export const employeeStatusEnum = pgEnum('employee_status', ['active', 'inactive', 'on_hold']);
+
 // Employee Type Table (e.g. permanent, contract, intern)
 export const employeeType = pgTable('tbl_employee_type', {
     id: serial('id').primaryKey(),
@@ -46,6 +48,11 @@ export const employee = pgTable('tbl_employee', {
     firstName: varchar('first_name', { length: 500 }).notNull(),
     lastName: varchar('last_name', { length: 500 }).notNull(),
     role: userRoleEnum('role').notNull(),
+    // Controls login: JwtAuthGuard rejects non-'active' employees even with a
+    // still-valid JWT, and the Keycloak account itself is disabled alongside
+    // this (see keycloakAdminService.setEnabled) so inactive/on_hold users
+    // can't get past the SSO login screen either.
+    status: employeeStatusEnum('status').notNull().default('active'),
     title: userTitleEnum('title'),
     employeeTypeId: integer('employee_type_id').references(() => employeeType.id),
     department: varchar('department', { length: 100 }),

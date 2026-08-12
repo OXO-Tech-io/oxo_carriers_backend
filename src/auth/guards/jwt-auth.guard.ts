@@ -101,6 +101,19 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
+    // Blocked even with a still-valid JWT - the Keycloak account itself is
+    // also disabled when status is set away from 'active' (see
+    // keycloakAdminService.setEnabled), but that alone doesn't invalidate
+    // tokens already issued before the account was disabled.
+    if (employee.status !== 'active') {
+      log.warn({ keycloakSub: claims.sub, email: claims.email, status: employee.status }, 'Blocked login for non-active employee');
+      throw new UnauthorizedException(
+        employee.status === 'on_hold'
+          ? 'Your account is on hold. Contact HR for assistance.'
+          : 'Your account is inactive. Contact HR for assistance.',
+      );
+    }
+
     log.info(
       {
         keycloakSub: claims.sub,

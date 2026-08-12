@@ -1,0 +1,45 @@
+import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'drizzle-orm/pg-core';
+import { relations } from 'drizzle-orm';
+import { employee } from '../../employees/employee.schema';
+
+// Mirrors drizzle/0013_add_attendance_tracking.sql's tbl_employee_work_sessions
+// exactly. Only this table has application code on top of it so far - the
+// migration's other five tables exist in the DB for the fuller time tracker
+// but are unused by this module for now.
+export const employeeWorkSessions = pgTable('tbl_employee_work_sessions', {
+    id: serial('id').primaryKey(),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    sessionToken: varchar('session_token', { length: 100 }).notNull().unique(),
+    loginAt: timestamp('login_at').defaultNow(),
+    logoutAt: timestamp('logout_at'),
+    lastHeartbeatAt: timestamp('last_heartbeat_at').defaultNow(),
+    status: varchar('status', { length: 20 }).notNull().default('active'),
+    endReason: varchar('end_reason', { length: 30 }),
+    ipAddress: varchar('ip_address', { length: 64 }),
+    userAgent: text('user_agent'),
+    browser: varchar('browser', { length: 100 }),
+    os: varchar('os', { length: 100 }),
+    deviceType: varchar('device_type', { length: 30 }),
+    timezone: varchar('timezone', { length: 64 }),
+    totalDurationSec: integer('total_duration_sec'),
+    activeSec: integer('active_sec'),
+    idleSec: integer('idle_sec'),
+    productiveSec: integer('productive_sec'),
+    unproductiveSec: integer('unproductive_sec'),
+    isLate: boolean('is_late').notNull().default(false),
+    isEarlyLogout: boolean('is_early_logout').notNull().default(false),
+    terminatedByEmployeeId: varchar('terminated_by_employee_id', { length: 50 }),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const employeeWorkSessionsRelations = relations(employeeWorkSessions, ({ one }) => ({
+    employee: one(employee, {
+        fields: [employeeWorkSessions.employeeId],
+        references: [employee.employeeId],
+    }),
+}));
+
+export type EmployeeWorkSession = typeof employeeWorkSessions.$inferSelect;
+export type NewEmployeeWorkSession = typeof employeeWorkSessions.$inferInsert;
