@@ -6,7 +6,7 @@ import {
   HttpException,
   NotFoundException,
 } from "@nestjs/common";
-import { UserRole } from "../../src/types";
+import { UserRole, EmployeeStatus } from "../../src/types";
 
 vi.mock("../../src/employees/Employee", () => ({
   EmployeeModel: {
@@ -22,7 +22,7 @@ vi.mock("../../src/employees/Employee", () => ({
   },
 }));
 vi.mock("../../src/employees/EmployeePii", () => ({
-  EmployeePiiModel: { findByEmployeeId: vi.fn() },
+  EmployeePiiModel: { findByEmployeeId: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("../../src/config/database", () => ({
   default: { query: vi.fn() },
@@ -59,6 +59,7 @@ import { UsersService } from "../../src/modules/users/users.service";
 
 const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const piiFindMock = EmployeePiiModel.findByEmployeeId as unknown as ReturnType<typeof vi.fn>;
+const piiDeleteMock = EmployeePiiModel.delete as unknown as ReturnType<typeof vi.fn>;
 const poolQueryMock = (pool as any).query as ReturnType<typeof vi.fn>;
 const kc = keycloakAdminService as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const applyToNewEmployeeMock = employeeProfileCreationService.applyToNewEmployee as unknown as ReturnType<
@@ -289,11 +290,13 @@ describe("UsersService", () => {
       await expect(service.delete(hr.userId, hr)).rejects.toThrow(BadRequestException);
     });
 
-    it("deletes the user and best-effort deletes the keycloak account", async () => {
-      em.findById.mockResolvedValue({ id: 3, keycloakSub: "kc-3" });
+    it("purges PII and the keycloak account but keeps the employee row, deactivating it instead", async () => {
+      em.findById.mockResolvedValue({ id: 3, employeeId: "EMP3", keycloakSub: "kc-3" });
       await service.delete(3, hr);
-      expect(em.delete).toHaveBeenCalledWith(3);
       expect(kc.deleteUser).toHaveBeenCalledWith("kc-3");
+      expect(piiDeleteMock).toHaveBeenCalledWith("EMP3");
+      expect(em.delete).not.toHaveBeenCalled();
+      expect(em.update).toHaveBeenCalledWith(3, { status: EmployeeStatus.INACTIVE, keycloakSub: null });
     });
 
     it("does not throw when keycloak deletion fails", async () => {

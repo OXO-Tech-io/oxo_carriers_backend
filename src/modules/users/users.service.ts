@@ -233,6 +233,13 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * "Delete" is a soft delete: only the PII record (tbl_employee_pii) and the
+   * Keycloak identity are actually removed. The employee row itself is kept
+   * (deactivated instead) so everything keyed off its employeeId - leave,
+   * salary, medical claims, attendance, facility bookings, permissions, etc.,
+   * most of which cascade-delete on the employee row via FK - stays intact.
+   */
   async delete(userId: number, requester: JwtPayload) {
     const canDelete = isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER;
     if (!canDelete) {
@@ -243,15 +250,20 @@ export class UsersService {
     }
 
     const user = await EmployeeModel.findById(userId);
-    await EmployeeModel.delete(userId);
 
     if (user?.keycloakSub) {
       try {
         await keycloakAdminService.deleteUser(user.keycloakSub);
       } catch (kcError: any) {
-        logger.error({ err: kcError, userId }, 'Failed to delete Keycloak user after user deletion');
+        logger.error({ err: kcError, userId }, 'Failed to delete Keycloak user during user deletion');
       }
     }
+
+    if (user?.employeeId) {
+      await EmployeePiiModel.delete(user.employeeId);
+    }
+
+    await EmployeeModel.update(userId, { status: EmployeeStatus.INACTIVE, keycloakSub: null });
   }
 
   async resetPassword(userId: number, requester: JwtPayload) {
