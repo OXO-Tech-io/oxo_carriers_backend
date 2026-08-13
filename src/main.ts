@@ -250,6 +250,7 @@ async function bootstrap() {
         'work_logs',
         'communications',
         'forms',
+        'document_vault',
       ];
       let assignedCount = 0;
       for (const empId of employeeIds) {

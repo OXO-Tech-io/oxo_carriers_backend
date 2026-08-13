@@ -17,12 +17,13 @@ export class NoticesService {
     return db.select().from(notices).orderBy(desc(notices.createdAt));
   }
 
-  async create(dto: CreateNoticeDto, createdBy: number) {
+  async create(dto: CreateNoticeDto, createdBy: number, image?: Express.Multer.File) {
     const [notice] = await db
       .insert(notices)
       .values({
         title: dto.title,
         message: dto.message,
+        imageUrl: image ? `/uploads/others/${image.filename}` : null,
         isActive: dto.isActive ?? true,
         createdBy,
         updatedBy: createdBy,
@@ -31,13 +32,15 @@ export class NoticesService {
     return notice;
   }
 
-  async update(id: number, dto: UpdateNoticeDto, updatedBy: number) {
+  async update(id: number, dto: UpdateNoticeDto, updatedBy: number, image?: Express.Multer.File) {
     const [notice] = await db
       .update(notices)
       .set({
         ...(dto.title !== undefined && { title: dto.title }),
         ...(dto.message !== undefined && { message: dto.message }),
         ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        // A newly uploaded image wins over `removeImage` if both are somehow sent.
+        ...(image ? { imageUrl: `/uploads/others/${image.filename}` } : dto.removeImage ? { imageUrl: null } : {}),
         updatedBy,
         updatedAt: new Date(),
       })

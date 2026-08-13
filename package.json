@@ -33,7 +33,8 @@
     "db:encrypt-email-and-name-columns": "ts-node src/scripts/encryptEmailAndNameColumns.ts",
     "db:rename-pii-name-columns": "ts-node src/scripts/renamePiiNameColumns.ts",
     "db:add-work-log-deadline": "ts-node src/scripts/addWorkLogDeadline.ts",
-    "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts"
+    "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts",
+    "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts"
   },
   "keywords": [],
   "author": "",

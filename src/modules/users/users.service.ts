@@ -175,6 +175,7 @@ export class UsersService {
         'work_logs',
         'communications',
         'forms',
+        'document_vault',
       ];
       for (const permission of defaultPermissions) {
         await pool.query(

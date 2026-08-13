@@ -1,8 +1,12 @@
-import { BadRequestException, Controller, Get, Post, Query } from '@nestjs/common';
+import { BadRequestException, Controller, Get, Post, Query, UseGuards } from '@nestjs/common';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { JwtPayload } from '../../types';
 import { AttendanceService } from './attendance.service';
 import { GetAttendanceHistoryQueryDto } from './dto/get-attendance-history-query.dto';
+import { GetAllAttendanceQueryDto } from './dto/get-all-attendance-query.dto';
 
 function requireEmployeeId(employee: JwtPayload): string {
   if (!employee.employeeId) {
@@ -37,5 +41,15 @@ export class AttendanceController {
   async getHistory(@Query() query: GetAttendanceHistoryQueryDto, @CurrentEmployee() employee: JwtPayload) {
     const history = await this.attendanceService.getHistory(requireEmployeeId(employee), query.limit);
     return { success: true, message: 'Attendance history fetched', data: history };
+  }
+
+  /** Admin/report view - every employee's in/out time and daily hours. Gated on the
+   *  `attendance` permission (read); super admins bypass via PermissionGuard. */
+  @Get()
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.ATTENDANCE, 'read')
+  async getAll(@Query() query: GetAllAttendanceQueryDto) {
+    const history = await this.attendanceService.getAllHistory({ from: query.from, to: query.to });
+    return { success: true, message: 'Attendance fetched', data: history };
   }
 }

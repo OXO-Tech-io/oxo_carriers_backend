@@ -1,7 +1,7 @@
 import { randomBytes } from 'crypto';
 import { db } from '../../db';
 import { employeeWorkSessions, type EmployeeWorkSession } from '../../db/schema';
-import { and, eq, gte } from 'drizzle-orm';
+import { and, eq, gte, lt } from 'drizzle-orm';
 
 export class AttendanceSessionModel {
   static async findActive(employeeId: string): Promise<EmployeeWorkSession | null> {
@@ -45,6 +45,14 @@ export class AttendanceSessionModel {
   static async findSince(employeeId: string, since: Date): Promise<EmployeeWorkSession[]> {
     return db.query.employeeWorkSessions.findMany({
       where: and(eq(employeeWorkSessions.employeeId, employeeId), gte(employeeWorkSessions.loginAt, since)),
+      orderBy: (t, { desc }) => [desc(t.loginAt)],
+    });
+  }
+
+  /** Every employee's sessions with login_at in [from, to), most recent first - the admin/report view. */
+  static async findAllInRange(from: Date, to: Date): Promise<EmployeeWorkSession[]> {
+    return db.query.employeeWorkSessions.findMany({
+      where: and(gte(employeeWorkSessions.loginAt, from), lt(employeeWorkSessions.loginAt, to)),
       orderBy: (t, { desc }) => [desc(t.loginAt)],
     });
   }

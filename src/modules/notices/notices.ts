@@ -10,6 +10,7 @@ export const notices = pgTable('tbl_notices', {
     id: serial('id').primaryKey(),
     title: varchar('title', { length: 255 }).notNull(),
     message: text('message').notNull(),
+    imageUrl: varchar('image_url', { length: 500 }),
     isActive: boolean('is_active').default(true).notNull(),
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedBy: integer('updated_by').references(() => users.id, { onDelete: 'set null' }),

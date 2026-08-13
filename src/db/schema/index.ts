@@ -28,3 +28,4 @@ export * from '../../modules/work-logs/workLogSettings';
 export * from '../../modules/groups/groups';
 export * from '../../modules/notices/notices';
 export * from '../../modules/attendance/attendance.schema';
+export * from '../../modules/document-vault/documents';
