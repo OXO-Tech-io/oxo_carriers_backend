@@ -6,6 +6,7 @@ import { BadRequestError } from '../../utils/AppError';
 import { WorkLogEntryInput } from '../../validators/workLog.validator';
 import { WorkLogDeadlineService } from './work-log-deadline.service';
 import { PERMISSIONS } from '../../common/constants/permissions';
+import { ISO_DATE_REGEX } from '../../common/constants/validation';
 
 const TEMPLATE_HEADERS = ['Date', 'Task Description', 'Hours Spent', 'Remarks'];
 
@@ -245,7 +246,7 @@ export const workLogService = {
       const taskDescription = String(taskCell ?? '').trim();
       const hoursSpent = Number(hoursCell);
 
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate) || !taskDescription || !Number.isFinite(hoursSpent) || hoursSpent <= 0) {
+      if (!ISO_DATE_REGEX.test(workDate) || !taskDescription || !Number.isFinite(hoursSpent) || hoursSpent <= 0) {
         failed++;
         errors.push(`Row ${i}: invalid or incomplete data`);
         continue;

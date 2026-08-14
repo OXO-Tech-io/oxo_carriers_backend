@@ -15,6 +15,11 @@ export enum EmployeeStatus {
   ON_HOLD = "on_hold",
 }
 
+export enum SessionAction {
+  CLOCK_IN = "clock_in",
+  CLOCK_OUT = "clock_out",
+}
+
 export enum VoucherStatus {
   PENDING_REVIEW = "pending_review",
   APPROVED = "approved",

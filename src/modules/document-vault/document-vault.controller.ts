@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Delete,
-  Get,
   Param,
   Post,
   UploadedFiles,
@@ -22,35 +21,6 @@ import { ATTACHMENTS_FIELD, ATTACHMENTS_MAX_COUNT, documentVaultUploadMulterOpti
 @Controller('documents')
 export class DocumentVaultController {
   constructor(private readonly documentVaultService: DocumentVaultService) {}
-
-  // Any authenticated employee sees the documents targeted at them plus
-  // every 'All Employees' document - no `document_vault` write permission
-  // required to read your own merged view.
-  @Get()
-  async listMine(@CurrentEmployee() employee: JwtPayload) {
-    const data = await this.documentVaultService.listForEmployee(employee.employeeId!);
-    return { success: true, message: 'Documents fetched', data };
-  }
-
-  @Get('manage')
-  @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.DOCUMENT_VAULT, 'write')
-  async listAll() {
-    const data = await this.documentVaultService.listAll();
-    return { success: true, message: 'Documents fetched', data };
-  }
-
-  // :employeeId is the internal tbl_employee.id - never the Keycloak sub.
-  // Returns the same merged view this employee sees on their own profile, so
-  // the admin Document Vault modal shows exactly what that employee sees.
-  @Get('employees/:employeeId')
-  @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.DOCUMENT_VAULT, 'write')
-  async listForEmployee(@Param('employeeId') employeeIdParam: string) {
-    const employeeId = this.parseId(employeeIdParam, 'employee id');
-    const data = await this.documentVaultService.listForEmployeeByInternalId(employeeId);
-    return { success: true, message: 'Documents fetched', data };
-  }
 
   @Post()
   @UseGuards(PermissionGuard)

@@ -88,7 +88,7 @@ export class UsersController {
     return { success: true, message: `Role updated from '${result.previous_role}' to '${result.new_role}'`, user: result };
   }
 
-  @Patch(':id/status')
+  @Patch(':id/statuses')
   @UseGuards(RolesGuard)
   @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   async updateStatus(
