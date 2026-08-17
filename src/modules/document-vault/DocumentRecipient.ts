@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { documentRecipients, documents, type DocumentRecipient as DrizzleRecipient } from '../../db/schema';
-import { and, desc, eq, isNotNull, or } from 'drizzle-orm';
+import { and, desc, eq, inArray, isNotNull, or } from 'drizzle-orm';
 
 export class DocumentRecipientModel {
   static async createMany(documentId: number, employeeIds: string[]): Promise<DrizzleRecipient[]> {
@@ -14,6 +14,13 @@ export class DocumentRecipientModel {
   static async listByDocumentId(documentId: number) {
     return db.query.documentRecipients.findMany({
       where: eq(documentRecipients.documentId, documentId),
+    });
+  }
+
+  static async listByDocumentIds(documentIds: number[]) {
+    if (!documentIds.length) return [];
+    return db.query.documentRecipients.findMany({
+      where: inArray(documentRecipients.documentId, documentIds),
     });
   }
 

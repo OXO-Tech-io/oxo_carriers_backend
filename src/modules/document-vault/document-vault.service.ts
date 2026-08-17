@@ -27,8 +27,8 @@ export class DocumentVaultService {
     );
   }
 
-  async listAll() {
-    return documentService.listAll();
+  async listAll(page: number, pageSize: number) {
+    return documentService.listAll(page, pageSize);
   }
 
   async listForEmployee(employeeId: string) {

@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { documents, type Document as DrizzleDocument } from '../../db/schema';
-import { eq } from 'drizzle-orm';
+import { count, eq } from 'drizzle-orm';
 
 export type DocumentTargetType = 'individual' | 'all';
 
@@ -23,8 +23,17 @@ export class DocumentModel {
     return record ?? null;
   }
 
-  static async listAll(): Promise<DrizzleDocument[]> {
-    return db.query.documents.findMany({ orderBy: (t, { desc }) => [desc(t.createdAt)] });
+  static async listAll(limit: number, offset: number): Promise<DrizzleDocument[]> {
+    return db.query.documents.findMany({
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+      limit,
+      offset,
+    });
+  }
+
+  static async countAll(): Promise<number> {
+    const [row] = await db.select({ count: count() }).from(documents);
+    return row?.count ?? 0;
   }
 
   // Recipients cascade at the DB level (tbl_document_recipients FK); attachments

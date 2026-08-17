@@ -34,21 +34,26 @@ export const documentService = {
     return document;
   },
 
-  async listAll() {
-    const list = await DocumentModel.listAll();
-    return Promise.all(
-      list.map(async (document) => {
-        const [recipientRows, attachments] = await Promise.all([
-          DocumentRecipientModel.listByDocumentId(document.id),
-          AttachmentModel.findByEntity('document_vault', document.id),
-        ]);
-        return {
-          ...document,
-          recipientEmployeeIds: recipientRows.map((r) => r.employeeId),
-          attachments,
-        };
-      }),
-    );
+  async listAll(page: number, pageSize: number) {
+    const offset = (page - 1) * pageSize;
+    const [list, total] = await Promise.all([
+      DocumentModel.listAll(pageSize, offset),
+      DocumentModel.countAll(),
+    ]);
+
+    const documentIds = list.map((document) => document.id);
+    const [recipientRows, attachments] = await Promise.all([
+      DocumentRecipientModel.listByDocumentIds(documentIds),
+      AttachmentModel.findByEntityMany('document_vault', documentIds),
+    ]);
+
+    const items = list.map((document) => ({
+      ...document,
+      recipientEmployeeIds: recipientRows.filter((r) => r.documentId === document.id).map((r) => r.employeeId),
+      attachments: attachments.filter((a) => a.entityId === document.id),
+    }));
+
+    return { items, total, page, pageSize };
   },
 
   async listForEmployee(employeeId: string) {
