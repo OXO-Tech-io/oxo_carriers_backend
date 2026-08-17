@@ -2,11 +2,11 @@ import { pgTable, serial, varchar, text, timestamp, integer, boolean } from 'dri
 import { relations } from 'drizzle-orm';
 import { employee } from '../../employees/employee.schema';
 
-// Mirrors drizzle/0013_add_attendance_tracking.sql's tbl_employee_work_sessions
-// exactly. Only this table has application code on top of it so far - the
-// migration's other five tables exist in the DB for the fuller time tracker
-// but are unused by this module for now.
-export const employeeWorkSessions = pgTable('tbl_employee_work_sessions', {
+// Mirrors drizzle/0013_add_attendance_tracking.sql's tbl_attendance exactly.
+// Only this table has application code on top of it so far - the migration's
+// other five tables exist in the DB for the fuller time tracker but are
+// unused by this module for now.
+export const employeeWorkSessions = pgTable('tbl_attendance', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 })
         .notNull()

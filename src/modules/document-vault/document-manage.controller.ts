@@ -8,7 +8,7 @@ import { DocumentVaultService } from './document-vault.service';
 export class DocumentManageController {
   constructor(private readonly documentVaultService: DocumentVaultService) {}
 
-  @Get('manage')
+  @Get()
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.DOCUMENT_VAULT, 'write')
   async listAll() {

@@ -41,10 +41,14 @@ export class AttendanceSessionModel {
     return updated ?? null;
   }
 
-  /** All of an employee's sessions with login_at at or after `since`, most recent first. */
-  static async findSince(employeeId: string, since: Date): Promise<EmployeeWorkSession[]> {
+  /** An employee's sessions with login_at in [from, to), most recent first. */
+  static async findInRange(employeeId: string, from: Date, to: Date): Promise<EmployeeWorkSession[]> {
     return db.query.employeeWorkSessions.findMany({
-      where: and(eq(employeeWorkSessions.employeeId, employeeId), gte(employeeWorkSessions.loginAt, since)),
+      where: and(
+        eq(employeeWorkSessions.employeeId, employeeId),
+        gte(employeeWorkSessions.loginAt, from),
+        lt(employeeWorkSessions.loginAt, to),
+      ),
       orderBy: (t, { desc }) => [desc(t.loginAt)],
     });
   }

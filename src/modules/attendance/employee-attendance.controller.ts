@@ -2,7 +2,7 @@ import { BadRequestException, Body, Controller, ForbiddenException, Get, Param, 
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload, SessionAction } from '../../types';
 import { AttendanceService } from './attendance.service';
-import { GetAttendanceHistoryQueryDto } from './dto/get-attendance-history-query.dto';
+import { GetAttendanceQueryDto } from './dto/get-attendance-query.dto';
 import { SessionActionDto } from './dto/session-action.dto';
 
 function requireOwnEmployeeId(employeeIdParam: string, employee: JwtPayload): string {
@@ -19,7 +19,7 @@ function requireOwnEmployeeId(employeeIdParam: string, employee: JwtPayload): st
 export class EmployeeAttendanceController {
   constructor(private readonly attendanceService: AttendanceService) {}
 
-  @Post('session')
+  @Post()
   async recordSession(
     @Param('employeeId') employeeId: string,
     @Body() dto: SessionActionDto,
@@ -37,19 +37,17 @@ export class EmployeeAttendanceController {
     };
   }
 
-  @Get('today')
-  async getToday(@Param('employeeId') employeeId: string, @CurrentEmployee() employee: JwtPayload) {
-    const today = await this.attendanceService.getToday(requireOwnEmployeeId(employeeId, employee));
-    return { success: true, message: "Today's attendance fetched", data: today };
-  }
-
-  @Get('history')
-  async getHistory(
+  /**
+   * An employee's own daily attendance in [from, to] (inclusive) - both default to today.
+   * Pass the same date for `from`/`to` for a "today" view, or a wider range for history.
+   */
+  @Get()
+  async getAttendance(
     @Param('employeeId') employeeId: string,
-    @Query() query: GetAttendanceHistoryQueryDto,
+    @Query() query: GetAttendanceQueryDto,
     @CurrentEmployee() employee: JwtPayload,
   ) {
-    const history = await this.attendanceService.getHistory(requireOwnEmployeeId(employeeId, employee), query.limit);
-    return { success: true, message: 'Attendance history fetched', data: history };
+    const days = await this.attendanceService.getHistory(requireOwnEmployeeId(employeeId, employee), query);
+    return { success: true, message: 'Attendance fetched', data: days };
   }
 }

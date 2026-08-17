@@ -18,7 +18,7 @@ import { PERMISSIONS } from '../../common/constants/permissions';
 import { DocumentVaultService } from './document-vault.service';
 import { ATTACHMENTS_FIELD, ATTACHMENTS_MAX_COUNT, documentVaultUploadMulterOptions } from './document-vault.upload';
 
-@Controller('documents')
+@Controller('document-vaults')
 export class DocumentVaultController {
   constructor(private readonly documentVaultService: DocumentVaultService) {}
 
