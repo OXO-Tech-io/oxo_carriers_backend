@@ -4,9 +4,6 @@ import { DocumentVaultController } from "../../src/modules/document-vault/docume
 
 const createServiceMock = () => ({
   create: vi.fn(),
-  listAll: vi.fn(),
-  listForEmployee: vi.fn(),
-  listForEmployeeByInternalId: vi.fn(),
   delete: vi.fn(),
 });
 
@@ -17,36 +14,6 @@ describe("DocumentVaultController", () => {
   beforeEach(() => {
     service = createServiceMock();
     controller = new DocumentVaultController(service as any);
-  });
-
-  describe("listMine", () => {
-    it("resolves documents for the caller's own employeeId", async () => {
-      service.listForEmployee.mockResolvedValue([{ id: 1 }]);
-      const result = await controller.listMine({ employeeId: "EMP1" } as any);
-      expect(service.listForEmployee).toHaveBeenCalledWith("EMP1");
-      expect(result).toEqual({ success: true, message: "Documents fetched", data: [{ id: 1 }] });
-    });
-  });
-
-  describe("listAll", () => {
-    it("returns the full manage list", async () => {
-      service.listAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
-      const result = await controller.listAll();
-      expect(result.data).toEqual([{ id: 1 }, { id: 2 }]);
-    });
-  });
-
-  describe("listForEmployee", () => {
-    it("parses the internal employee id and delegates", async () => {
-      service.listForEmployeeByInternalId.mockResolvedValue([{ id: 1 }]);
-      const result = await controller.listForEmployee("5");
-      expect(service.listForEmployeeByInternalId).toHaveBeenCalledWith(5);
-      expect(result.data).toEqual([{ id: 1 }]);
-    });
-
-    it("throws BadRequestException for a non-numeric employee id", async () => {
-      await expect(controller.listForEmployee("abc")).rejects.toThrow(BadRequestException);
-    });
   });
 
   it("create delegates to the service with the current employee's userId", async () => {

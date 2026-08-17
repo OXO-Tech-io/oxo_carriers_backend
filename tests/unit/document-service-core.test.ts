@@ -6,13 +6,14 @@ vi.mock("../../src/modules/document-vault/Document", () => ({
     create: vi.fn(),
     findById: vi.fn(),
     listAll: vi.fn(),
+    countAll: vi.fn(),
     deleteById: vi.fn(),
   },
 }));
 vi.mock("../../src/modules/document-vault/DocumentRecipient", () => ({
   DocumentRecipientModel: {
     createMany: vi.fn(),
-    listByDocumentId: vi.fn(),
+    listByDocumentIds: vi.fn(),
     listForEmployee: vi.fn(),
   },
 }));
@@ -85,14 +86,33 @@ describe("documentService (core)", () => {
   });
 
   describe("listAll", () => {
-    it("enriches each document with recipient ids and attachments", async () => {
+    it("paginates via the DB and enriches each document with recipient ids and attachments", async () => {
       dm.listAll.mockResolvedValue([{ id: 1, title: "T" }]);
-      drm.listByDocumentId.mockResolvedValue([{ id: 1, documentId: 1, employeeId: "EMP1" }]);
-      am.findByEntity.mockResolvedValue([{ id: 1, entityId: 1, fileName: "a.pdf" }]);
+      dm.countAll.mockResolvedValue(1);
+      drm.listByDocumentIds.mockResolvedValue([{ id: 1, documentId: 1, employeeId: "EMP1" }]);
+      am.findByEntityMany.mockResolvedValue([{ id: 1, entityId: 1, fileName: "a.pdf" }]);
 
-      const [result] = await documentService.listAll();
-      expect(result.recipientEmployeeIds).toEqual(["EMP1"]);
-      expect(result.attachments).toEqual([{ id: 1, entityId: 1, fileName: "a.pdf" }]);
+      const result = await documentService.listAll(1, 10);
+
+      expect(dm.listAll).toHaveBeenCalledWith(10, 0);
+      expect(drm.listByDocumentIds).toHaveBeenCalledWith([1]);
+      expect(am.findByEntityMany).toHaveBeenCalledWith("document_vault", [1]);
+      expect(result).toEqual({
+        items: [{ id: 1, title: "T", recipientEmployeeIds: ["EMP1"], attachments: [{ id: 1, entityId: 1, fileName: "a.pdf" }] }],
+        total: 1,
+        page: 1,
+        pageSize: 10,
+      });
+    });
+
+    it("computes the offset for later pages", async () => {
+      dm.listAll.mockResolvedValue([]);
+      dm.countAll.mockResolvedValue(25);
+      drm.listByDocumentIds.mockResolvedValue([]);
+      am.findByEntityMany.mockResolvedValue([]);
+
+      await documentService.listAll(3, 10);
+      expect(dm.listAll).toHaveBeenCalledWith(10, 20);
     });
   });
 
