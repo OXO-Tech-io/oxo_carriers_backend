@@ -11,12 +11,6 @@ export class DocumentRecipientModel {
       .returning();
   }
 
-  static async listByDocumentId(documentId: number) {
-    return db.query.documentRecipients.findMany({
-      where: eq(documentRecipients.documentId, documentId),
-    });
-  }
-
   static async listByDocumentIds(documentIds: number[]) {
     if (!documentIds.length) return [];
     return db.query.documentRecipients.findMany({
