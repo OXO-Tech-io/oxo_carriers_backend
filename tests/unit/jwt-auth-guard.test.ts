@@ -78,7 +78,7 @@ describe("JwtAuthGuard", () => {
     verifyMock.mockResolvedValue({
       claims: { sub: "sub-1", email: "a@b.com", realm_access: { roles: [] } },
     });
-    const employee = { id: 5, employeeId: "EMP5", email: "a@b.com", role: UserRole.EMPLOYEE };
+    const employee = { id: 5, employeeId: "EMP5", email: "a@b.com", role: UserRole.EMPLOYEE, status: "active" };
     const employeesService = createEmployeesService({
       findByKeycloakSub: vi.fn().mockResolvedValue(employee),
     });
@@ -98,7 +98,7 @@ describe("JwtAuthGuard", () => {
     verifyMock.mockResolvedValue({
       claims: { sub: "sub-2", email: "b@c.com", realm_access: { roles: [] } },
     });
-    const employee = { id: 6, employeeId: "EMP6", email: "b@c.com", role: UserRole.HR_MANAGER };
+    const employee = { id: 6, employeeId: "EMP6", email: "b@c.com", role: UserRole.HR_MANAGER, status: "active" };
     const employeesService = createEmployeesService({
       findByKeycloakSub: vi.fn().mockResolvedValue(null),
       findByEmail: vi.fn().mockResolvedValue(employee),
@@ -119,7 +119,7 @@ describe("JwtAuthGuard", () => {
         realm_access: { roles: [UserRole.SUPER_ADMIN] },
       },
     });
-    const employee = { id: 7, employeeId: "EMP7", email: "c@d.com", role: UserRole.EMPLOYEE };
+    const employee = { id: 7, employeeId: "EMP7", email: "c@d.com", role: UserRole.EMPLOYEE, status: "active" };
     const employeesService = createEmployeesService({
       findByKeycloakSub: vi.fn().mockResolvedValue(employee),
     });

@@ -7,7 +7,7 @@ import { keycloakAdminService } from './keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../../utils/password';
 import { employeeProfileCreationService } from './employeeProfileCreation.service';
 import { createEmployeeProfileSchema } from '../../validators/employeeProfileCreation.validator';
-import { UserRole, JwtPayload } from '../../types';
+import { UserRole, EmployeeStatus, JwtPayload } from '../../types';
 import { logger } from '../../lib/logger';
 import { env } from '../../config/env';
 import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from '../../config/email';
@@ -175,6 +175,7 @@ export class UsersService {
         'work_logs',
         'communications',
         'forms',
+        'document_vault',
       ];
       for (const permission of defaultPermissions) {
         await pool.query(
@@ -233,6 +234,13 @@ export class UsersService {
     return user;
   }
 
+  /**
+   * "Delete" is a soft delete: only the PII record (tbl_employee_pii) and the
+   * Keycloak identity are actually removed. The employee row itself is kept
+   * (deactivated instead) so everything keyed off its employeeId - leave,
+   * salary, medical claims, attendance, facility bookings, permissions, etc.,
+   * most of which cascade-delete on the employee row via FK - stays intact.
+   */
   async delete(userId: number, requester: JwtPayload) {
     const canDelete = isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER;
     if (!canDelete) {
@@ -243,15 +251,20 @@ export class UsersService {
     }
 
     const user = await EmployeeModel.findById(userId);
-    await EmployeeModel.delete(userId);
 
     if (user?.keycloakSub) {
       try {
         await keycloakAdminService.deleteUser(user.keycloakSub);
       } catch (kcError: any) {
-        logger.error({ err: kcError, userId }, 'Failed to delete Keycloak user after user deletion');
+        logger.error({ err: kcError, userId }, 'Failed to delete Keycloak user during user deletion');
       }
     }
+
+    if (user?.employeeId) {
+      await EmployeePiiModel.delete(user.employeeId);
+    }
+
+    await EmployeeModel.update(userId, { status: EmployeeStatus.INACTIVE, keycloakSub: null });
   }
 
   async resetPassword(userId: number, requester: JwtPayload) {
@@ -337,6 +350,49 @@ export class UsersService {
     );
 
     return { id: userId, previous_role: previousRole, new_role: role };
+  }
+
+  /**
+   * Active: can log in normally. Inactive/on_hold: JwtAuthGuard rejects them
+   * even with a still-valid JWT (see jwt-auth.guard.ts), and the Keycloak
+   * account is disabled alongside this so they're also blocked at the SSO
+   * login screen itself - best-effort, doesn't roll back the DB change if
+   * Keycloak sync fails (matches how Keycloak provisioning failures are
+   * handled elsewhere in this service).
+   */
+  async updateStatus(userId: number, status: EmployeeStatus, requester: JwtPayload) {
+    const canManageStatus =
+      isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    if (!canManageStatus) {
+      throw new ForbiddenException('Only HR or Super Admin can change employee status');
+    }
+    if (requester.userId === userId) {
+      throw new BadRequestException('Cannot change your own account status');
+    }
+
+    const targetUser = await EmployeeModel.findById(userId);
+    if (!targetUser) throw new NotFoundException('User not found');
+
+    const previousStatus = targetUser.status;
+    const updated = await EmployeeModel.update(userId, { status });
+    if (!updated) {
+      throw new BadRequestException('Failed to update status');
+    }
+
+    if (targetUser.keycloakSub) {
+      try {
+        await keycloakAdminService.setEnabled(targetUser.keycloakSub, status === EmployeeStatus.ACTIVE);
+      } catch (kcError: any) {
+        logger.error({ err: kcError, userId }, 'Failed to sync employee status to Keycloak');
+      }
+    }
+
+    logger.info(
+      { actorId: requester.userId, targetUserId: userId, previousStatus, newStatus: status },
+      'Employee status changed',
+    );
+
+    return { id: userId, previous_status: previousStatus, new_status: status };
   }
 
   async provisionKeycloak(userId: number) {

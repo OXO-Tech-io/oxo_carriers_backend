@@ -31,38 +31,53 @@ async function seed() {
 
         console.log('✅ Super admin created:', admin.email);
 
-        // Create default leave types
-        const leaveTypesData = [
-            { name: 'Annual Leave', description: 'Annual paid leave', maxDays: 21, isActive: true },
-            { name: 'Sick Leave', description: 'Medical sick leave', maxDays: 14, isActive: true },
-            { name: 'Casual Leave', description: 'Short notice casual leave', maxDays: 7, isActive: true },
-        ];
-
-        await db.insert(schema.leaveTypes).values(leaveTypesData);
-        console.log('✅ Default leave types created');
+        // Create default leave types - guarded independently of the admin
+        // check above, since main.ts also self-seeds this table on server
+        // startup if it's empty; without this check, running seed.ts after
+        // that self-seed already ran would duplicate every leave type.
+        const existingLeaveTypes = await db.select().from(schema.leaveTypes);
+        if (existingLeaveTypes.length === 0) {
+            const leaveTypesData = [
+                { name: 'Annual Leave', description: 'Annual paid leave', maxDays: 21, isActive: true },
+                { name: 'Casual Leave', description: 'Short notice casual leave', maxDays: 7, isActive: true },
+            ];
+            await db.insert(schema.leaveTypes).values(leaveTypesData);
+            console.log('✅ Default leave types created');
+        } else {
+            console.log('✅ Leave types already exist. Skipping.');
+        }
 
         // Create default salary components
-        const salaryComponentsData = [
-            { name: 'Basic Salary', type: 'earning' as const, isDefault: true, isActive: true },
-            { name: 'House Rent Allowance', type: 'earning' as const, isDefault: true, isActive: true },
-            { name: 'Transport Allowance', type: 'earning' as const, isDefault: false, isActive: true },
-            { name: 'Tax Deduction', type: 'deduction' as const, isDefault: true, isActive: true },
-            { name: 'Provident Fund', type: 'deduction' as const, isDefault: false, isActive: true },
-        ];
-
-        await db.insert(schema.salaryComponents).values(salaryComponentsData);
-        console.log('✅ Default salary components created');
+        const existingSalaryComponents = await db.select().from(schema.salaryComponents);
+        if (existingSalaryComponents.length === 0) {
+            const salaryComponentsData = [
+                { name: 'Basic Salary', type: 'earning' as const, isDefault: true, isActive: true },
+                { name: 'House Rent Allowance', type: 'earning' as const, isDefault: true, isActive: true },
+                { name: 'Transport Allowance', type: 'earning' as const, isDefault: false, isActive: true },
+                { name: 'Tax Deduction', type: 'deduction' as const, isDefault: true, isActive: true },
+                { name: 'Provident Fund', type: 'deduction' as const, isDefault: false, isActive: true },
+            ];
+            await db.insert(schema.salaryComponents).values(salaryComponentsData);
+            console.log('✅ Default salary components created');
+        } else {
+            console.log('✅ Salary components already exist. Skipping.');
+        }
 
         // Create sample facility
-        await db.insert(schema.facilities).values({
-            name: 'Board Room A',
-            type: 'board_room',
-            description: 'Main conference room with video conferencing',
-            facilities: 'Projector, Whiteboard, Video Conferencing',
-            capacity: 12,
-            isActive: true,
-        });
-        console.log('✅ Sample facility created');
+        const existingFacilities = await db.select().from(schema.facilities);
+        if (existingFacilities.length === 0) {
+            await db.insert(schema.facilities).values({
+                name: 'Board Room A',
+                type: 'board_room',
+                description: 'Main conference room with video conferencing',
+                facilities: 'Projector, Whiteboard, Video Conferencing',
+                capacity: 12,
+                isActive: true,
+            });
+            console.log('✅ Sample facility created');
+        } else {
+            console.log('✅ Facilities already exist. Skipping.');
+        }
 
         console.log('🎉 Database seeding completed successfully!');
     } catch (error) {

@@ -178,7 +178,6 @@ async function bootstrap() {
         await pool.query(`
           INSERT INTO tbl_leave_types (name, description, max_days, is_active) VALUES
           ('Annual Leave', 'Annual paid leave', 21, true),
-          ('Sick Leave', 'Medical sick leave', 14, true),
           ('Casual Leave', 'Short notice casual leave', 7, true)
         `);
         logger.info('Default leave types inserted successfully.');
@@ -251,6 +250,7 @@ async function bootstrap() {
         'work_logs',
         'communications',
         'forms',
+        'document_vault',
       ];
       let assignedCount = 0;
       for (const empId of employeeIds) {

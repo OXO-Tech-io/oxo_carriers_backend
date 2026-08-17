@@ -95,6 +95,7 @@ export class EmployeeModel {
         'work_logs',
         'communications',
         'forms',
+        'document_vault',
       ];
       for (const permission of defaultPermissions) {
         await db.insert(userPermissions).values({

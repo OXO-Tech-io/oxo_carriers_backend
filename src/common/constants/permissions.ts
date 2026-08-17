@@ -22,6 +22,9 @@ export const PERMISSIONS = {
   FORMS: "forms",
   WORK_LOGS: "work_logs",
   GROUPS: "groups",
+  NOTICES: "notices",
+  ATTENDANCE: "attendance",
+  DOCUMENT_VAULT: "document_vault",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -54,7 +57,10 @@ export interface PermissionDefinition {
     | "events"
     | "forms"
     | "work_logs"
-    | "groups";
+    | "groups"
+    | "notices"
+    | "attendance"
+    | "documents";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -199,6 +205,27 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     description:
       "Can create and manage employee groups (name, members), and use them as recipients for communications and forms.",
     group: "groups",
+  },
+  {
+    key: PERMISSIONS.NOTICES,
+    label: "Notices",
+    description:
+      "Write access lets a user create and update notice board announcements, visible to every employee and system user on their dashboard.",
+    group: "notices",
+  },
+  {
+    key: PERMISSIONS.ATTENDANCE,
+    label: "Attendance",
+    description:
+      "Can view every employee's clock in/out time and daily worked hours. Super admins can always see this regardless of this grant.",
+    group: "attendance",
+  },
+  {
+    key: PERMISSIONS.DOCUMENT_VAULT,
+    label: "Document Vault",
+    description:
+      "Write access lets a user upload documents to specific employees or to everyone. Read access lets an employee view the documents assigned to them plus any sent to all employees.",
+    group: "documents",
   },
 ];
 

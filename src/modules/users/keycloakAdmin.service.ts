@@ -227,6 +227,22 @@ export const keycloakAdminService = {
     }
   },
 
+  /**
+   * Enables/disables the Keycloak account itself - used alongside the local
+   * employee.status column so an inactive/on_hold employee can't get past
+   * the Keycloak login screen at all, not just get rejected by our own API.
+   */
+  async setEnabled(userId: string, enabled: boolean): Promise<void> {
+    const res = await adminFetch(`/users/${userId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ enabled }),
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      throw new AppError(`Keycloak set-enabled failed (${res.status}): ${text}`, 502);
+    }
+  },
+
   async updatePassword(userId: string, password: string, temporary = false): Promise<void> {
     const res = await adminFetch(`/users/${userId}/reset-password`, {
       method: 'PUT',

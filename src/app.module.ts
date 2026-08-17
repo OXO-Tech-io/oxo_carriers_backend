@@ -31,6 +31,9 @@ import { LeaveTypesModule } from './modules/leave-types/leave-types.module';
 import { CommunicationsModule } from './modules/communications/communications.module';
 import { EventsModule } from './modules/events/events.module';
 import { FormsModule } from './modules/forms/forms.module';
+import { NoticesModule } from './modules/notices/notices.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
+import { DocumentVaultModule } from './modules/document-vault/document-vault.module';
 
 @Module({
   imports: [
@@ -66,6 +69,9 @@ import { FormsModule } from './modules/forms/forms.module';
     CommunicationsModule,
     EventsModule,
     FormsModule,
+    NoticesModule,
+    AttendanceModule,
+    DocumentVaultModule,
   ],
 })
 export class AppModule {}

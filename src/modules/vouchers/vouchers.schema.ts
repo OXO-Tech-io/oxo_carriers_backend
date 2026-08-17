@@ -11,7 +11,7 @@ import {
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee } from '../../employees/employee.schema';
-import { vendors } from '../vendors/vendors';
+import { vendors } from '../vendors/vendors.schema';
 
 // Enums
 export const voucherStatusEnum = pgEnum('voucher_status', ['pending', 'approved', 'rejected', 'paid']);

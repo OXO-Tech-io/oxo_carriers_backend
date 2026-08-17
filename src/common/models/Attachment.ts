@@ -1,6 +1,6 @@
 import { db } from '../../db';
 import { attachments, type Attachment as DrizzleAttachment } from '../../db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 
 export type AttachmentFileInput = Express.Multer.File;
 
@@ -53,11 +53,9 @@ export class AttachmentModel {
 
   static async findByEntityMany(entityType: string, entityIds: number[]): Promise<DrizzleAttachment[]> {
     if (!entityIds.length) return [];
-    const all = await db.query.attachments.findMany({
-      where: eq(attachments.entityType, entityType),
+    return db.query.attachments.findMany({
+      where: and(eq(attachments.entityType, entityType), inArray(attachments.entityId, entityIds)),
     });
-    const idSet = new Set(entityIds);
-    return all.filter((a) => idSet.has(a.entityId));
   }
 
   static async deleteById(id: number): Promise<void> {

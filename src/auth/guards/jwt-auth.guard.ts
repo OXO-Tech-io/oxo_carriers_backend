@@ -3,7 +3,7 @@ import { Reflector } from '@nestjs/core';
 import { Request } from 'express';
 import { verifyKeycloakToken } from '../../middleware/keycloakAuth';
 import { EmployeesService } from '../../employees/employees.service';
-import { UserRole } from '../../types';
+import { EmployeeStatus, UserRole } from '../../types';
 import { logger as baseLogger } from '../../lib/logger';
 import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
 
@@ -98,6 +98,19 @@ export class JwtAuthGuard implements CanActivate {
       log.warn({ keycloakSub: claims.sub, email: claims.email }, 'User not found in system database');
       throw new UnauthorizedException(
         'User is authenticated at Keycloak but is not registered in this system.',
+      );
+    }
+
+    // Blocked even with a still-valid JWT - the Keycloak account itself is
+    // also disabled when status is set away from 'active' (see
+    // keycloakAdminService.setEnabled), but that alone doesn't invalidate
+    // tokens already issued before the account was disabled.
+    if (employee.status !== EmployeeStatus.ACTIVE) {
+      log.warn({ keycloakSub: claims.sub, email: claims.email, status: employee.status }, 'Blocked login for non-active employee');
+      throw new UnauthorizedException(
+        employee.status === EmployeeStatus.ON_HOLD
+          ? 'Your account is on hold. Contact HR for assistance.'
+          : 'Your account is inactive. Contact HR for assistance.',
       );
     }
 
