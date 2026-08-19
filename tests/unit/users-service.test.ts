@@ -296,7 +296,11 @@ describe("UsersService", () => {
       expect(kc.deleteUser).toHaveBeenCalledWith("kc-3");
       expect(piiDeleteMock).toHaveBeenCalledWith("EMP3");
       expect(em.delete).not.toHaveBeenCalled();
-      expect(em.update).toHaveBeenCalledWith(3, { status: EmployeeStatus.INACTIVE, keycloakSub: null });
+      expect(em.update).toHaveBeenCalledWith(3, {
+        status: EmployeeStatus.INACTIVE,
+        keycloakSub: null,
+        deletedAt: expect.any(Date),
+      });
     });
 
     it("does not throw when keycloak deletion fails", async () => {
