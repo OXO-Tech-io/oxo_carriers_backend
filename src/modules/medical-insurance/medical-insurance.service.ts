@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimStatus, MedicalClaimPaymentStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import {
   sendMedicalClaimApprovedEmail,
@@ -10,6 +10,11 @@ import {
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { UpdateMedicalClaimPaymentDto } from './dto/update-medical-claim-payment.dto';
+import { hasPermission } from '../../middleware/permissions';
+import { AccessLevel, PERMISSIONS, PermissionKey } from '../../common/constants/permissions';
+
+const HR_ROLES = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 
 export type MedicalDocumentFiles = {
   supportive_document?: Express.Multer.File[];
@@ -23,6 +28,29 @@ export class MedicalInsuranceService {
       throw new BadRequestException('Your account has no employee ID assigned yet');
     }
     return employee.employeeId;
+  }
+
+  /** Mirrors VouchersService.hasRoleOrPermission: a hardcoded role always
+   * qualifies, otherwise fall back to the granular tbl_user_permissions grant
+   * so permission-granted users (not just HR by role) can view/manage claims. */
+  private async hasRoleOrPermission(
+    employee: JwtPayload,
+    allowedRoles: UserRole[],
+    permission: PermissionKey,
+    requiredLevel: AccessLevel = 'read',
+  ): Promise<boolean> {
+    const role = employee?.role;
+    const employeeId = employee?.employeeId;
+
+    if (!role || !employeeId) {
+      return false;
+    }
+
+    if (role === UserRole.SUPER_ADMIN || allowedRoles.includes(role)) {
+      return true;
+    }
+
+    return hasPermission(employeeId, permission, requiredLevel);
   }
 
   async apply(employee: JwtPayload, dto: CreateMedicalClaimDto, files: MedicalDocumentFiles | undefined) {
@@ -83,15 +111,21 @@ export class MedicalInsuranceService {
     return { success: true, claims };
   }
 
-  async getAll(status?: MedicalClaimStatus, type?: MedicalClaimType) {
-    const claims = await MedicalInsuranceModel.getAll({ status, type });
+  async getAll(status?: MedicalClaimStatus, type?: MedicalClaimType, paymentStatus?: MedicalClaimPaymentStatus) {
+    const claims = await MedicalInsuranceModel.getAll({ status, type, payment_status: paymentStatus });
     return { success: true, claims };
   }
 
-  /** Single list endpoint - branches on role so the frontend only calls one route. */
-  async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType) {
-    if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN) {
-      return this.getAll(status, type);
+  /** Single list endpoint - branches on role/permission so the frontend only calls one route. */
+  async getClaims(
+    employee: JwtPayload,
+    status?: MedicalClaimStatus,
+    type?: MedicalClaimType,
+    paymentStatus?: MedicalClaimPaymentStatus,
+  ) {
+    const canViewAll = await this.hasRoleOrPermission(employee, HR_ROLES, PERMISSIONS.MEDICAL_CLAIMS);
+    if (canViewAll) {
+      return this.getAll(status, type, paymentStatus);
     }
     return this.getMyClaims(this.requireEmployeeId(employee), status);
   }
@@ -101,21 +135,42 @@ export class MedicalInsuranceService {
     if (!claim) {
       throw new NotFoundException('Claim not found');
     }
-    if (employee.role === UserRole.EMPLOYEE && claim.employee_id !== employee.employeeId) {
-      throw new ForbiddenException('Forbidden');
+    if (claim.employee_id !== employee.employeeId) {
+      const canViewAll = await this.hasRoleOrPermission(employee, HR_ROLES, PERMISSIONS.MEDICAL_CLAIMS);
+      if (!canViewAll) {
+        throw new ForbiddenException('Forbidden');
+      }
     }
     return { success: true, claim };
+  }
+
+  /** The submitting employee (their own claim) or a permission-granted user
+   * (any claim) can remove it, only while it's still awaiting a decision. */
+  async deleteClaim(employee: JwtPayload, id: number) {
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    const isOwner = claim.employee_id === employee.employeeId;
+    if (!isOwner) {
+      const canManage = await this.hasRoleOrPermission(employee, HR_ROLES, PERMISSIONS.MEDICAL_CLAIMS, 'write');
+      if (!canManage) {
+        throw new ForbiddenException('Forbidden');
+      }
+    }
+    if (claim.status !== MedicalClaimStatus.PENDING) {
+      throw new BadRequestException('Only claims awaiting a decision can be removed');
+    }
+    await MedicalInsuranceModel.deleteById(id);
+    return { success: true, message: 'Claim removed' };
   }
 
   /** Single decision endpoint - approve or reject, chosen via body.action. */
   async decideClaim(employee: JwtPayload, id: number, dto: DecideMedicalClaimDto) {
     const { action, admin_comment } = dto;
 
-    if (
-      employee.role !== UserRole.HR_MANAGER &&
-      employee.role !== UserRole.HR_EXECUTIVE &&
-      employee.role !== UserRole.SUPER_ADMIN
-    ) {
+    const canDecide = await this.hasRoleOrPermission(employee, HR_ROLES, PERMISSIONS.MEDICAL_CLAIMS, 'write');
+    if (!canDecide) {
       throw new ForbiddenException('Only HR can review medical claims');
     }
 
@@ -149,6 +204,64 @@ export class MedicalInsuranceService {
     return {
       success: true,
       message: action === 'approve' ? 'Claim approved' : 'Claim rejected',
+      claim: updated,
+    };
+  }
+
+  /** Permission-granted user records the bank-deposit payment status against
+   * an approved claim - visible to the employee the same way vendor payment
+   * status is, since getClaimById/getMyClaims already return the full row. */
+  async updatePaymentStatus(employee: JwtPayload, id: number, dto: UpdateMedicalClaimPaymentDto) {
+    const canUpdate = await this.hasRoleOrPermission(employee, HR_ROLES, PERMISSIONS.MEDICAL_CLAIMS, 'write');
+    if (!canUpdate) {
+      throw new ForbiddenException('Insufficient permission to update claim payment status');
+    }
+
+    const paymentStatus = dto.payment_status as MedicalClaimPaymentStatus;
+    if (
+      paymentStatus !== MedicalClaimPaymentStatus.PARTIALLY_PAID &&
+      paymentStatus !== MedicalClaimPaymentStatus.PAID
+    ) {
+      throw new BadRequestException("payment_status must be 'partially_paid' or 'paid'");
+    }
+
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.status !== MedicalClaimStatus.APPROVED) {
+      throw new BadRequestException('Only approved claims can have a payment recorded');
+    }
+
+    const claimAmount = parseFloat(String(claim.amount));
+    let paidAmount: number | null;
+    if (dto.paid_amount != null && dto.paid_amount !== '') {
+      paidAmount = parseFloat(dto.paid_amount);
+      if (isNaN(paidAmount) || paidAmount <= 0) {
+        throw new BadRequestException('Valid paid_amount is required');
+      }
+      if (paidAmount > claimAmount) {
+        throw new BadRequestException('paid_amount cannot exceed the claim amount');
+      }
+    } else {
+      paidAmount = paymentStatus === MedicalClaimPaymentStatus.PAID ? claimAmount : null;
+      if (paidAmount == null) {
+        throw new BadRequestException('paid_amount is required for a partial payment');
+      }
+    }
+
+    if (paymentStatus === MedicalClaimPaymentStatus.PARTIALLY_PAID && paidAmount >= claimAmount) {
+      throw new BadRequestException('paid_amount must be less than the claim amount for a partial payment');
+    }
+
+    const updated = await MedicalInsuranceModel.updatePaymentStatus(id, paymentStatus, employee.userId, {
+      paid_amount: paidAmount,
+      payment_reference: dto.payment_reference?.trim() || null,
+    });
+
+    return {
+      success: true,
+      message: paymentStatus === MedicalClaimPaymentStatus.PAID ? 'Claim marked as paid' : 'Claim marked as partially paid',
       claim: updated,
     };
   }

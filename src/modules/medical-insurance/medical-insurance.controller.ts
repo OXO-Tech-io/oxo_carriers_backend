@@ -2,24 +2,23 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Post,
   Put,
   Query,
   UploadedFiles,
-  UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType } from '../../types';
 import { MedicalInsuranceService, MedicalDocumentFiles } from './medical-insurance.service';
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { UpdateMedicalClaimPaymentDto } from './dto/update-medical-claim-payment.dto';
 import { MEDICAL_DOCUMENT_FIELDS, medicalDocumentsMulterOptions } from './medical-insurance.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
@@ -38,8 +37,9 @@ export class MedicalInsuranceController {
     @CurrentEmployee() employee: JwtPayload,
     @Query('status') status?: MedicalClaimStatus,
     @Query('type') type?: MedicalClaimType,
+    @Query('payment_status') paymentStatus?: MedicalClaimPaymentStatus,
   ) {
-    return this.medicalInsuranceService.getClaims(employee, status, type);
+    return this.medicalInsuranceService.getClaims(employee, status, type, paymentStatus);
   }
 
   @Get(':id')
@@ -47,6 +47,13 @@ export class MedicalInsuranceController {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid claim id');
     return this.medicalInsuranceService.getClaimById(employee, id);
+  }
+
+  @Delete(':id')
+  deleteClaim(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.deleteClaim(employee, id);
   }
 
   @Post()
@@ -60,8 +67,6 @@ export class MedicalInsuranceController {
   }
 
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
   decideClaim(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -70,6 +75,17 @@ export class MedicalInsuranceController {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid claim id');
     return this.medicalInsuranceService.decideClaim(employee, id, dto);
+  }
+
+  @Put(':id/payments')
+  updatePaymentStatus(
+    @CurrentEmployee() employee: JwtPayload,
+    @Param('id') idParam: string,
+    @Body() dto: UpdateMedicalClaimPaymentDto,
+  ) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.updatePaymentStatus(employee, id, dto);
   }
 
   @Post(':id/resubmissions')

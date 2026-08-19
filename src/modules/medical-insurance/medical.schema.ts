@@ -14,6 +14,7 @@ import { employee } from '../../employees/employee.schema';
 // Enums
 export const claimTypeEnum = pgEnum('claim_type', ['IN', 'OPD']);
 export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected']);
+export const medicalPaymentStatusEnum = pgEnum('medical_payment_status', ['not_paid', 'partially_paid', 'paid']);
 
 // Medical Insurance Claims Table
 // Renamed medical_insurance_claims -> tbl_medical_insurance_claims by
@@ -33,6 +34,11 @@ export const medicalInsuranceClaims = pgTable('tbl_medical_insurance_claims', {
     reviewedBy: integer('reviewed_by').references(() => employee.id, { onDelete: 'set null' }),
     reviewedAt: timestamp('reviewed_at'),
     resubmissionOf: integer('resubmission_of'),
+    paymentStatus: medicalPaymentStatusEnum('payment_status').default('not_paid'),
+    paidAmount: decimal('paid_amount', { precision: 12, scale: 2 }),
+    paymentReference: varchar('payment_reference', { length: 200 }),
+    paidBy: integer('paid_by').references(() => employee.id, { onDelete: 'set null' }),
+    paidAt: timestamp('paid_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

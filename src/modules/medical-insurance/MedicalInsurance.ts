@@ -1,5 +1,5 @@
 import pool from '../../config/database';
-import { MedicalInsuranceClaim, MedicalClaimType, MedicalClaimStatus } from '../../types';
+import { MedicalInsuranceClaim, MedicalClaimType, MedicalClaimStatus, MedicalClaimPaymentStatus } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
 
 const IN_PATIENT_MAX = 300000;
@@ -71,7 +71,11 @@ export class MedicalInsuranceModel {
     return this.mapRows(result.rows as any[]);
   }
 
-  static async getAll(filters?: { status?: MedicalClaimStatus; type?: MedicalClaimType }): Promise<MedicalInsuranceClaim[]> {
+  static async getAll(filters?: {
+    status?: MedicalClaimStatus;
+    type?: MedicalClaimType;
+    payment_status?: MedicalClaimPaymentStatus;
+  }): Promise<MedicalInsuranceClaim[]> {
     let query = `
       SELECT mc.* FROM tbl_medical_insurance_claims mc
       WHERE 1=1
@@ -84,6 +88,10 @@ export class MedicalInsuranceModel {
     if (filters?.type) {
       params.push(filters.type);
       query += ` AND mc.type = $${params.length}`;
+    }
+    if (filters?.payment_status) {
+      params.push(filters.payment_status);
+      query += ` AND mc.payment_status = $${params.length}`;
     }
     query += ' ORDER BY mc.created_at DESC';
     const result = await pool.query(query, params);
@@ -114,6 +122,25 @@ export class MedicalInsuranceModel {
     return this.findById(id);
   }
 
+  static async updatePaymentStatus(
+    id: number,
+    paymentStatus: MedicalClaimPaymentStatus,
+    paidBy: number,
+    extra: { paid_amount?: number | null; payment_reference?: string | null } = {}
+  ): Promise<MedicalInsuranceClaim | null> {
+    await pool.query(
+      `UPDATE tbl_medical_insurance_claims
+       SET payment_status = $1, paid_amount = $2, payment_reference = $3, paid_by = $4, paid_at = NOW()
+       WHERE id = $5`,
+      [paymentStatus, extra.paid_amount ?? null, extra.payment_reference ?? null, paidBy, id]
+    );
+    return this.findById(id);
+  }
+
+  static async deleteById(id: number): Promise<void> {
+    await pool.query(`DELETE FROM tbl_medical_insurance_claims WHERE id = $1`, [id]);
+  }
+
   private static async mapRows(rows: any[]): Promise<MedicalInsuranceClaim[]> {
     const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
     return rows.map(row => {
@@ -131,6 +158,11 @@ export class MedicalInsuranceModel {
         reviewed_by: row.reviewed_by,
         reviewed_at: row.reviewed_at,
         resubmission_of: row.resubmission_of,
+        payment_status: row.payment_status,
+        paid_amount: row.paid_amount != null ? parseFloat(row.paid_amount) : null,
+        payment_reference: row.payment_reference,
+        paid_by: row.paid_by,
+        paid_at: row.paid_at,
         created_at: row.created_at,
         updated_at: row.updated_at,
         user: emp

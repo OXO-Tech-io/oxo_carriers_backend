@@ -278,6 +278,12 @@ export enum MedicalClaimStatus {
   REJECTED = "rejected",
 }
 
+export enum MedicalClaimPaymentStatus {
+  NOT_PAID = "not_paid",
+  PARTIALLY_PAID = "partially_paid",
+  PAID = "paid",
+}
+
 export interface MedicalInsuranceClaim {
   id: number;
   employee_id: string;
@@ -291,6 +297,11 @@ export interface MedicalInsuranceClaim {
   reviewed_by?: number | null;
   reviewed_at?: Date | null;
   resubmission_of?: number | null;
+  payment_status: MedicalClaimPaymentStatus;
+  paid_amount?: number | null;
+  payment_reference?: string | null;
+  paid_by?: number | null;
+  paid_at?: Date | null;
   created_at: Date;
   updated_at: Date;
   user?: {
