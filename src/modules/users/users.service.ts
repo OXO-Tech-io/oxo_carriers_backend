@@ -264,7 +264,7 @@ export class UsersService {
       await EmployeePiiModel.delete(user.employeeId);
     }
 
-    await EmployeeModel.update(userId, { status: EmployeeStatus.INACTIVE, keycloakSub: null });
+    await EmployeeModel.update(userId, { status: EmployeeStatus.INACTIVE, keycloakSub: null, deletedAt: new Date() });
   }
 
   async resetPassword(userId: number, requester: JwtPayload) {

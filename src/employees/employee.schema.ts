@@ -71,6 +71,11 @@ export const employee = pgTable('tbl_employee', {
     managerId: integer('manager_id'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
+    // Set when UsersService.delete() removes the employee. Distinct from
+    // `status` (which HR also sets to 'inactive' for employees who are still
+    // employed but on hold) so removed employees can be excluded from
+    // EmployeeModel.getAll() without hiding merely-deactivated ones.
+    deletedAt: timestamp('deleted_at'),
 });
 
 // Employee relations

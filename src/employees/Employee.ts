@@ -1,7 +1,7 @@
 import { db } from '../db';
 import { employee, userPermissions, type Employee as DrizzleEmployee } from '../db/schema';
 import { User, UserRole } from '../types';
-import { eq, like, and, sql, inArray } from 'drizzle-orm';
+import { eq, like, and, sql, inArray, isNull } from 'drizzle-orm';
 import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
 
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
@@ -250,7 +250,11 @@ export class EmployeeModel {
     department?: string;
     search?: string;
   }): Promise<DrizzleEmployee[]> {
-    const conditions = [];
+    // Removed employees (UsersService.delete) are excluded by default - the
+    // row is kept for FK integrity (leave, salary, attendance, etc.) but
+    // shouldn't reappear in listings. Distinct from `status: 'inactive'`,
+    // which HR also sets for employees who are still employed but on hold.
+    const conditions = [isNull(employee.deletedAt)];
 
     if (filters?.role) {
       conditions.push(
