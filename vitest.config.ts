@@ -4,6 +4,10 @@ export default defineConfig({
   test: {
     environment: "node",
     globals: true,
+    // Default (5000ms) is thin margin on a dev machine running many other
+    // services concurrently (docker stacks, other projects' dev servers) -
+    // bumped so load-induced slowness doesn't get misread as a hung test.
+    testTimeout: 15000,
     include: ["tests/unit/**/*.test.ts"],
     env: {
       NODE_ENV: "test",
