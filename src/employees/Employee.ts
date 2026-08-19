@@ -298,15 +298,21 @@ export class EmployeeModel {
 
   static async generateEmployeeId(): Promise<string> {
     const year = new Date().getFullYear();
-    const pattern = `EMP${year}%`;
+    const prefix = `EMP${year}`;
 
+    // Derived from the highest existing id, not a row count - a count desyncs
+    // from the real sequence whenever an id matching this pattern was
+    // inserted out of band (e.g. add_super_admin_employee.sql), permanently
+    // colliding with the same already-taken id on every future call since a
+    // successful insert is the only thing that would otherwise advance it.
     const result = await db
-      .select({ count: sql<number>`count(*)` })
+      .select({ maxId: sql<string | null>`max(${employee.employeeId})` })
       .from(employee)
-      .where(like(employee.employeeId, pattern));
+      .where(like(employee.employeeId, `${prefix}%`));
 
-    const count = result[0]?.count || 0;
-    const sequence = String(Number(count) + 1).padStart(4, '0');
-    return `EMP${year}${sequence}`;
+    const maxId = result[0]?.maxId;
+    const lastSequence = maxId ? parseInt(maxId.slice(prefix.length), 10) || 0 : 0;
+    const sequence = String(lastSequence + 1).padStart(4, '0');
+    return `${prefix}${sequence}`;
   }
 }
