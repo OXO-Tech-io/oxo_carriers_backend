@@ -189,7 +189,7 @@ async function bootstrap() {
     // 2. Initialize missing leave balances for existing employees
     try {
       logger.info('Checking leave balances for existing employees...');
-      const employeesRes = await pool.query("SELECT id, hire_date FROM tbl_employee WHERE role = 'employee'");
+      const employeesRes = await pool.query("SELECT id, employee_id, hire_date FROM tbl_employee WHERE role = 'employee'");
       const employees = employeesRes.rows || [];
 
       const leaveTypesRes = await pool.query('SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true');
@@ -201,8 +201,8 @@ async function bootstrap() {
       for (const emp of employees as any[]) {
         for (const type of leaveTypes as any[]) {
           const checkRes = await pool.query(
-            'SELECT 1 FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
-            [emp.id, type.id, currentYear],
+            'SELECT 1 FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+            [emp.employee_id, type.id, currentYear],
           );
           if (checkRes.rows.length === 0) {
             const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
@@ -215,8 +215,8 @@ async function bootstrap() {
               totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
             }
             await pool.query(
-              'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
-              [emp.id, type.id, totalDays, currentYear],
+              'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
+              [emp.employee_id, type.id, totalDays, currentYear],
             );
             initializedBalancesCount++;
           }

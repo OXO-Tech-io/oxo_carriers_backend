@@ -215,7 +215,12 @@ describe("UsersService", () => {
       const result = await service.create(baseDto, hr);
 
       expect(em.create).toHaveBeenCalled();
-      expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining("tbl_employee_leave_balance"), expect.any(Array));
+      // employee_id (business id), not the dropped user_id column / numeric
+      // internal id - see renameUserIdToEmployeeIdFk.ts.
+      expect(poolQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO tbl_employee_leave_balance (employee_id"),
+        ["EMP100", 1, expect.any(Number), expect.any(Number), expect.any(Number)],
+      );
       expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining("tbl_user_permissions"), expect.any(Array));
       expect(result.keycloak).toEqual({ provisioned: true, onboardingEmailSent: true });
     });

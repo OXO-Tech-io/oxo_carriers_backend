@@ -15,7 +15,7 @@ async function fixLeaveBalances() {
 
     // Also ensure all users have leave balances for current year
     const currentYear = new Date().getFullYear();
-    const usersResult = await pool.query('SELECT id FROM tbl_employee');
+    const usersResult = await pool.query('SELECT employee_id FROM tbl_employee');
     const leaveTypesResult = await pool.query('SELECT id, max_days FROM tbl_leave_types WHERE is_active = true');
 
     const userList = usersResult.rows as any[];
@@ -26,16 +26,16 @@ async function fixLeaveBalances() {
       for (const type of typesList) {
         // Check if balance exists
         const existing = await pool.query(
-          'SELECT id FROM tbl_employee_leave_balance WHERE user_id = $1 AND leave_type_id = $2 AND year = $3',
-          [user.id, type.id, currentYear]
+          'SELECT id FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+          [user.employee_id, type.id, currentYear]
         );
 
         const existingList = existing.rows as any[];
         if (existingList.length === 0) {
           // Create missing balance
           await pool.query(
-            'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
-            [user.id, type.id, type.max_days, type.max_days, currentYear]
+            'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+            [user.employee_id, type.id, type.max_days, type.max_days, currentYear]
           );
           created++;
         }
