@@ -75,6 +75,10 @@ export class UsersService {
       throw new BadRequestException('Service providers must be created via Create Service Provider.');
     }
 
+    if (userRoleInput === UserRole.SUPER_ADMIN && !isSuperAdmin(requester)) {
+      throw new ForbiddenException('Only a Super Admin can create another Super Admin.');
+    }
+
     if (!dto.email || !dto.first_name || !dto.last_name) {
       throw new BadRequestException('Required fields are missing');
     }
@@ -226,6 +230,9 @@ export class UsersService {
     const canUpdateRole =
       isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
     if (canUpdateRole && dto.role) {
+      if (dto.role === UserRole.SUPER_ADMIN && !isSuperAdmin(requester)) {
+        throw new ForbiddenException('Only a Super Admin can promote a user to Super Admin.');
+      }
       updates.role = dto.role;
     }
 
