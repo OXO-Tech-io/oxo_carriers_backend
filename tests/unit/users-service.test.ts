@@ -255,6 +255,23 @@ describe("UsersService", () => {
       const result = await service.create(baseDto, hr);
       expect(result.keycloak).toEqual({ provisioned: false, error: "kc down" });
     });
+
+    it("rejects an HR manager creating a super_admin", async () => {
+      em.findByEmail.mockResolvedValue(null);
+      await expect(service.create({ ...baseDto, role: UserRole.SUPER_ADMIN }, hr)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(em.create).not.toHaveBeenCalled();
+    });
+
+    it("allows a super admin to create another super_admin", async () => {
+      em.findByEmail.mockResolvedValue(null);
+      em.generateEmployeeId.mockResolvedValue("EMP104");
+      em.create.mockResolvedValue({ id: 14, employeeId: "EMP104", email: baseDto.email, hireDate: null });
+
+      await service.create({ ...baseDto, role: UserRole.SUPER_ADMIN }, superAdmin);
+      expect(em.create).toHaveBeenCalledWith(expect.objectContaining({ role: UserRole.SUPER_ADMIN }));
+    });
   });
 
   describe("update", () => {
@@ -271,6 +288,19 @@ describe("UsersService", () => {
       em.update.mockResolvedValue({ id: 5 });
       await service.update(5, { role: UserRole.HR_MANAGER } as any, selfEmployee);
       expect(em.update).toHaveBeenCalledWith(5, {});
+    });
+
+    it("rejects an HR manager promoting a user to super_admin via update", async () => {
+      await expect(service.update(5, { role: UserRole.SUPER_ADMIN } as any, hr)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(em.update).not.toHaveBeenCalled();
+    });
+
+    it("allows a super admin to promote a user to super_admin via update", async () => {
+      em.update.mockResolvedValue({ id: 5, role: UserRole.SUPER_ADMIN });
+      await service.update(5, { role: UserRole.SUPER_ADMIN } as any, superAdmin);
+      expect(em.update).toHaveBeenCalledWith(5, { role: UserRole.SUPER_ADMIN });
     });
 
     it("applies allowed updates for HR", async () => {
