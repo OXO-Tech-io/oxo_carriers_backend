@@ -162,8 +162,8 @@ export class UsersService {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
         }
         await pool.query(
-          'INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
-          [user.id, type.id, totalDays, totalDays, currentYear],
+          'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',
+          [user.employeeId, type.id, totalDays, totalDays, currentYear],
         );
       }
     }
