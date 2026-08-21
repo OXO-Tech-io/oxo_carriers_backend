@@ -70,7 +70,10 @@ describe("ReportsService", () => {
         .mockResolvedValueOnce({ rows: [{ count: "42" }] }) // totalEmployees
         .mockResolvedValueOnce({ rows: [{ count: "3" }] }) // pendingLeaveRequests
         .mockResolvedValueOnce({ rows: [{ count: "5" }] }) // leaveRequestsThisMonth
-        .mockResolvedValueOnce({ rows: [{ count: "10", total: "150000.50" }] }) // salaries this month
+        // net_salary is PGP-encrypted ciphertext in production; decryptSalary()
+        // passes plain (non "iv:hex") strings through unchanged, so these can
+        // stand in for decrypted values without needing SALARY_ENCRYPTION_KEY.
+        .mockResolvedValueOnce({ rows: [{ net_salary: "50000.25" }, { net_salary: "100000.25" }] }) // salaries this month
         .mockResolvedValueOnce({ rows: [{ department: "Eng", count: "7" }] }); // dept distribution
 
       const result = await service.getDashboardMetrics();
@@ -78,21 +81,22 @@ describe("ReportsService", () => {
         totalEmployees: 42,
         pendingLeaveRequests: 3,
         leaveRequestsThisMonth: 5,
-        salariesPaidThisMonth: 10,
+        salariesPaidThisMonth: 2,
         totalSalaryPaid: 150000.5,
         departmentLeaveDistribution: [{ department: "Eng", count: "7" }],
       });
     });
 
-    it("defaults totalSalaryPaid to 0 when there's no salary total", async () => {
+    it("defaults totalSalaryPaid to 0 when there are no paid salaries this month", async () => {
       poolQueryMock
         .mockResolvedValueOnce({ rows: [{ count: "0" }] })
         .mockResolvedValueOnce({ rows: [{ count: "0" }] })
         .mockResolvedValueOnce({ rows: [{ count: "0" }] })
-        .mockResolvedValueOnce({ rows: [{ count: "0", total: null }] })
+        .mockResolvedValueOnce({ rows: [] })
         .mockResolvedValueOnce({ rows: [] });
 
       const result = await service.getDashboardMetrics();
+      expect(result.salariesPaidThisMonth).toBe(0);
       expect(result.totalSalaryPaid).toBe(0);
     });
   });
