@@ -196,34 +196,46 @@ async function bootstrap() {
       const leaveTypes = leaveTypesRes.rows || [];
 
       const currentYear = new Date().getFullYear();
-      let initializedBalancesCount = 0;
 
+      // One round trip for every existing (employee, leave type) pair this year,
+      // instead of one SELECT per employee-x-leave-type combination below.
+      const existingRes = await pool.query(
+        'SELECT employee_id, leave_type_id FROM tbl_employee_leave_balance WHERE year = $1',
+        [currentYear],
+      );
+      const existing = new Set((existingRes.rows || []).map((r: any) => `${r.employee_id}:${r.leave_type_id}`));
+
+      const missingEmployeeIds: string[] = [];
+      const missingLeaveTypeIds: number[] = [];
+      const missingTotalDays: number[] = [];
       for (const emp of employees as any[]) {
         for (const type of leaveTypes as any[]) {
-          const checkRes = await pool.query(
-            'SELECT 1 FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
-            [emp.employee_id, type.id, currentYear],
-          );
-          if (checkRes.rows.length === 0) {
-            const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
-            let totalDays = type.max_days;
-            if (
-              type.name.toLowerCase() === 'annual' ||
-              type.name.toLowerCase() === 'annual/paid leave' ||
-              type.name.toLowerCase() === 'annual leave'
-            ) {
-              totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
-            }
-            await pool.query(
-              'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $3, $4)',
-              [emp.employee_id, type.id, totalDays, currentYear],
-            );
-            initializedBalancesCount++;
+          if (existing.has(`${emp.employee_id}:${type.id}`)) continue;
+          const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
+          let totalDays = type.max_days;
+          if (
+            type.name.toLowerCase() === 'annual' ||
+            type.name.toLowerCase() === 'annual/paid leave' ||
+            type.name.toLowerCase() === 'annual leave'
+          ) {
+            totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
           }
+          missingEmployeeIds.push(emp.employee_id);
+          missingLeaveTypeIds.push(type.id);
+          missingTotalDays.push(totalDays);
         }
       }
-      if (initializedBalancesCount > 0) {
-        logger.info(`Initialized ${initializedBalancesCount} missing leave balance records for existing employees.`);
+
+      // Single bulk insert regardless of how many rows are missing.
+      await pool.query(
+        `INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year)
+         SELECT e, lt, td, 0, td, $4
+         FROM unnest($1::varchar[], $2::integer[], $3::integer[]) AS x(e, lt, td)`,
+        [missingEmployeeIds, missingLeaveTypeIds, missingTotalDays, currentYear],
+      );
+
+      if (missingEmployeeIds.length > 0) {
+        logger.info(`Initialized ${missingEmployeeIds.length} missing leave balance records for existing employees.`);
       } else {
         logger.info('All employee leave balances are up to date.');
       }
@@ -252,24 +264,35 @@ async function bootstrap() {
         'forms',
         'document_vault',
       ];
-      let assignedCount = 0;
+
+      // One round trip for every existing (employee, permission) pair, instead
+      // of one SELECT per employee-x-permission combination below.
+      const existingRes = await pool.query(
+        'SELECT employee_id, permission_key FROM tbl_user_permissions WHERE employee_id = ANY($1)',
+        [employeeIds],
+      );
+      const existing = new Set((existingRes.rows || []).map((r: any) => `${r.employee_id}:${r.permission_key}`));
+
+      const missingEmployeeIds: string[] = [];
+      const missingKeys: string[] = [];
       for (const empId of employeeIds) {
         for (const permission of defaultPermissions) {
-          const checkRes = await pool.query(
-            'SELECT 1 FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
-            [empId, permission],
-          );
-          if (checkRes.rows.length === 0) {
-            await pool.query(
-              'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
-              [empId, permission, 'read'],
-            );
-            assignedCount++;
-          }
+          if (existing.has(`${empId}:${permission}`)) continue;
+          missingEmployeeIds.push(empId);
+          missingKeys.push(permission);
         }
       }
-      if (assignedCount > 0) {
-        logger.info(`Assigned ${assignedCount} missing default permissions to employees in Postgres.`);
+
+      // Single bulk insert regardless of how many rows are missing.
+      await pool.query(
+        `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
+         SELECT e, k, 'read'::access_level
+         FROM unnest($1::varchar[], $2::varchar[]) AS x(e, k)`,
+        [missingEmployeeIds, missingKeys],
+      );
+
+      if (missingEmployeeIds.length > 0) {
+        logger.info(`Assigned ${missingEmployeeIds.length} missing default permissions to employees in Postgres.`);
       } else {
         logger.info('All employee permissions are up to date in Postgres.');
       }
@@ -284,26 +307,30 @@ async function bootstrap() {
         "SELECT employee_id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive') AND employee_id IS NOT NULL",
       );
       const hrIds = (hrRes.rows || []).map((row: any) => row.employee_id);
-      let hrAssignedCount = 0;
-      for (const hrId of hrIds) {
-        const checkRes = await pool.query(
-          'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
-          [hrId, 'profile_change_requests'],
-        );
-        if (checkRes.rows.length === 0) {
-          await pool.query(
-            'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
-            [hrId, 'profile_change_requests', 'write'],
-          );
-          hrAssignedCount++;
-        } else if (checkRes.rows[0].access_level !== 'write') {
-          await pool.query(
-            'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
-            [hrId, 'profile_change_requests', 'write'],
-          );
-          hrAssignedCount++;
-        }
-      }
+
+      // One round trip for every HR user's existing grant, instead of one
+      // SELECT per HR user below.
+      const existingRes = await pool.query(
+        "SELECT employee_id, access_level FROM tbl_user_permissions WHERE employee_id = ANY($1) AND permission_key = 'profile_change_requests'",
+        [hrIds],
+      );
+      const accessLevelByEmployee = new Map((existingRes.rows || []).map((r: any) => [r.employee_id, r.access_level]));
+
+      const toInsert = hrIds.filter((id: string) => !accessLevelByEmployee.has(id));
+      const toUpgrade = hrIds.filter((id: string) => accessLevelByEmployee.get(id) === 'read');
+
+      await pool.query(
+        `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
+         SELECT e, 'profile_change_requests', 'write'::access_level
+         FROM unnest($1::varchar[]) AS x(e)`,
+        [toInsert],
+      );
+      await pool.query(
+        "UPDATE tbl_user_permissions SET access_level = 'write' WHERE employee_id = ANY($1) AND permission_key = 'profile_change_requests'",
+        [toUpgrade],
+      );
+
+      const hrAssignedCount = toInsert.length + toUpgrade.length;
       if (hrAssignedCount > 0) {
         logger.info(`Granted/updated profile_change_requests (write) for ${hrAssignedCount} HR users.`);
       } else {
@@ -329,26 +356,37 @@ async function bootstrap() {
           grants.push({ employeeId: row.employee_id, key: 'work_logs' });
         }
       }
-      let hrModuleGrantCount = 0;
-      for (const grant of grants) {
-        const checkRes = await pool.query(
-          'SELECT access_level FROM tbl_user_permissions WHERE employee_id = $1 AND permission_key = $2',
-          [grant.employeeId, grant.key],
-        );
-        if (checkRes.rows.length === 0) {
-          await pool.query(
-            'INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)',
-            [grant.employeeId, grant.key, 'write'],
-          );
-          hrModuleGrantCount++;
-        } else if (checkRes.rows[0].access_level !== 'write') {
-          await pool.query(
-            'UPDATE tbl_user_permissions SET access_level = $3 WHERE employee_id = $1 AND permission_key = $2',
-            [grant.employeeId, grant.key, 'write'],
-          );
-          hrModuleGrantCount++;
-        }
-      }
+      const hrIds = [...new Set(grants.map((g) => g.employeeId))];
+      const grantKeys = [...new Set(grants.map((g) => g.key))];
+
+      // One round trip for every existing grant among these HR users and
+      // module keys, instead of one SELECT per (employee, key) pair below.
+      const existingRes = await pool.query(
+        'SELECT employee_id, permission_key, access_level FROM tbl_user_permissions WHERE employee_id = ANY($1) AND permission_key = ANY($2)',
+        [hrIds, grantKeys],
+      );
+      const accessLevelByPair = new Map(
+        (existingRes.rows || []).map((r: any) => [`${r.employee_id}:${r.permission_key}`, r.access_level]),
+      );
+
+      const toInsert = grants.filter((g) => !accessLevelByPair.has(`${g.employeeId}:${g.key}`));
+      const toUpgrade = grants.filter((g) => accessLevelByPair.get(`${g.employeeId}:${g.key}`) === 'read');
+
+      await pool.query(
+        `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
+         SELECT e, k, 'write'::access_level
+         FROM unnest($1::varchar[], $2::varchar[]) AS x(e, k)`,
+        [toInsert.map((g) => g.employeeId), toInsert.map((g) => g.key)],
+      );
+      await pool.query(
+        `UPDATE tbl_user_permissions t
+         SET access_level = 'write'
+         FROM unnest($1::varchar[], $2::varchar[]) AS g(employee_id, permission_key)
+         WHERE t.employee_id = g.employee_id AND t.permission_key = g.permission_key`,
+        [toUpgrade.map((g) => g.employeeId), toUpgrade.map((g) => g.key)],
+      );
+
+      const hrModuleGrantCount = toInsert.length + toUpgrade.length;
       if (hrModuleGrantCount > 0) {
         logger.info(`Granted/updated HR modules permissions for ${hrModuleGrantCount} assignments.`);
       } else {

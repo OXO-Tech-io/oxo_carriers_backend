@@ -34,7 +34,8 @@
     "db:rename-pii-name-columns": "ts-node src/scripts/renamePiiNameColumns.ts",
     "db:add-work-log-deadline": "ts-node src/scripts/addWorkLogDeadline.ts",
     "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts",
-    "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts"
+    "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts",
+    "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts"
   },
   "keywords": [],
   "author": "",

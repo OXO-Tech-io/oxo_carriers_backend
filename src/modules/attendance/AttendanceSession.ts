@@ -24,21 +24,37 @@ export class AttendanceSessionModel {
     return inserted;
   }
 
-  /** Closes the employee's open session, if any. Returns null if none is open. */
-  static async endActive(employeeId: string): Promise<EmployeeWorkSession | null> {
-    const active = await this.findActive(employeeId);
-    if (!active) return null;
-
-    const logoutAt = new Date();
-    const loginAt = active.loginAt ?? logoutAt;
+  /** Marks a session ended at the given time, computing its worked duration. */
+  private static async close(
+    session: EmployeeWorkSession,
+    logoutAt: Date,
+    endReason: string,
+  ): Promise<EmployeeWorkSession | null> {
+    const loginAt = session.loginAt ?? logoutAt;
     const totalDurationSec = Math.max(0, Math.round((logoutAt.getTime() - loginAt.getTime()) / 1000));
 
     const [updated] = await db
       .update(employeeWorkSessions)
-      .set({ logoutAt, status: 'ended', endReason: 'user_logout', totalDurationSec })
-      .where(eq(employeeWorkSessions.id, active.id))
+      .set({ logoutAt, status: 'ended', endReason, totalDurationSec })
+      .where(eq(employeeWorkSessions.id, session.id))
       .returning();
     return updated ?? null;
+  }
+
+  /** Closes the employee's open session, if any. Returns null if none is open. */
+  static async endActive(employeeId: string): Promise<EmployeeWorkSession | null> {
+    const active = await this.findActive(employeeId);
+    if (!active) return null;
+    return this.close(active, new Date(), 'user_logout');
+  }
+
+  /**
+   * Force-closes a session left open past its own calendar day (a forgotten
+   * clock-out, a crashed tab, etc.), backdating the logout to the end of that
+   * day so the stale session doesn't block a fresh clock-in on a later day.
+   */
+  static async closeStale(session: EmployeeWorkSession, endOfDay: Date): Promise<EmployeeWorkSession | null> {
+    return this.close(session, endOfDay, 'auto_closed');
   }
 
   /** An employee's sessions with login_at in [from, to), most recent first. */
