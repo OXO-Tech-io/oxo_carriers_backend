@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import pool from '../../config/database';
 import { EmployeeModel } from '../../employees/Employee';
+import { decryptSalary } from '../../utils/encryption';
 
 @Injectable()
 export class ReportsService {
@@ -173,15 +174,20 @@ export class ReportsService {
     );
     const leaveRequestsThisMonth = Number((monthLeavesResult.rows as any[])[0].count);
 
+    // net_salary is PGP-encrypted (varchar ciphertext, see Salary.ts/encryption.ts) -
+    // it can't be summed in SQL, so fetch the rows and decrypt+sum in JS.
     const monthSalariesResult = await pool.query(
-      `SELECT COUNT(*) as count, SUM(net_salary) as total
+      `SELECT net_salary
        FROM tbl_monthly_salaries
        WHERE EXTRACT(MONTH FROM month_year) = $1 AND EXTRACT(YEAR FROM month_year) = $2 AND status = 'paid'`,
       [currentMonth, currentYear],
     );
-    const salaryData = (monthSalariesResult.rows as any[])[0];
-    const salariesPaidThisMonth = Number(salaryData.count);
-    const totalSalaryPaid = parseFloat(salaryData.total || 0);
+    const paidSalaryRows = monthSalariesResult.rows as any[];
+    const salariesPaidThisMonth = paidSalaryRows.length;
+    const totalSalaryPaid = paidSalaryRows.reduce(
+      (sum, row) => sum + parseFloat(decryptSalary(row.net_salary) || '0'),
+      0,
+    );
 
     const deptLeavesResult = await pool.query(
       `SELECT u.department, COUNT(*) as count
