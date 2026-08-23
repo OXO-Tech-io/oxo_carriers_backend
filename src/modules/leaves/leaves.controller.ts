@@ -15,9 +15,11 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, UserRole } from '../../types';
+import { JwtPayload, LeaveStatus, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import { sendLeaveApprovedEmail, sendLeaveRejectedEmail, sendLeaveSubmittedEmail } from '../../config/email';
+import { communicationService } from '../communications/communication.service';
+import { EmployeeModel } from '../../employees/Employee';
 import { LeavesService } from './leaves.service';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
@@ -45,6 +47,13 @@ export class LeavesController {
   async getLeaveRequests(@CurrentEmployee() employee: JwtPayload, @Query() query: ListLeaveRequestsQueryDto) {
     const requests = await this.leavesService.listLeaveRequests(employee, query);
     return { success: true, message: 'Leave requests fetched', data: requests };
+  }
+
+  /** Must be declared before @Get(':id') so it isn't shadowed by that route. */
+  @Get('coverage-candidates')
+  async getCoverageCandidates(@CurrentEmployee() employee: JwtPayload) {
+    const candidates = await this.leavesService.listCoverageCandidates(employee);
+    return { success: true, message: 'Coverage candidates fetched', data: candidates };
   }
 
   @Get(':id')
@@ -84,6 +93,14 @@ export class LeavesController {
     this.notifyApproved(updated, dto.approvedBy).catch((emailErr: unknown) => {
       logger.error({ err: emailErr }, 'Failed to send leave approved email');
     });
+
+    // Only once the leave is finally confirmed (HR approval) - not on the
+    // intermediate team-leader-approval step, since HR could still reject it.
+    if (updated.status === LeaveStatus.HR_APPROVED && updated.coverup_employee_id) {
+      this.notifyCoverupEmployee(updated, employee.userId).catch((err: unknown) => {
+        logger.error({ err }, 'Failed to notify coverup employee');
+      });
+    }
 
     return { success: true, message: 'Leave request updated', data: updated };
   }
@@ -145,6 +162,42 @@ export class LeavesController {
       approvedBy: approvedBy === 'team_leader' ? 'Team Leader' : 'HR Management',
       referenceNumber: `LV-${updated.id}`,
     });
+  }
+
+  /**
+   * Notifies the coverup employee once a leave request is finally HR-approved
+   * - see the `LeaveStatus.HR_APPROVED` gate at the call site. Goes through
+   * communicationService.create (the same path HR broadcasts use) rather than
+   * the generic notificationService directly, so this actually shows up in
+   * the recipient's My Communications inbox - not just the notification bell
+   * - since communicationService.create already fires both the in-app
+   * notification and an email per recipient as part of creating the
+   * communication. Silently no-ops if the coverup employee's record can't be
+   * found (shouldn't happen: leave.service.ts validates it exists at request time).
+   */
+  private async notifyCoverupEmployee(
+    updated: Awaited<ReturnType<LeavesService['approveLeaveRequest']>>,
+    approverUserId: number,
+  ) {
+    if (!updated.coverup_employee_id) return;
+
+    const coverupEmployee = await EmployeeModel.findByEmployeeId(updated.coverup_employee_id);
+    if (!coverupEmployee) return;
+
+    const coveredEmployeeName = updated.user
+      ? `${updated.user.first_name} ${updated.user.last_name}`.trim()
+      : 'A colleague';
+    const startDate = new Date(updated.start_date).toLocaleDateString('en-GB');
+    const endDate = new Date(updated.end_date).toLocaleDateString('en-GB');
+
+    await communicationService.create(
+      'Coverup Assignment',
+      `${coveredEmployeeName}'s leave (${startDate} - ${endDate}) has been approved. You have been assigned to cover their work during this period.`,
+      [coverupEmployee.id],
+      [],
+      approverUserId,
+      [],
+    );
   }
 
   private async notifyRejected(

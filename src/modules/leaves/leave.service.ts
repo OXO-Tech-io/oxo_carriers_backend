@@ -1,7 +1,10 @@
 import pool from '../../config/database';
 import { LeaveModel } from './Leave';
 import { LeaveCalendarModel } from '../leave-calendar/LeaveCalendar';
+import { EmployeeModel } from '../../employees/Employee';
 import {
+  EmployeeCategory,
+  EmployeeStatus,
   LeaveBalance,
   LeaveRequest,
   LeaveStatus,
@@ -115,6 +118,20 @@ export const leaveService = {
       );
     }
 
+    const requester = await EmployeeModel.findByEmployeeId(employeeId);
+    if (requester?.employeeCategory === EmployeeCategory.INTERNAL) {
+      if (!input.coverup_employee_id) {
+        throw new BadRequestError('A coverup employee is required for internal employees');
+      }
+      if (input.coverup_employee_id === employeeId) {
+        throw new BadRequestError('You cannot select yourself as the coverup employee');
+      }
+      const coverupEmployee = await EmployeeModel.findByEmployeeId(input.coverup_employee_id);
+      if (!coverupEmployee || coverupEmployee.status !== EmployeeStatus.ACTIVE) {
+        throw new BadRequestError('Coverup employee not found or inactive');
+      }
+    }
+
     return LeaveModel.createRequest({
       employee_id: employeeId,
       leave_type_id: input.leave_type_id,
@@ -125,6 +142,7 @@ export const leaveService = {
       half_day_period: input.half_day_period,
       reason: input.reason,
       attachment_url: attachmentUrl,
+      coverup_employee_id: input.coverup_employee_id,
     });
   },
 

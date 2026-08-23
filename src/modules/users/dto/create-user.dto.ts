@@ -26,6 +26,12 @@ export class CreateUserDto {
   @IsIn(Object.values(UserRole))
   role?: UserRole;
 
+  // Required for every role except Service Provider - enforced in
+  // UsersService.create (not here) so the error message can be specific.
+  @IsOptional()
+  @IsIn(['internal', 'client_side'])
+  employee_category?: 'internal' | 'client_side';
+
   @IsOptional()
   @IsString()
   department?: string;
@@ -33,6 +39,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   position?: string;
+
+  @IsOptional()
+  @IsIn(['office', 'remote', 'hybrid'])
+  work_location?: 'office' | 'remote' | 'hybrid';
 
   @IsOptional()
   @IsString()

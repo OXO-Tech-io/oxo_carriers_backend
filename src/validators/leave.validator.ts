@@ -17,6 +17,7 @@ export const createLeaveRequestSchema = z
     reason: z.string().min(1, 'Reason is required').max(2000).optional(),
     is_half_day: stringBool.optional().default(false),
     half_day_period: z.enum(['morning', 'evening']).optional(),
+    coverup_employee_id: z.string().trim().min(1).optional(),
   })
   .refine(
     data => !data.is_half_day || data.start_date === data.end_date,

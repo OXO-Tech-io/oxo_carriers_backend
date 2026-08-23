@@ -15,23 +15,32 @@ vi.mock("../../src/modules/leaves/Leave", () => ({
 vi.mock("../../src/modules/leave-calendar/LeaveCalendar", () => ({
   LeaveCalendarModel: { getHolidaysInRange: vi.fn() },
 }));
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: { findByEmployeeId: vi.fn() },
+}));
 vi.mock("../../src/config/database", () => ({
   default: { query: vi.fn() },
 }));
 
 import { LeaveModel } from "../../src/modules/leaves/Leave";
 import { LeaveCalendarModel } from "../../src/modules/leave-calendar/LeaveCalendar";
+import { EmployeeModel } from "../../src/employees/Employee";
 import pool from "../../src/config/database";
 import { leaveService } from "../../src/modules/leaves/leave.service";
 
 const lm = LeaveModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const lcm = LeaveCalendarModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const poolQueryMock = (pool as any).query as ReturnType<typeof vi.fn>;
 
 describe("leaveService (core)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lcm.getHolidaysInRange.mockResolvedValue([]);
+    // Default: requester has no employeeCategory on record (pre-existing
+    // employees predate this field) - matches "not Internal", so the
+    // coverup requirement doesn't kick in unless a test opts in below.
+    em.findByEmployeeId.mockResolvedValue(undefined);
   });
 
   describe("listLeaveRequests", () => {
@@ -124,6 +133,50 @@ describe("leaveService (core)", () => {
       lm.createRequest.mockResolvedValue({ id: 1 });
       await leaveService.createLeaveRequest("EMP1", fullDayInput);
       expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ total_days: 1 }));
+    });
+
+    describe("coverup employee requirement (Internal employees only)", () => {
+      beforeEach(() => {
+        lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10 }]);
+      });
+
+      it("requires a coverup employee when the requester is Internal", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" });
+        await expect(leaveService.createLeaveRequest("EMP1", fullDayInput)).rejects.toMatchObject({
+          statusCode: 400,
+        });
+        expect(lm.createRequest).not.toHaveBeenCalled();
+      });
+
+      it("rejects selecting yourself as the coverup employee", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" });
+        await expect(
+          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP1" }),
+        ).rejects.toMatchObject({ statusCode: 400 });
+      });
+
+      it("rejects a coverup employee that doesn't exist or isn't active", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
+        em.findByEmployeeId.mockResolvedValueOnce(undefined); // coverup lookup
+        await expect(
+          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" }),
+        ).rejects.toMatchObject({ statusCode: 400 });
+      });
+
+      it("accepts a valid, active coverup employee and passes it through", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
+        em.findByEmployeeId.mockResolvedValueOnce({ status: "active" }); // coverup
+        lm.createRequest.mockResolvedValue({ id: 1 });
+        await leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" });
+        expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ coverup_employee_id: "EMP2" }));
+      });
+
+      it("doesn't require a coverup employee for a Client Side requester", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "client_side" });
+        lm.createRequest.mockResolvedValue({ id: 1 });
+        await leaveService.createLeaveRequest("EMP1", fullDayInput);
+        expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ coverup_employee_id: undefined }));
+      });
     });
   });
 

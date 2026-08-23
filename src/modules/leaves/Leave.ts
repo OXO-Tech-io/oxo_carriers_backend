@@ -6,15 +6,23 @@ import { EmployeeModel } from '../../employees/Employee';
 /** first_name/last_name/email are encrypted on tbl_employee - the join can
  * still filter/select non-PII columns (e.g. department), but must not select
  * the encrypted columns directly. This batch-resolves and attaches the
- * decrypted `user` object after the fact (also correct for a single row). */
-async function withUsers<T extends { employee_id: string }>(rows: T[]): Promise<Array<T & { user?: any }>> {
-  const employeeMap = await EmployeeModel.findByEmployeeIds(rows.map(r => r.employee_id));
+ * decrypted `user` (and, if present, `coverup_employee`) object after the
+ * fact (also correct for a single row). */
+async function withUsers<T extends { employee_id: string; coverup_employee_id?: string | null }>(
+  rows: T[]
+): Promise<Array<T & { user?: any; coverup_employee?: any }>> {
+  const idsToResolve = rows.flatMap(r => [r.employee_id, r.coverup_employee_id]);
+  const employeeMap = await EmployeeModel.findByEmployeeIds(idsToResolve);
   return rows.map(row => {
     const emp = employeeMap.get(row.employee_id);
+    const coverupEmp = row.coverup_employee_id ? employeeMap.get(row.coverup_employee_id) : undefined;
     return {
       ...row,
       user: emp
         ? { id: emp.id, first_name: emp.firstName, last_name: emp.lastName, email: emp.email, employee_id: row.employee_id }
+        : undefined,
+      coverup_employee: coverupEmp
+        ? { first_name: coverupEmp.firstName, last_name: coverupEmp.lastName, employee_id: row.coverup_employee_id }
         : undefined,
     };
   });
@@ -31,10 +39,11 @@ export class LeaveModel {
     half_day_period?: 'morning' | 'evening';
     reason?: string;
     attachment_url?: string;
+    coverup_employee_id?: string;
   }): Promise<LeaveRequest> {
     const result = await pool.query(
-      `INSERT INTO tbl_leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending') RETURNING id`,
+      `INSERT INTO tbl_leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, coverup_employee_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') RETURNING id`,
       [
         request.employee_id,
         request.leave_type_id,
@@ -44,7 +53,8 @@ export class LeaveModel {
         request.is_half_day || false,
         request.half_day_period || null,
         request.reason || null,
-        request.attachment_url || null
+        request.attachment_url || null,
+        request.coverup_employee_id || null
       ]
     );
 
@@ -86,6 +96,7 @@ export class LeaveModel {
       attachment_url: row.attachment_url,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
       leave_type: row.leave_type_name ? {
         id: row.leave_type_id_full,
         name: row.leave_type_name,
@@ -94,7 +105,8 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: withUser.user
+      user: withUser.user,
+      coverup_employee: withUser.coverup_employee
     } as LeaveRequest;
   }
 
@@ -143,6 +155,7 @@ export class LeaveModel {
       attachment_url: row.attachment_url,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
       leave_type: row.leave_type_name ? {
         id: row.leave_type_id_full,
         name: row.leave_type_name,
@@ -151,7 +164,8 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: row.user
+      user: row.user,
+      coverup_employee: row.coverup_employee
     })) as LeaveRequest[];
   }
 
@@ -213,6 +227,7 @@ export class LeaveModel {
       attachment_url: row.attachment_url,
       created_at: row.created_at,
       updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
       leave_type: row.leave_type_name ? {
         id: row.leave_type_id_full,
         name: row.leave_type_name,
@@ -221,7 +236,8 @@ export class LeaveModel {
         is_active: row.leave_type_is_active,
         created_at: row.leave_type_created_at
       } : undefined,
-      user: row.user
+      user: row.user,
+      coverup_employee: row.coverup_employee
     })) as LeaveRequest[];
   }
 

@@ -52,6 +52,8 @@ export const dependentValueSchema = z.object({
   gender: z.enum(sexValues),
   relationship: z.enum(['spouse', 'child']),
   mobileNumber: z.string().max(30).nullable().optional(),
+  // Only meaningful for relationship = 'child'.
+  school: z.string().max(255).nullable().optional(),
 });
 export type DependentValue = z.infer<typeof dependentValueSchema>;
 
@@ -87,15 +89,34 @@ const piiFieldChangeBase = z.object({
     'blood_type',
     'full_name_as_nic',
     'name_with_initials',
+    'calling_name',
     'date_of_birth',
     'birth_place',
     'sex',
     'marital_status',
     'nationality',
+    'religion',
     'spouse_name',
+    'spouse_nic',
+    'spouse_date_of_birth',
+    'spouse_contact_number',
+    'spouse_occupation',
     'mother_name',
+    'mother_occupation',
+    'mother_contact_number',
     'father_name',
+    'father_occupation',
+    'father_contact_number',
+    'sibling_details',
     'landline_number',
+    'secondary_contact_number',
+    'grama_niladari_division',
+    'electorate',
+    'postal_code',
+    'medical_conditions',
+    'allergies',
+    'linkedin_profile',
+    'additional_notes',
     'national_id',
   ]),
   operation: z.literal('update'),
@@ -204,7 +225,7 @@ function checkScalarPiiChange(data: z.infer<typeof piiFieldChangeBase>, ctx: Ref
   if (typeof data.after !== 'string' && data.after !== null) {
     ctx.addIssue({ code: 'custom', message: 'after must be a string or null', path: ['after'] });
   }
-  if (data.field === 'date_of_birth') {
+  if (data.field === 'date_of_birth' || data.field === 'spouse_date_of_birth') {
     if (typeof data.before === 'string' && !isoDateString.safeParse(data.before).success) {
       ctx.addIssue({ code: 'custom', message: 'before must be in YYYY-MM-DD format', path: ['before'] });
     }

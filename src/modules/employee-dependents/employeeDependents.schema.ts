@@ -23,6 +23,8 @@ export const employeeDependents = pgTable('tbl_employee_dependents', {
     gender: employeeSexEnum('gender').notNull(),
     relationship: dependentRelationshipEnum('relationship').notNull(),
     mobileNumber: bytea('mobile_number'),
+    // Only meaningful for relationship = 'child'.
+    school: bytea('school'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

@@ -1,11 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-const fakeTx = { __tx: true };
+const insertValuesMock = vi.fn();
+const fakeTx = { __tx: true, insert: vi.fn(() => ({ values: insertValuesMock })) };
 
 vi.mock("../../src/db", () => ({
   db: {
     transaction: vi.fn(async (callback: (tx: unknown) => Promise<void>) => callback(fakeTx)),
   },
+}));
+vi.mock("../../src/db/schema", () => ({
+  employeeEducation: { __table: "employeeEducation" },
+  employeeWorkHistory: { __table: "employeeWorkHistory" },
 }));
 vi.mock("../../src/employees/EmployeePii", () => ({
   EmployeePiiModel: { upsert: vi.fn() },
@@ -118,9 +123,45 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
     expect(emergencyContactCreateMock).toHaveBeenCalledWith("EMP1", contacts[0], fakeTx);
   });
 
-  it("upserts welfare info when provided", async () => {
-    const welfare = { hobbies: "Reading" };
+  it("upserts welfare info when provided, stripping the pii-only linkedin/notes fields", async () => {
+    const welfare = { hobbies: "Reading", linkedinProfile: "https://linkedin.com/in/x" };
     await employeeProfileCreationService.applyToNewEmployee(user, { welfare } as any);
-    expect(welfareUpsertMock).toHaveBeenCalledWith("EMP1", welfare, fakeTx);
+    expect(welfareUpsertMock).toHaveBeenCalledWith(
+      "EMP1",
+      {
+        weddingAnniversaryDate: null,
+        hobbies: "Reading",
+        communityActivities: null,
+        professionalMemberships: null,
+      },
+      fakeTx,
+    );
+    // linkedinProfile/additionalNotes are pii-only fields, applied via EmployeePiiModel instead.
+    expect(piiUpsertMock).toHaveBeenCalledWith(
+      "EMP1",
+      expect.objectContaining({ linkedinProfile: "https://linkedin.com/in/x" }),
+      fakeTx,
+    );
+  });
+
+  it("inserts a row per education record directly (no approval step)", async () => {
+    const education = [
+      {
+        qualificationLevel: "degree",
+        qualificationTitle: "BSc",
+        awardingInstitution: "University of Colombo",
+        isOngoing: false,
+      },
+    ];
+    await employeeProfileCreationService.applyToNewEmployee(user, { education } as any);
+    expect(insertValuesMock).toHaveBeenCalledWith(expect.objectContaining({ employeeId: "EMP1", ...education[0] }));
+  });
+
+  it("inserts a row per work history record directly (no approval step)", async () => {
+    const workHistory = [
+      { organization: "Acme", positionHeld: "Engineer", employmentType: "regular", startDate: "2020-01-01" },
+    ];
+    await employeeProfileCreationService.applyToNewEmployee(user, { workHistory } as any);
+    expect(insertValuesMock).toHaveBeenCalledWith(expect.objectContaining({ employeeId: "EMP1", ...workHistory[0] }));
   });
 });

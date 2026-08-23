@@ -54,6 +54,17 @@ describe("leave.validator", () => {
       expect(result.success).toBe(false);
     });
 
+    it("accepts an optional coverup_employee_id", () => {
+      const result = createLeaveRequestSchema.safeParse({
+        leave_type_id: 1,
+        start_date: "2026-08-01",
+        end_date: "2026-08-03",
+        coverup_employee_id: "EMP2026002",
+      });
+      expect(result.success).toBe(true);
+      if (result.success) expect(result.data.coverup_employee_id).toBe("EMP2026002");
+    });
+
     it("rejects a malformed date", () => {
       const result = createLeaveRequestSchema.safeParse({
         leave_type_id: 1,

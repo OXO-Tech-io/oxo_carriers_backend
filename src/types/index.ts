@@ -15,6 +15,14 @@ export enum EmployeeStatus {
   ON_HOLD = "on_hold",
 }
 
+// Internal vs Client Side classification, set at employee-creation time.
+// Internal employees must nominate a coverup employee when requesting leave
+// (see leaveService.createLeaveRequest).
+export enum EmployeeCategory {
+  INTERNAL = "internal",
+  CLIENT_SIDE = "client_side",
+}
+
 export enum SessionAction {
   CLOCK_IN = "clock_in",
   CLOCK_OUT = "clock_out",
@@ -147,12 +155,20 @@ export interface LeaveRequest {
   attachment_url?: string;
   created_at: Date;
   updated_at: Date;
+  /** Required (and enforced in leaveService.createLeaveRequest) when the requester is an Internal employee */
+  coverup_employee_id?: string;
   /** Joined user data (available when model query includes LEFT JOIN users) */
   user?: {
     id: number;
     first_name: string;
     last_name: string;
     email: string;
+    employee_id: string;
+  };
+  /** Joined coverup employee data, resolved the same way as `user` */
+  coverup_employee?: {
+    first_name: string;
+    last_name: string;
     employee_id: string;
   };
   /** Joined leave type data (available when model query includes LEFT JOIN leave_types) */

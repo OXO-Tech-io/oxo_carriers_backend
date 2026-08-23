@@ -1,7 +1,8 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { leaveService } from './leave.service';
 import { createLeaveRequestSchema } from '../../validators/leave.validator';
-import { JwtPayload, UserRole } from '../../types';
+import { EmployeeModel } from '../../employees/Employee';
+import { EmployeeStatus, JwtPayload, UserRole } from '../../types';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ApproveLeaveRequestDto } from './dto/approve-leave-request.dto';
@@ -53,6 +54,26 @@ export class LeavesService {
 
   async getLeaveRequestById(employee: JwtPayload, id: number) {
     return leaveService.getLeaveRequestById(id, this.requireEmployeeId(employee), employee.role);
+  }
+
+  /**
+   * Any employee submitting their own leave request needs to browse active
+   * colleagues to pick a coverup employee - GET /users is HR/Finance-only
+   * (see UsersController.getAll), so this is a narrowly-scoped alternative
+   * rather than loosening that endpoint's role guard.
+   */
+  async listCoverageCandidates(employee: JwtPayload) {
+    const requesterEmployeeId = this.requireEmployeeId(employee);
+    const employees = await EmployeeModel.getAll();
+    return employees
+      .filter((e) => e.status === EmployeeStatus.ACTIVE && e.employeeId !== requesterEmployeeId)
+      .map((e) => ({
+        id: e.id,
+        employee_id: e.employeeId,
+        first_name: e.firstName,
+        last_name: e.lastName,
+        department: e.department,
+      }));
   }
 
   /**

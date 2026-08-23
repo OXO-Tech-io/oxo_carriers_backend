@@ -25,6 +25,14 @@ export const userTitleEnum = pgEnum('user_title', ['mr', 'ms', 'mrs', 'dr', 'pro
 
 export const employeeStatusEnum = pgEnum('employee_status', ['active', 'inactive', 'on_hold']);
 
+// Internal vs Client Side classification - drives whether a coverup employee
+// is required when this employee submits a leave request (see leave.service.ts).
+// Nullable: existing rows predate this field and can't be backfilled; it's
+// only enforced as required at employee-creation time going forward.
+export const employeeCategoryEnum = pgEnum('employee_category', ['internal', 'client_side']);
+
+export const workLocationEnum = pgEnum('work_location', ['office', 'remote', 'hybrid']);
+
 // Employee Type Table (e.g. permanent, contract, intern)
 export const employeeType = pgTable('tbl_employee_type', {
     id: serial('id').primaryKey(),
@@ -55,8 +63,10 @@ export const employee = pgTable('tbl_employee', {
     status: employeeStatusEnum('status').notNull().default('active'),
     title: userTitleEnum('title'),
     employeeTypeId: integer('employee_type_id').references(() => employeeType.id),
+    employeeCategory: employeeCategoryEnum('employee_category'),
     department: varchar('department', { length: 100 }),
     position: varchar('position', { length: 100 }),
+    workLocation: workLocationEnum('work_location'),
     hourlyRate: varchar('hourly_rate', { length: 500 }),
     bankName: varchar('bank_name', { length: 500 }),
     accountHolderName: varchar('account_holder_name', { length: 500 }),

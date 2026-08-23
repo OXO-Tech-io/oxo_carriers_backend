@@ -23,6 +23,7 @@
     "test:keycloak": "ts-node src/scripts/testKeycloak.ts",
     "create:superadmin": "ts-node src/scripts/createSuperAdmin.ts",
     "db:add-profile-enhancement-fields": "ts-node src/scripts/addProfileEnhancementFields.ts",
+    "db:add-extended-personal-details-fields": "ts-node src/scripts/addExtendedPersonalDetailsFields.ts",
     "db:add-event-participation-intent": "ts-node src/scripts/addEventParticipationIntent.ts",
     "db:add-profile-tab-fields": "ts-node src/scripts/addProfileTabFields.ts",
     "db:widen-bank-code-columns": "ts-node src/scripts/widenBankCodeColumns.ts",
@@ -35,7 +36,8 @@
     "db:add-work-log-deadline": "ts-node src/scripts/addWorkLogDeadline.ts",
     "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts",
     "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts",
-    "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts"
+    "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts",
+    "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts"
   },
   "keywords": [],
   "author": "",

@@ -18,6 +18,12 @@ vi.mock("../../src/config/email", () => ({
   sendLeaveRejectedEmail: vi.fn(),
   sendLeaveSubmittedEmail: vi.fn(),
 }));
+vi.mock("../../src/modules/communications/communication.service", () => ({
+  communicationService: { create: vi.fn() },
+}));
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: { findByEmployeeId: vi.fn() },
+}));
 vi.mock("../../src/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
@@ -28,6 +34,8 @@ import {
   sendLeaveRejectedEmail,
   sendLeaveSubmittedEmail,
 } from "../../src/config/email";
+import { communicationService } from "../../src/modules/communications/communication.service";
+import { EmployeeModel } from "../../src/employees/Employee";
 import { LeavesService } from "../../src/modules/leaves/leaves.service";
 import { LeavesController } from "../../src/modules/leaves/leaves.controller";
 import { LeaveTypesService } from "../../src/modules/leave-types/leave-types.service";
@@ -39,6 +47,8 @@ const emailMocks = {
   rejected: sendLeaveRejectedEmail as unknown as ReturnType<typeof vi.fn>,
   submitted: sendLeaveSubmittedEmail as unknown as ReturnType<typeof vi.fn>,
 };
+const communicationCreateMock = communicationService.create as unknown as ReturnType<typeof vi.fn>;
+const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
@@ -195,6 +205,65 @@ describe("LeavesController", () => {
       "a@b.com",
       expect.objectContaining({ approvedBy: "HR Management", referenceNumber: "LV-8" }),
     );
+  });
+
+  describe("coverup employee notification", () => {
+    const approvedWithCoverup = {
+      id: 10,
+      status: "hr_approved",
+      user: { first_name: "A", last_name: "B", email: "a@b.com" },
+      leave_type: { name: "Annual" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 1,
+      coverup_employee_id: "EMP2",
+    };
+
+    it("creates a Communication (so it shows in My Communications, not just the notification bell) on final HR approval", async () => {
+      service.approveLeaveRequest.mockResolvedValue(approvedWithCoverup);
+      emailMocks.approved.mockResolvedValue(undefined);
+      em.findByEmployeeId.mockResolvedValue({ id: 42, firstName: "Cov", lastName: "Up", email: "cov@x.com" });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).toHaveBeenCalledWith(
+        "Coverup Assignment",
+        expect.stringContaining("A B"),
+        [42],
+        [],
+        hr.userId,
+        [],
+      );
+    });
+
+    it("does not notify a coverup employee on the intermediate team_leader approval step", async () => {
+      service.approveLeaveRequest.mockResolvedValue({ ...approvedWithCoverup, status: "team_leader_approved" });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "team_leader" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("skips coverup notification when the request has no coverup employee", async () => {
+      service.approveLeaveRequest.mockResolvedValue({ ...approvedWithCoverup, coverup_employee_id: undefined });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("no-ops when the coverup employee's record can't be found", async () => {
+      service.approveLeaveRequest.mockResolvedValue(approvedWithCoverup);
+      em.findByEmployeeId.mockResolvedValue(null);
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
   });
 
   it("rejectLeaveRequest fires the rejection email in the background", async () => {

@@ -153,8 +153,10 @@ export class EmployeeModel {
     last_name: string;
     role: UserRole;
     employee_type_id?: number | null;
+    employee_category?: string | null;
     department?: string;
     position?: string;
+    work_location?: string | null;
     hire_date?: Date;
     manager_id?: number;
     hourly_rate?: number | null;
@@ -177,8 +179,10 @@ export class EmployeeModel {
         lastName: encryptPII(userData.last_name)!,
         role: userData.role,
         employeeTypeId: userData.employee_type_id ?? null,
+        employeeCategory: (userData.employee_category ?? null) as 'internal' | 'client_side' | null,
         department: userData.department || null,
         position: userData.position || null,
+        workLocation: (userData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
         hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
         managerId: userData.manager_id || null,
         hourlyRate: encryptPII(userData.hourly_rate?.toString()) ?? null,
