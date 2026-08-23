@@ -10,6 +10,7 @@ vi.mock("../../src/modules/leaves/Leave", () => ({
     findById: vi.fn(),
     createRequest: vi.fn(),
     updateStatus: vi.fn(),
+    findEmployeeIdsWithOverlappingLeave: vi.fn(),
   },
 }));
 vi.mock("../../src/modules/leave-calendar/LeaveCalendar", () => ({
@@ -41,6 +42,7 @@ describe("leaveService (core)", () => {
     // employees predate this field) - matches "not Internal", so the
     // coverup requirement doesn't kick in unless a test opts in below.
     em.findByEmployeeId.mockResolvedValue(undefined);
+    lm.findEmployeeIdsWithOverlappingLeave.mockResolvedValue(new Set());
   });
 
   describe("listLeaveRequests", () => {
@@ -168,7 +170,22 @@ describe("leaveService (core)", () => {
         em.findByEmployeeId.mockResolvedValueOnce({ status: "active" }); // coverup
         lm.createRequest.mockResolvedValue({ id: 1 });
         await leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" });
+        expect(lm.findEmployeeIdsWithOverlappingLeave).toHaveBeenCalledWith(
+          ["EMP2"],
+          fullDayInput.start_date,
+          fullDayInput.end_date,
+        );
         expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ coverup_employee_id: "EMP2" }));
+      });
+
+      it("rejects a coverup employee who already has leave scheduled during this period", async () => {
+        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
+        em.findByEmployeeId.mockResolvedValueOnce({ status: "active" }); // coverup
+        lm.findEmployeeIdsWithOverlappingLeave.mockResolvedValue(new Set(["EMP2"]));
+        await expect(
+          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" }),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(lm.createRequest).not.toHaveBeenCalled();
       });
 
       it("doesn't require a coverup employee for a Client Side requester", async () => {

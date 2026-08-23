@@ -130,6 +130,14 @@ export const leaveService = {
       if (!coverupEmployee || coverupEmployee.status !== EmployeeStatus.ACTIVE) {
         throw new BadRequestError('Coverup employee not found or inactive');
       }
+      const conflicting = await LeaveModel.findEmployeeIdsWithOverlappingLeave(
+        [input.coverup_employee_id],
+        input.start_date,
+        input.end_date,
+      );
+      if (conflicting.has(input.coverup_employee_id)) {
+        throw new BadRequestError('The selected coverup employee already has leave scheduled during this period');
+      }
     }
 
     return LeaveModel.createRequest({

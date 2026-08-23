@@ -1,5 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable } from '@nestjs/common';
 import { leaveService } from './leave.service';
+import { LeaveModel } from './Leave';
 import { createLeaveRequestSchema } from '../../validators/leave.validator';
 import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeStatus, JwtPayload, UserRole } from '../../types';
@@ -7,6 +8,7 @@ import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ApproveLeaveRequestDto } from './dto/approve-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
+import { CoverageCandidatesQueryDto } from './dto/coverage-candidates-query.dto';
 
 const SELF_ONLY_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
@@ -62,11 +64,26 @@ export class LeavesService {
    * (see UsersController.getAll), so this is a narrowly-scoped alternative
    * rather than loosening that endpoint's role guard.
    */
-  async listCoverageCandidates(employee: JwtPayload) {
+  async listCoverageCandidates(employee: JwtPayload, query: CoverageCandidatesQueryDto) {
     const requesterEmployeeId = this.requireEmployeeId(employee);
     const employees = await EmployeeModel.getAll();
-    return employees
-      .filter((e) => e.status === EmployeeStatus.ACTIVE && e.employeeId !== requesterEmployeeId)
+    const activeColleagues = employees.filter(
+      (e) => e.status === EmployeeStatus.ACTIVE && e.employeeId !== requesterEmployeeId,
+    );
+
+    // Only filter by availability once both ends of the range are known -
+    // with no dates picked yet, every active colleague is still a valid pick.
+    let onLeave = new Set<string>();
+    if (query.startDate && query.endDate) {
+      onLeave = await LeaveModel.findEmployeeIdsWithOverlappingLeave(
+        activeColleagues.map((e) => e.employeeId).filter((id): id is string => !!id),
+        query.startDate,
+        query.endDate,
+      );
+    }
+
+    return activeColleagues
+      .filter((e) => !e.employeeId || !onLeave.has(e.employeeId))
       .map((e) => ({
         id: e.id,
         employee_id: e.employeeId,

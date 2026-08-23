@@ -25,6 +25,7 @@ import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
 import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ApproveLeaveRequestDto } from './dto/approve-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
+import { CoverageCandidatesQueryDto } from './dto/coverage-candidates-query.dto';
 import { DOCUMENT_FIELD, leaveDocumentMulterOptions } from './leaves.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
@@ -51,8 +52,11 @@ export class LeavesController {
 
   /** Must be declared before @Get(':id') so it isn't shadowed by that route. */
   @Get('coverage-candidates')
-  async getCoverageCandidates(@CurrentEmployee() employee: JwtPayload) {
-    const candidates = await this.leavesService.listCoverageCandidates(employee);
+  async getCoverageCandidates(
+    @CurrentEmployee() employee: JwtPayload,
+    @Query() query: CoverageCandidatesQueryDto,
+  ) {
+    const candidates = await this.leavesService.listCoverageCandidates(employee, query);
     return { success: true, message: 'Coverage candidates fetched', data: candidates };
   }
 

@@ -379,4 +379,23 @@ export class LeaveModel {
     const result = await pool.query('SELECT * FROM tbl_leave_types WHERE is_active = true ORDER BY name');
     return result.rows as LeaveType[];
   }
+
+  /** Of the given employee ids, which ones already have a non-rejected/cancelled
+   * leave request overlapping [startDate, endDate] - used to exclude them as
+   * coverup candidates and to guard against submitting one server-side. */
+  static async findEmployeeIdsWithOverlappingLeave(
+    employeeIds: string[],
+    startDate: string,
+    endDate: string
+  ): Promise<Set<string>> {
+    if (employeeIds.length === 0) return new Set();
+    const result = await pool.query(
+      `SELECT DISTINCT employee_id FROM tbl_leave_requests
+       WHERE employee_id = ANY($1)
+         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND start_date <= $3 AND end_date >= $2`,
+      [employeeIds, startDate, endDate]
+    );
+    return new Set((result.rows as Array<{ employee_id: string }>).map((r) => r.employee_id));
+  }
 }
