@@ -94,15 +94,19 @@ export const employeePii = pgTable('tbl_employee_pii', {
     residingDistrict: bytea('residing_district'),
     landlineNumber: bytea('landline_number'),
     secondaryContactNumber: bytea('secondary_contact_number'),
-    gramaNiladariDivision: varchar('grama_niladari_division', { length: 150 }),
+    gramaNiladariDivision: bytea('grama_niladari_division'),
+    // electorate/postalCode are administrative divisions, not identity/contact
+    // secrets - not PII on their own, so plain.
     electorate: varchar('electorate', { length: 150 }),
     postalCode: varchar('postal_code', { length: 20 }),
     // Health (Tab D) - encrypted like the other PII above.
     medicalConditions: bytea('medical_conditions'),
     allergies: bytea('allergies'),
-    // Social & declaration (Tab E) - not identity/contact secrets, so plain.
+    // Social & declaration (Tab E) - linkedinProfile is not an identity/contact
+    // secret, so plain; additionalNotes is free text employees can use to
+    // disclose personal details, so encrypted like the rest of this table.
     linkedinProfile: varchar('linkedin_profile', { length: 255 }),
-    additionalNotes: text('additional_notes'),
+    additionalNotes: bytea('additional_notes'),
     // Set once at employee-creation time (see employeeProfileCreation.service.ts);
     // not editable afterwards via the change-request wizard.
     declarationAccepted: boolean('declaration_accepted').default(false),

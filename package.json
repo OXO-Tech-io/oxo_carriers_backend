@@ -37,7 +37,9 @@
     "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts",
     "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts",
     "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts",
-    "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts"
+    "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts",
+    "db:encrypt-grama-niladari-division": "ts-node src/scripts/encryptGramaNiladariDivision.ts",
+    "db:encrypt-additional-notes": "ts-node src/scripts/encryptAdditionalNotes.ts"
   },
   "keywords": [],
   "author": "",

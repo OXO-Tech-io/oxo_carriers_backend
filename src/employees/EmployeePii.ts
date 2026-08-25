@@ -63,7 +63,7 @@ export class EmployeePiiModel {
         residingDistrict: pgpDecrypt(employeePii.residingDistrict),
         landlineNumber: pgpDecrypt(employeePii.landlineNumber),
         secondaryContactNumber: pgpDecrypt(employeePii.secondaryContactNumber),
-        gramaNiladariDivision: employeePii.gramaNiladariDivision,
+        gramaNiladariDivision: pgpDecrypt(employeePii.gramaNiladariDivision),
         electorate: employeePii.electorate,
         postalCode: employeePii.postalCode,
         // Health fields
@@ -71,7 +71,7 @@ export class EmployeePiiModel {
         allergies: pgpDecrypt(employeePii.allergies),
         // Social & declaration fields
         linkedinProfile: employeePii.linkedinProfile,
-        additionalNotes: employeePii.additionalNotes,
+        additionalNotes: pgpDecrypt(employeePii.additionalNotes),
         declarationAccepted: employeePii.declarationAccepted,
         declarationAcceptedAt: employeePii.declarationAcceptedAt,
         createdAt: employeePii.createdAt,
@@ -177,8 +177,10 @@ export class EmployeePiiModel {
       'residingDistrict',
       'landlineNumber',
       'secondaryContactNumber',
+      'gramaNiladariDivision',
       'medicalConditions',
       'allergies',
+      'additionalNotes',
     ];
     for (const field of encryptedFields) {
       const value = data[field] as string | null | undefined;
@@ -199,11 +201,9 @@ export class EmployeePiiModel {
       'siblingDetails',
       'primarySchool',
       'secondarySchool',
-      'gramaNiladariDivision',
       'electorate',
       'postalCode',
       'linkedinProfile',
-      'additionalNotes',
       'declarationAccepted',
       'declarationAcceptedAt',
     ];
