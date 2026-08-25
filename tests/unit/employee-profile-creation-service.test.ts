@@ -15,6 +15,9 @@ vi.mock("../../src/db/schema", () => ({
 vi.mock("../../src/employees/EmployeePii", () => ({
   EmployeePiiModel: { upsert: vi.fn() },
 }));
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: { update: vi.fn() },
+}));
 vi.mock("../../src/modules/employee-nominees/EmployeeNominee", () => ({
   EmployeeNomineeModel: { create: vi.fn() },
 }));
@@ -29,6 +32,7 @@ vi.mock("../../src/modules/employee-welfare-info/EmployeeWelfareInfo", () => ({
 }));
 
 import { EmployeePiiModel } from "../../src/employees/EmployeePii";
+import { EmployeeModel } from "../../src/employees/Employee";
 import { EmployeeNomineeModel } from "../../src/modules/employee-nominees/EmployeeNominee";
 import { EmployeeDependentModel } from "../../src/modules/employee-dependents/EmployeeDependent";
 import { EmployeeEmergencyContactModel } from "../../src/modules/employee-emergency-contacts/EmployeeEmergencyContact";
@@ -36,6 +40,7 @@ import { EmployeeWelfareInfoModel } from "../../src/modules/employee-welfare-inf
 import { employeeProfileCreationService } from "../../src/modules/users/employeeProfileCreation.service";
 
 const piiUpsertMock = EmployeePiiModel.upsert as unknown as ReturnType<typeof vi.fn>;
+const employeeUpdateMock = EmployeeModel.update as unknown as ReturnType<typeof vi.fn>;
 const nomineeCreateMock = EmployeeNomineeModel.create as unknown as ReturnType<typeof vi.fn>;
 const dependentCreateMock = EmployeeDependentModel.create as unknown as ReturnType<typeof vi.fn>;
 const emergencyContactCreateMock = EmployeeEmergencyContactModel.create as unknown as ReturnType<typeof vi.fn>;
@@ -51,6 +56,7 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
   it("does nothing beyond the transaction wrapper for an empty profile", async () => {
     await employeeProfileCreationService.applyToNewEmployee(user, {});
     expect(piiUpsertMock).not.toHaveBeenCalled();
+    expect(employeeUpdateMock).not.toHaveBeenCalled();
     expect(nomineeCreateMock).not.toHaveBeenCalled();
     expect(welfareUpsertMock).not.toHaveBeenCalled();
   });
@@ -78,6 +84,18 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
       expect.objectContaining({ nationalId: "NIC1", legalName: "Jane Doe" }),
       fakeTx,
     );
+    // dateOfBirth/sex/maritalStatus/nationality are non-PII - applied via
+    // EmployeeModel.update() against tbl_employee instead.
+    expect(employeeUpdateMock).toHaveBeenCalledWith(
+      1,
+      expect.objectContaining({
+        dateOfBirth: "1990-01-01",
+        sex: "female",
+        maritalStatus: "single",
+        nationality: "Sri Lankan",
+      }),
+      fakeTx,
+    );
   });
 
   it("upserts PII with remittance/bloodType fields even without statutory", async () => {
@@ -90,6 +108,7 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
       expect.objectContaining({ bloodType: "O+", residingCity: "Kandy" }),
       fakeTx,
     );
+    expect(employeeUpdateMock).not.toHaveBeenCalled();
   });
 
   it("creates a row per nominee", async () => {
@@ -123,8 +142,8 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
     expect(emergencyContactCreateMock).toHaveBeenCalledWith("EMP1", contacts[0], fakeTx);
   });
 
-  it("upserts welfare info when provided, stripping the pii-only linkedin/notes fields", async () => {
-    const welfare = { hobbies: "Reading", linkedinProfile: "https://linkedin.com/in/x" };
+  it("upserts welfare info when provided, routing linkedin/notes fields to their own tables", async () => {
+    const welfare = { hobbies: "Reading", linkedinProfile: "https://linkedin.com/in/x", additionalNotes: "Note" };
     await employeeProfileCreationService.applyToNewEmployee(user, { welfare } as any);
     expect(welfareUpsertMock).toHaveBeenCalledWith(
       "EMP1",
@@ -136,9 +155,15 @@ describe("employeeProfileCreationService.applyToNewEmployee", () => {
       },
       fakeTx,
     );
-    // linkedinProfile/additionalNotes are pii-only fields, applied via EmployeePiiModel instead.
+    // additionalNotes is still PII, applied via EmployeePiiModel.
     expect(piiUpsertMock).toHaveBeenCalledWith(
       "EMP1",
+      expect.objectContaining({ additionalNotes: "Note" }),
+      fakeTx,
+    );
+    // linkedinProfile is non-PII - applied via EmployeeModel.update() instead.
+    expect(employeeUpdateMock).toHaveBeenCalledWith(
+      1,
       expect.objectContaining({ linkedinProfile: "https://linkedin.com/in/x" }),
       fakeTx,
     );

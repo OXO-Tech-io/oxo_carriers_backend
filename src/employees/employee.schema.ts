@@ -6,10 +6,15 @@ import {
     timestamp,
     pgEnum,
     date,
+    text,
+    boolean,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 
 // Enums
+export const employeeSexEnum = pgEnum('employee_sex', ['male', 'female']);
+export const maritalStatusEnum = pgEnum('marital_status', ['married', 'single']);
+
 export const userRoleEnum = pgEnum('user_role', [
     'super_admin',
     'hr_manager',
@@ -79,6 +84,25 @@ export const employee = pgTable('tbl_employee', {
     undergraduateDegreeCompletionDate: date('undergraduate_degree_completion_date'),
     hireDate: date('hire_date'),
     managerId: integer('manager_id'),
+    // Non-PII personal/statutory attributes - moved off tbl_employee_pii since
+    // they were always stored plain there (never pgcrypto-encrypted like the
+    // rest of that table). dateOfBirth feeds a client-side age calculation and
+    // maritalStatus gates Tab C (dependents) visibility, same as before the move.
+    dateOfBirth: date('date_of_birth'),
+    sex: employeeSexEnum('sex'),
+    maritalStatus: maritalStatusEnum('marital_status'),
+    nationality: varchar('nationality', { length: 100 }),
+    religion: varchar('religion', { length: 100 }),
+    spouseDateOfBirth: date('spouse_date_of_birth'),
+    siblingDetails: text('sibling_details'),
+    primarySchool: varchar('primary_school', { length: 255 }),
+    secondarySchool: varchar('secondary_school', { length: 255 }),
+    gramaNiladariDivision: varchar('grama_niladari_division', { length: 150 }),
+    electorate: varchar('electorate', { length: 150 }),
+    postalCode: varchar('postal_code', { length: 20 }),
+    linkedinProfile: varchar('linkedin_profile', { length: 255 }),
+    declarationAccepted: boolean('declaration_accepted').default(false),
+    declarationAcceptedAt: timestamp('declaration_accepted_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
     // Set when UsersService.delete() removes the employee. Distinct from

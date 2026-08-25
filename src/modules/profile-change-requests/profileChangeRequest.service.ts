@@ -40,15 +40,9 @@ const PII_FIELD_LABELS: Record<string, string> = {
   full_name_as_nic: 'Full Name as in NIC',
   name_with_initials: 'Name with Initials',
   calling_name: 'Calling Name',
-  date_of_birth: 'Date of Birth',
   birth_place: 'Birth Place',
-  sex: 'Sex',
-  marital_status: 'Marital Status',
-  nationality: 'Nationality',
-  religion: 'Religion',
   spouse_name: 'Spouse Name',
   spouse_nic: 'Spouse NIC',
-  spouse_date_of_birth: 'Spouse Date of Birth',
   spouse_contact_number: 'Spouse Contact Number',
   spouse_occupation: 'Spouse Occupation & Workplace',
   mother_name: 'Mother Name',
@@ -57,17 +51,29 @@ const PII_FIELD_LABELS: Record<string, string> = {
   father_name: 'Father Name',
   father_occupation: "Father's Occupation & Workplace",
   father_contact_number: "Father's Contact Number",
-  sibling_details: 'Sibling Details',
   landline_number: 'Landline Number',
   secondary_contact_number: 'Secondary Contact Number',
-  grama_niladari_division: 'Grama Niladari Division',
-  electorate: 'Electorate',
-  postal_code: 'Postal Code',
   medical_conditions: 'Medical Conditions',
   allergies: 'Allergies',
-  linkedin_profile: 'LinkedIn Profile',
   additional_notes: 'Additional Notes',
   national_id: 'National Identity Card Number',
+};
+
+// Non-PII personal/statutory attributes that moved to tbl_employee - travel
+// as user_field changes now, so they need their own label lookup (used
+// alongside the bank_account label already handled inline below).
+const USER_FIELD_LABELS: Record<string, string> = {
+  dateOfBirth: 'Date of Birth',
+  sex: 'Sex',
+  maritalStatus: 'Marital Status',
+  nationality: 'Nationality',
+  religion: 'Religion',
+  spouseDateOfBirth: 'Spouse Date of Birth',
+  siblingDetails: 'Sibling Details',
+  gramaNiladariDivision: 'Grama Niladari Division',
+  electorate: 'Electorate',
+  postalCode: 'Postal Code',
+  linkedinProfile: 'LinkedIn Profile',
 };
 
 const WELFARE_FIELD_LABELS: Record<string, string> = {
@@ -79,7 +85,7 @@ const WELFARE_FIELD_LABELS: Record<string, string> = {
 
 const summarizeChanges = (changes: ProfileChangeItem[]): string[] =>
   changes.map(item => {
-    if (item.entityType === 'user_field') return item.field === 'bank_account' ? 'Bank Account' : item.field;
+    if (item.entityType === 'user_field') return item.field === 'bank_account' ? 'Bank Account' : (USER_FIELD_LABELS[item.field] ?? item.field);
     if (item.entityType === 'employee_pii_field') return PII_FIELD_LABELS[item.field] ?? item.field;
     if (item.entityType === 'welfare_field') return WELFARE_FIELD_LABELS[item.field] ?? item.field;
     if (item.entityType === 'education') return `Education (${item.operation})`;
@@ -98,15 +104,9 @@ const PII_SCALAR_FIELD_TO_MODEL_KEY: Record<string, string> = {
   full_name_as_nic: 'legalName',
   name_with_initials: 'initialsName',
   calling_name: 'callingName',
-  date_of_birth: 'dateOfBirth',
   birth_place: 'birthPlace',
-  sex: 'sex',
-  marital_status: 'maritalStatus',
-  nationality: 'nationality',
-  religion: 'religion',
   spouse_name: 'spouseName',
   spouse_nic: 'spouseNic',
-  spouse_date_of_birth: 'spouseDateOfBirth',
   spouse_contact_number: 'spouseContactNumber',
   spouse_occupation: 'spouseOccupation',
   mother_name: 'motherName',
@@ -115,15 +115,10 @@ const PII_SCALAR_FIELD_TO_MODEL_KEY: Record<string, string> = {
   father_name: 'fatherName',
   father_occupation: 'fatherOccupation',
   father_contact_number: 'fatherContactNumber',
-  sibling_details: 'siblingDetails',
   landline_number: 'landlineNumber',
   secondary_contact_number: 'secondaryContactNumber',
-  grama_niladari_division: 'gramaNiladariDivision',
-  electorate: 'electorate',
-  postal_code: 'postalCode',
   medical_conditions: 'medicalConditions',
   allergies: 'allergies',
-  linkedin_profile: 'linkedinProfile',
   additional_notes: 'additionalNotes',
   national_id: 'nationalId',
 };
@@ -379,15 +374,11 @@ export const profileChangeRequestService = {
         if (!employeeRow) throw new NotFoundError('Employee not found');
 
         // Tab C (dependents) is only meaningful while married - resolve using
-        // the current PII row, unless this same bundle is also setting
-        // marital_status, in which case the new value takes effect immediately.
-        let effectiveMaritalStatus: 'married' | 'single' | null = null;
-        if (employeeRow.employeeId) {
-          const currentPii = await EmployeePiiModel.findByEmployeeId(employeeRow.employeeId, tx);
-          effectiveMaritalStatus = (currentPii?.maritalStatus as 'married' | 'single' | null) ?? null;
-        }
+        // the employee's current row, unless this same bundle is also setting
+        // maritalStatus, in which case the new value takes effect immediately.
+        let effectiveMaritalStatus: 'married' | 'single' | null = employeeRow.maritalStatus ?? null;
         const maritalStatusChange = changes.find(
-          c => c.entityType === 'employee_pii_field' && c.field === 'marital_status'
+          c => c.entityType === 'user_field' && c.field === 'maritalStatus'
         );
         if (maritalStatusChange) {
           effectiveMaritalStatus = maritalStatusChange.after as 'married' | 'single' | null;

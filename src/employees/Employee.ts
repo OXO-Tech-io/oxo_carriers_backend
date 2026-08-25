@@ -4,6 +4,8 @@ import { User, UserRole } from '../types';
 import { eq, like, and, sql, inArray, isNull } from 'drizzle-orm';
 import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
 
+type DbExecutor = Pick<typeof db, 'select' | 'update'>;
+
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
   if (!user) return null;
   return {
@@ -203,7 +205,11 @@ export class EmployeeModel {
     return decryptUser(insertedUser) as DrizzleEmployee;
   }
 
-  static async update(id: number, updates: Partial<DrizzleEmployee>): Promise<DrizzleEmployee | null> {
+  static async update(
+    id: number,
+    updates: Partial<DrizzleEmployee>,
+    executor: DbExecutor = db
+  ): Promise<DrizzleEmployee | null> {
     // Filter out undefined values and restricted fields
     const filteredUpdates: any = {};
     const piiFields = [
@@ -238,15 +244,20 @@ export class EmployeeModel {
     }
 
     if (Object.keys(filteredUpdates).length === 0) {
-      return await this.findById(id);
+      const [row] = await executor.select().from(employee).where(eq(employee.id, id));
+      return decryptUser(row ?? null);
     }
 
-    await db
+    // Uses .returning() (rather than a follow-up findById) so this stays
+    // correct when `executor` is a transaction - a separate findById() call
+    // would read via the outer `db` pool and could miss the uncommitted update.
+    const [updated] = await executor
       .update(employee)
       .set(filteredUpdates)
-      .where(eq(employee.id, id));
+      .where(eq(employee.id, id))
+      .returning();
 
-    return await this.findById(id);
+    return decryptUser(updated ?? null);
   }
 
   static async getAll(filters?: {

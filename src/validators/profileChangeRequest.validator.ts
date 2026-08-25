@@ -71,7 +71,26 @@ export type EmergencyContactRecordValue = z.infer<typeof emergencyContactRecordV
 // .superRefine on the assembled union below.
 const userFieldChangeBase = z.object({
   entityType: z.literal('user_field'),
-  field: z.enum(['title', 'contactNumber', 'undergraduateDegreeCompletionDate', 'bank_account']),
+  field: z.enum([
+    'title',
+    'contactNumber',
+    'undergraduateDegreeCompletionDate',
+    'bank_account',
+    // Non-PII personal/statutory attributes - live on tbl_employee, not
+    // tbl_employee_pii, so they travel as user_field changes even though
+    // they were previously part of the employee_pii_field union below.
+    'dateOfBirth',
+    'sex',
+    'maritalStatus',
+    'nationality',
+    'religion',
+    'spouseDateOfBirth',
+    'siblingDetails',
+    'gramaNiladariDivision',
+    'electorate',
+    'postalCode',
+    'linkedinProfile',
+  ]),
   operation: z.literal('update'),
   before: z.union([nullableString, bankAccountValueSchema]),
   after: z.union([nullableString, bankAccountValueSchema]),
@@ -90,15 +109,9 @@ const piiFieldChangeBase = z.object({
     'full_name_as_nic',
     'name_with_initials',
     'calling_name',
-    'date_of_birth',
     'birth_place',
-    'sex',
-    'marital_status',
-    'nationality',
-    'religion',
     'spouse_name',
     'spouse_nic',
-    'spouse_date_of_birth',
     'spouse_contact_number',
     'spouse_occupation',
     'mother_name',
@@ -107,21 +120,16 @@ const piiFieldChangeBase = z.object({
     'father_name',
     'father_occupation',
     'father_contact_number',
-    'sibling_details',
     'landline_number',
     'secondary_contact_number',
-    'grama_niladari_division',
-    'electorate',
-    'postal_code',
     'medical_conditions',
     'allergies',
-    'linkedin_profile',
     'additional_notes',
     'national_id',
   ]),
   operation: z.literal('update'),
-  before: z.union([addressValueSchema, z.enum(bloodTypeValues), z.enum(sexValues), z.enum(maritalStatusValues), nullableString]),
-  after: z.union([addressValueSchema, z.enum(bloodTypeValues), z.enum(sexValues), z.enum(maritalStatusValues), nullableString]),
+  before: z.union([addressValueSchema, z.enum(bloodTypeValues), nullableString]),
+  after: z.union([addressValueSchema, z.enum(bloodTypeValues), nullableString]),
 });
 
 const educationChangeBase = z.object({
@@ -184,11 +192,27 @@ function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: Re
     }
     return;
   }
+  if (data.field === 'sex') {
+    checkEnumChange(data, ctx, sexValues);
+    return;
+  }
+  if (data.field === 'maritalStatus') {
+    checkEnumChange(data, ctx, maritalStatusValues);
+    return;
+  }
   if (typeof data.before !== 'string' && data.before !== null) {
     ctx.addIssue({ code: 'custom', message: 'before must be a string or null', path: ['before'] });
   }
   if (typeof data.after !== 'string' && data.after !== null) {
     ctx.addIssue({ code: 'custom', message: 'after must be a string or null', path: ['after'] });
+  }
+  if (data.field === 'dateOfBirth' || data.field === 'spouseDateOfBirth') {
+    if (typeof data.before === 'string' && !isoDateString.safeParse(data.before).success) {
+      ctx.addIssue({ code: 'custom', message: 'before must be in YYYY-MM-DD format', path: ['before'] });
+    }
+    if (typeof data.after === 'string' && !isoDateString.safeParse(data.after).success) {
+      ctx.addIssue({ code: 'custom', message: 'after must be in YYYY-MM-DD format', path: ['after'] });
+    }
   }
 }
 
@@ -209,7 +233,7 @@ function checkAddressLikePiiChange(
   }
 }
 
-function checkEnumPiiChange(data: z.infer<typeof piiFieldChangeBase>, ctx: RefineCtx, values: readonly string[]) {
+function checkEnumChange(data: { before: unknown; after: unknown }, ctx: RefineCtx, values: readonly string[]) {
   if (data.before !== null && !values.includes(data.before as string)) {
     ctx.addIssue({ code: 'custom', message: 'before must be a valid value or null', path: ['before'] });
   }
@@ -225,14 +249,6 @@ function checkScalarPiiChange(data: z.infer<typeof piiFieldChangeBase>, ctx: Ref
   if (typeof data.after !== 'string' && data.after !== null) {
     ctx.addIssue({ code: 'custom', message: 'after must be a string or null', path: ['after'] });
   }
-  if (data.field === 'date_of_birth' || data.field === 'spouse_date_of_birth') {
-    if (typeof data.before === 'string' && !isoDateString.safeParse(data.before).success) {
-      ctx.addIssue({ code: 'custom', message: 'before must be in YYYY-MM-DD format', path: ['before'] });
-    }
-    if (typeof data.after === 'string' && !isoDateString.safeParse(data.after).success) {
-      ctx.addIssue({ code: 'custom', message: 'after must be in YYYY-MM-DD format', path: ['after'] });
-    }
-  }
 }
 
 function checkPiiFieldChange(data: z.infer<typeof piiFieldChangeBase>, ctx: RefineCtx) {
@@ -243,11 +259,7 @@ function checkPiiFieldChange(data: z.infer<typeof piiFieldChangeBase>, ctx: Refi
     // null to mean "same as permanent".
     checkAddressLikePiiChange(data, ctx, false);
   } else if (data.field === 'blood_type') {
-    checkEnumPiiChange(data, ctx, bloodTypeValues);
-  } else if (data.field === 'sex') {
-    checkEnumPiiChange(data, ctx, sexValues);
-  } else if (data.field === 'marital_status') {
-    checkEnumPiiChange(data, ctx, maritalStatusValues);
+    checkEnumChange(data, ctx, bloodTypeValues);
   } else {
     checkScalarPiiChange(data, ctx);
   }

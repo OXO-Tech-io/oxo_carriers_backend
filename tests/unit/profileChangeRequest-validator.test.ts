@@ -263,6 +263,52 @@ describe("profileChangeItemSchema — user_field", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  // dateOfBirth/sex are non-PII personal attributes stored on tbl_employee,
+  // so they travel as user_field changes (see employee.schema.ts).
+  it("accepts a dateOfBirth update with a valid ISO date", () => {
+    const result = profileChangeItemSchema.safeParse({
+      entityType: "user_field",
+      field: "dateOfBirth",
+      operation: "update",
+      before: null,
+      after: "1990-07-15",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a dateOfBirth update with a malformed date", () => {
+    const result = profileChangeItemSchema.safeParse({
+      entityType: "user_field",
+      field: "dateOfBirth",
+      operation: "update",
+      before: null,
+      after: "15/07/1990",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts a sex update with valid enum value", () => {
+    const result = profileChangeItemSchema.safeParse({
+      entityType: "user_field",
+      field: "sex",
+      operation: "update",
+      before: null,
+      after: "female",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a sex update with an invalid value", () => {
+    const result = profileChangeItemSchema.safeParse({
+      entityType: "user_field",
+      field: "sex",
+      operation: "update",
+      before: null,
+      after: "nonbinary",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 // ──────────────────────────────────────────────────────────────────────────────
@@ -303,28 +349,6 @@ describe("profileChangeItemSchema — employee_pii_field", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts a date_of_birth update with a valid ISO date", () => {
-    const result = profileChangeItemSchema.safeParse({
-      entityType: "employee_pii_field",
-      field: "date_of_birth",
-      operation: "update",
-      before: null,
-      after: "1990-07-15",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects a date_of_birth update with a malformed date", () => {
-    const result = profileChangeItemSchema.safeParse({
-      entityType: "employee_pii_field",
-      field: "date_of_birth",
-      operation: "update",
-      before: null,
-      after: "15/07/1990",
-    });
-    expect(result.success).toBe(false);
-  });
-
   it("accepts a residing_address update where after is null (same as permanent)", () => {
     const result = profileChangeItemSchema.safeParse({
       entityType: "employee_pii_field",
@@ -334,28 +358,6 @@ describe("profileChangeItemSchema — employee_pii_field", () => {
       after: null,
     });
     expect(result.success).toBe(true);
-  });
-
-  it("accepts a sex update with valid enum value", () => {
-    const result = profileChangeItemSchema.safeParse({
-      entityType: "employee_pii_field",
-      field: "sex",
-      operation: "update",
-      before: null,
-      after: "female",
-    });
-    expect(result.success).toBe(true);
-  });
-
-  it("rejects a sex update with an invalid value", () => {
-    const result = profileChangeItemSchema.safeParse({
-      entityType: "employee_pii_field",
-      field: "sex",
-      operation: "update",
-      before: null,
-      after: "nonbinary",
-    });
-    expect(result.success).toBe(false);
   });
 });
 

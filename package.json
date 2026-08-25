@@ -39,7 +39,8 @@
     "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts",
     "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts",
     "db:encrypt-grama-niladari-division": "ts-node src/scripts/encryptGramaNiladariDivision.ts",
-    "db:encrypt-additional-notes": "ts-node src/scripts/encryptAdditionalNotes.ts"
+    "db:encrypt-additional-notes": "ts-node src/scripts/encryptAdditionalNotes.ts",
+    "db:move-non-pii-fields-to-employee": "ts-node src/scripts/moveNonPiiFieldsToEmployee.ts"
   },
   "keywords": [],
   "author": "",

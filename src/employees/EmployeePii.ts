@@ -36,15 +36,9 @@ export class EmployeePiiModel {
         legalName: pgpDecrypt(employeePii.legalName),
         initialsName: pgpDecrypt(employeePii.initialsName),
         callingName: pgpDecrypt(employeePii.callingName),
-        dateOfBirth: employeePii.dateOfBirth,
         birthPlace: pgpDecrypt(employeePii.birthPlace),
-        sex: employeePii.sex,
-        maritalStatus: employeePii.maritalStatus,
-        nationality: employeePii.nationality,
-        religion: employeePii.religion,
         spouseName: pgpDecrypt(employeePii.spouseName),
         spouseNic: pgpDecrypt(employeePii.spouseNic),
-        spouseDateOfBirth: employeePii.spouseDateOfBirth,
         spouseContactNumber: pgpDecrypt(employeePii.spouseContactNumber),
         spouseOccupation: pgpDecrypt(employeePii.spouseOccupation),
         motherName: pgpDecrypt(employeePii.motherName),
@@ -53,9 +47,6 @@ export class EmployeePiiModel {
         fatherName: pgpDecrypt(employeePii.fatherName),
         fatherOccupation: pgpDecrypt(employeePii.fatherOccupation),
         fatherContactNumber: pgpDecrypt(employeePii.fatherContactNumber),
-        siblingDetails: employeePii.siblingDetails,
-        primarySchool: employeePii.primarySchool,
-        secondarySchool: employeePii.secondarySchool,
         // Tab B (remittance/correspondence) fields
         residingAddressLine1: pgpDecrypt(employeePii.residingAddressLine1),
         residingAddressLine2: pgpDecrypt(employeePii.residingAddressLine2),
@@ -63,17 +54,11 @@ export class EmployeePiiModel {
         residingDistrict: pgpDecrypt(employeePii.residingDistrict),
         landlineNumber: pgpDecrypt(employeePii.landlineNumber),
         secondaryContactNumber: pgpDecrypt(employeePii.secondaryContactNumber),
-        gramaNiladariDivision: pgpDecrypt(employeePii.gramaNiladariDivision),
-        electorate: employeePii.electorate,
-        postalCode: employeePii.postalCode,
         // Health fields
         medicalConditions: pgpDecrypt(employeePii.medicalConditions),
         allergies: pgpDecrypt(employeePii.allergies),
         // Social & declaration fields
-        linkedinProfile: employeePii.linkedinProfile,
         additionalNotes: pgpDecrypt(employeePii.additionalNotes),
-        declarationAccepted: employeePii.declarationAccepted,
-        declarationAcceptedAt: employeePii.declarationAcceptedAt,
         createdAt: employeePii.createdAt,
         updatedAt: employeePii.updatedAt,
       })
@@ -119,22 +104,7 @@ export class EmployeePiiModel {
       secondaryContactNumber?: string | null;
       medicalConditions?: string | null;
       allergies?: string | null;
-      dateOfBirth?: string | null;
-      spouseDateOfBirth?: string | null;
-      sex?: 'male' | 'female' | null;
-      maritalStatus?: 'married' | 'single' | null;
-      nationality?: string | null;
-      religion?: string | null;
-      siblingDetails?: string | null;
-      primarySchool?: string | null;
-      secondarySchool?: string | null;
-      gramaNiladariDivision?: string | null;
-      electorate?: string | null;
-      postalCode?: string | null;
-      linkedinProfile?: string | null;
       additionalNotes?: string | null;
-      declarationAccepted?: boolean;
-      declarationAcceptedAt?: Date | null;
     },
     executor: DbExecutor = db
   ) {
@@ -177,7 +147,6 @@ export class EmployeePiiModel {
       'residingDistrict',
       'landlineNumber',
       'secondaryContactNumber',
-      'gramaNiladariDivision',
       'medicalConditions',
       'allergies',
       'additionalNotes',
@@ -186,31 +155,6 @@ export class EmployeePiiModel {
       const value = data[field] as string | null | undefined;
       if (value !== undefined) {
         valuesToInsert[field] = value === null ? null : sql`pgp_sym_encrypt(${value}, ${key})`;
-      }
-    }
-
-    // Plain (unencrypted) fields - not identity/contact secrets, and
-    // dateOfBirth/maritalStatus need to be queryable (age calc, Tab C gating).
-    const plainFields: (keyof typeof data)[] = [
-      'dateOfBirth',
-      'spouseDateOfBirth',
-      'sex',
-      'maritalStatus',
-      'nationality',
-      'religion',
-      'siblingDetails',
-      'primarySchool',
-      'secondarySchool',
-      'electorate',
-      'postalCode',
-      'linkedinProfile',
-      'declarationAccepted',
-      'declarationAcceptedAt',
-    ];
-    for (const field of plainFields) {
-      const value = data[field];
-      if (value !== undefined) {
-        valuesToInsert[field] = value;
       }
     }
 

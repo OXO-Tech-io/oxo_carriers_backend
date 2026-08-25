@@ -1,6 +1,7 @@
 import { db } from '../../db';
 import { employeeEducation, employeeWorkHistory } from '../../db/schema';
 import { EmployeePiiModel } from '../../employees/EmployeePii';
+import { EmployeeModel } from '../../employees/Employee';
 import { EmployeeNomineeModel } from '../employee-nominees/EmployeeNominee';
 import { EmployeeDependentModel } from '../employee-dependents/EmployeeDependent';
 import { EmployeeEmergencyContactModel } from '../employee-emergency-contacts/EmployeeEmergencyContact';
@@ -8,19 +9,12 @@ import { EmployeeWelfareInfoModel } from '../employee-welfare-info/EmployeeWelfa
 import type { CreateEmployeeProfileInput } from '../../validators/employeeProfileCreation.validator';
 
 function hasPiiUpdates(profile: CreateEmployeeProfileInput): boolean {
-  return !!(
-    profile.statutory ||
-    profile.remittance ||
-    profile.bloodType ||
-    profile.health ||
-    profile.welfare ||
-    profile.declarationAccepted !== undefined
-  );
+  return !!(profile.statutory || profile.remittance || profile.bloodType || profile.health || profile.welfare);
 }
 
-/** Flattens the profile's statutory/remittance/health/welfare/declaration sections into the single upsert() call EmployeePiiModel expects. */
+/** Flattens the profile's statutory/remittance/health sections into the single upsert() call EmployeePiiModel expects. */
 function buildPiiUpsertPayload(profile: CreateEmployeeProfileInput) {
-  const { statutory, remittance, bloodType, health, welfare, declarationAccepted } = profile;
+  const { statutory, remittance, bloodType, health } = profile;
   return {
     ...(statutory
       ? {
@@ -32,19 +26,10 @@ function buildPiiUpsertPayload(profile: CreateEmployeeProfileInput) {
           addressLine2: statutory.addressLine2 ?? null,
           city: statutory.city,
           district: statutory.district,
-          gramaNiladariDivision: statutory.gramaNiladariDivision ?? null,
-          electorate: statutory.electorate ?? null,
-          postalCode: statutory.postalCode ?? null,
-          dateOfBirth: statutory.dateOfBirth,
           birthPlace: statutory.birthPlace,
-          sex: statutory.sex,
-          maritalStatus: statutory.maritalStatus,
-          nationality: statutory.nationality,
-          religion: statutory.religion ?? null,
           secondaryContactNumber: statutory.secondaryContactNumber ?? null,
           spouseName: statutory.spouseName ?? null,
           spouseNic: statutory.spouseNic ?? null,
-          spouseDateOfBirth: statutory.spouseDateOfBirth ?? null,
           spouseContactNumber: statutory.spouseContactNumber ?? null,
           spouseOccupation: statutory.spouseOccupation ?? null,
           motherName: statutory.motherName,
@@ -53,9 +38,6 @@ function buildPiiUpsertPayload(profile: CreateEmployeeProfileInput) {
           fatherName: statutory.fatherName,
           fatherOccupation: statutory.fatherOccupation ?? null,
           fatherContactNumber: statutory.fatherContactNumber ?? null,
-          siblingDetails: statutory.siblingDetails ?? null,
-          primarySchool: statutory.primarySchoolAttended ?? null,
-          secondarySchool: statutory.secondarySchoolAttended ?? null,
         }
       : {}),
     ...(remittance
@@ -74,12 +56,35 @@ function buildPiiUpsertPayload(profile: CreateEmployeeProfileInput) {
           allergies: health.allergies ?? null,
         }
       : {}),
-    ...(welfare
+    ...(profile.welfare ? { additionalNotes: profile.welfare.additionalNotes ?? null } : {}),
+  };
+}
+
+function hasEmployeeTableUpdates(profile: CreateEmployeeProfileInput): boolean {
+  return !!(profile.statutory || profile.welfare || profile.declarationAccepted !== undefined);
+}
+
+/** Flattens the profile's non-PII statutory/welfare/declaration fields into the payload for EmployeeModel.update(). */
+function buildEmployeeUpdatePayload(profile: CreateEmployeeProfileInput) {
+  const { statutory, welfare, declarationAccepted } = profile;
+  return {
+    ...(statutory
       ? {
-          linkedinProfile: welfare.linkedinProfile ?? null,
-          additionalNotes: welfare.additionalNotes ?? null,
+          gramaNiladariDivision: statutory.gramaNiladariDivision ?? null,
+          electorate: statutory.electorate ?? null,
+          postalCode: statutory.postalCode ?? null,
+          dateOfBirth: statutory.dateOfBirth,
+          sex: statutory.sex,
+          maritalStatus: statutory.maritalStatus,
+          nationality: statutory.nationality,
+          religion: statutory.religion ?? null,
+          spouseDateOfBirth: statutory.spouseDateOfBirth ?? null,
+          siblingDetails: statutory.siblingDetails ?? null,
+          primarySchool: statutory.primarySchoolAttended ?? null,
+          secondarySchool: statutory.secondarySchoolAttended ?? null,
         }
       : {}),
+    ...(welfare ? { linkedinProfile: welfare.linkedinProfile ?? null } : {}),
     ...(declarationAccepted !== undefined
       ? {
           declarationAccepted,
@@ -104,6 +109,10 @@ export const employeeProfileCreationService = {
     await db.transaction(async (tx) => {
       if (hasPiiUpdates(profile)) {
         await EmployeePiiModel.upsert(user.employeeId, buildPiiUpsertPayload(profile), tx);
+      }
+
+      if (hasEmployeeTableUpdates(profile)) {
+        await EmployeeModel.update(user.id, buildEmployeeUpdatePayload(profile), tx);
       }
 
       for (const nominee of profile.nominees ?? []) {
