@@ -146,7 +146,7 @@ export class EmployeeModel {
     return map;
   }
 
-  static async create(userData: {
+  static async create(employeeData: {
     employee_id: string;
     email: string;
     first_name: string;
@@ -172,28 +172,28 @@ export class EmployeeModel {
     const [insertedUser] = await db
       .insert(employee)
       .values({
-        employeeId: userData.employee_id,
-        email: encryptPII(userData.email)!,
-        emailHash: hashEmail(userData.email),
-        firstName: encryptPII(userData.first_name)!,
-        lastName: encryptPII(userData.last_name)!,
-        role: userData.role,
-        employeeTypeId: userData.employee_type_id ?? null,
-        employeeCategory: (userData.employee_category ?? null) as 'internal' | 'client_side' | null,
-        department: userData.department || null,
-        position: userData.position || null,
-        workLocation: (userData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
-        hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
-        managerId: userData.manager_id || null,
-        hourlyRate: encryptPII(userData.hourly_rate?.toString()) ?? null,
-        bankName: encryptPII(userData.bank_name) ?? null,
-        accountHolderName: encryptPII(userData.account_holder_name) ?? null,
-        accountNumber: encryptPII(userData.account_number) ?? null,
-        bankBranch: encryptPII(userData.bank_branch) ?? null,
-        bankBranchCode: encryptPII(userData.bank_branch_code) ?? null,
-        swiftCode: encryptPII(userData.swift_code) ?? null,
-        companyName: encryptPII(userData.company_name) ?? null,
-        contactNumber: encryptPII(userData.contact_number) ?? null,
+        employeeId: employeeData.employee_id,
+        email: encryptPII(employeeData.email)!,
+        emailHash: hashEmail(employeeData.email),
+        firstName: encryptPII(employeeData.first_name)!,
+        lastName: encryptPII(employeeData.last_name)!,
+        role: employeeData.role,
+        employeeTypeId: employeeData.employee_type_id ?? null,
+        employeeCategory: (employeeData.employee_category ?? null) as 'internal' | 'client_side' | null,
+        department: employeeData.department || null,
+        position: employeeData.position || null,
+        workLocation: (employeeData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
+        hireDate: employeeData.hire_date ? employeeData.hire_date.toISOString().split('T')[0] : null,
+        managerId: employeeData.manager_id || null,
+        hourlyRate: encryptPII(employeeData.hourly_rate?.toString()) ?? null,
+        bankName: encryptPII(employeeData.bank_name) ?? null,
+        accountHolderName: encryptPII(employeeData.account_holder_name) ?? null,
+        accountNumber: encryptPII(employeeData.account_number) ?? null,
+        bankBranch: encryptPII(employeeData.bank_branch) ?? null,
+        bankBranchCode: encryptPII(employeeData.bank_branch_code) ?? null,
+        swiftCode: encryptPII(employeeData.swift_code) ?? null,
+        companyName: encryptPII(employeeData.company_name) ?? null,
+        contactNumber: encryptPII(employeeData.contact_number) ?? null,
       })
       .returning();
 
