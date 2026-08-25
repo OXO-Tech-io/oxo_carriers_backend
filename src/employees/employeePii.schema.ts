@@ -51,12 +51,6 @@ export const employeePii = pgTable('tbl_employee_pii', {
     emergencyContactName: bytea('emergency_contact_name'),
     emergencyContactPhone: bytea('emergency_contact_phone'),
     emergencyContactRelationship: bytea('emergency_contact_relationship'),
-    // Statutory (Tab 1) fields - added for the EPF/ETF profile enhancement.
-    // legalName/initialsName/birthPlace/spouseName/motherName/fatherName are
-    // encrypted like the rest of this table. dateOfBirth/sex/maritalStatus/
-    // nationality/religion/spouseDateOfBirth/siblingDetails/primarySchool/
-    // secondarySchool were never encrypted here (stored plain) and have moved
-    // to tbl_employee - see employee.schema.ts.
     legalName: bytea('legal_name'),
     initialsName: bytea('initials_name'),
     callingName: bytea('calling_name'),
@@ -71,21 +65,14 @@ export const employeePii = pgTable('tbl_employee_pii', {
     fatherName: bytea('father_name'),
     fatherOccupation: bytea('father_occupation'),
     fatherContactNumber: bytea('father_contact_number'),
-    // Tab B - residing address (if different from permanent) + landline
     residingAddressLine1: bytea('residing_address_line1'),
     residingAddressLine2: bytea('residing_address_line2'),
     residingCity: bytea('residing_city'),
     residingDistrict: bytea('residing_district'),
     landlineNumber: bytea('landline_number'),
     secondaryContactNumber: bytea('secondary_contact_number'),
-    // electorate/postalCode/gramaNiladariDivision/linkedinProfile moved to
-    // tbl_employee alongside the other plain (non-encrypted) fields above.
-    // Health (Tab D) - encrypted like the other PII above.
     medicalConditions: bytea('medical_conditions'),
     allergies: bytea('allergies'),
-    // Social & declaration (Tab E) - additionalNotes is free text employees
-    // can use to disclose personal details, so encrypted like the rest of
-    // this table.
     additionalNotes: bytea('additional_notes'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
