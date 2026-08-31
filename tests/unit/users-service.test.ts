@@ -144,7 +144,18 @@ describe("UsersService", () => {
   });
 
   describe("create", () => {
-    const baseDto = { email: "new@b.com", first_name: "New", last_name: "User" } as any;
+    const baseDto = {
+      email: "new@b.com",
+      first_name: "New",
+      last_name: "User",
+      employee_category: "internal",
+    } as any;
+
+    it("rejects when employee_category is missing", async () => {
+      await expect(
+        service.create({ email: "a@b.com", first_name: "A", last_name: "B" } as any, hr),
+      ).rejects.toThrow(BadRequestException);
+    });
 
     it("rejects roles that cannot create users", async () => {
       await expect(service.create(baseDto, selfEmployee)).rejects.toThrow(ForbiddenException);

@@ -4,6 +4,8 @@ import { User, UserRole } from '../types';
 import { eq, like, and, sql, inArray, isNull } from 'drizzle-orm';
 import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
 
+type DbExecutor = Pick<typeof db, 'select' | 'update'>;
+
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
   if (!user) return null;
   return {
@@ -146,15 +148,17 @@ export class EmployeeModel {
     return map;
   }
 
-  static async create(userData: {
+  static async create(employeeData: {
     employee_id: string;
     email: string;
     first_name: string;
     last_name: string;
     role: UserRole;
     employee_type_id?: number | null;
+    employee_category?: string | null;
     department?: string;
     position?: string;
+    work_location?: string | null;
     hire_date?: Date;
     manager_id?: number;
     hourly_rate?: number | null;
@@ -170,26 +174,28 @@ export class EmployeeModel {
     const [insertedUser] = await db
       .insert(employee)
       .values({
-        employeeId: userData.employee_id,
-        email: encryptPII(userData.email)!,
-        emailHash: hashEmail(userData.email),
-        firstName: encryptPII(userData.first_name)!,
-        lastName: encryptPII(userData.last_name)!,
-        role: userData.role,
-        employeeTypeId: userData.employee_type_id ?? null,
-        department: userData.department || null,
-        position: userData.position || null,
-        hireDate: userData.hire_date ? userData.hire_date.toISOString().split('T')[0] : null,
-        managerId: userData.manager_id || null,
-        hourlyRate: encryptPII(userData.hourly_rate?.toString()) ?? null,
-        bankName: encryptPII(userData.bank_name) ?? null,
-        accountHolderName: encryptPII(userData.account_holder_name) ?? null,
-        accountNumber: encryptPII(userData.account_number) ?? null,
-        bankBranch: encryptPII(userData.bank_branch) ?? null,
-        bankBranchCode: encryptPII(userData.bank_branch_code) ?? null,
-        swiftCode: encryptPII(userData.swift_code) ?? null,
-        companyName: encryptPII(userData.company_name) ?? null,
-        contactNumber: encryptPII(userData.contact_number) ?? null,
+        employeeId: employeeData.employee_id,
+        email: encryptPII(employeeData.email)!,
+        emailHash: hashEmail(employeeData.email),
+        firstName: encryptPII(employeeData.first_name)!,
+        lastName: encryptPII(employeeData.last_name)!,
+        role: employeeData.role,
+        employeeTypeId: employeeData.employee_type_id ?? null,
+        employeeCategory: (employeeData.employee_category ?? null) as 'internal' | 'client_side' | null,
+        department: employeeData.department || null,
+        position: employeeData.position || null,
+        workLocation: (employeeData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
+        hireDate: employeeData.hire_date ? employeeData.hire_date.toISOString().split('T')[0] : null,
+        managerId: employeeData.manager_id || null,
+        hourlyRate: encryptPII(employeeData.hourly_rate?.toString()) ?? null,
+        bankName: encryptPII(employeeData.bank_name) ?? null,
+        accountHolderName: encryptPII(employeeData.account_holder_name) ?? null,
+        accountNumber: encryptPII(employeeData.account_number) ?? null,
+        bankBranch: encryptPII(employeeData.bank_branch) ?? null,
+        bankBranchCode: encryptPII(employeeData.bank_branch_code) ?? null,
+        swiftCode: encryptPII(employeeData.swift_code) ?? null,
+        companyName: encryptPII(employeeData.company_name) ?? null,
+        contactNumber: encryptPII(employeeData.contact_number) ?? null,
       })
       .returning();
 
@@ -199,7 +205,11 @@ export class EmployeeModel {
     return decryptUser(insertedUser) as DrizzleEmployee;
   }
 
-  static async update(id: number, updates: Partial<DrizzleEmployee>): Promise<DrizzleEmployee | null> {
+  static async update(
+    id: number,
+    updates: Partial<DrizzleEmployee>,
+    executor: DbExecutor = db
+  ): Promise<DrizzleEmployee | null> {
     // Filter out undefined values and restricted fields
     const filteredUpdates: any = {};
     const piiFields = [
@@ -234,15 +244,20 @@ export class EmployeeModel {
     }
 
     if (Object.keys(filteredUpdates).length === 0) {
-      return await this.findById(id);
+      const [row] = await executor.select().from(employee).where(eq(employee.id, id));
+      return decryptUser(row ?? null);
     }
 
-    await db
+    // Uses .returning() (rather than a follow-up findById) so this stays
+    // correct when `executor` is a transaction - a separate findById() call
+    // would read via the outer `db` pool and could miss the uncommitted update.
+    const [updated] = await executor
       .update(employee)
       .set(filteredUpdates)
-      .where(eq(employee.id, id));
+      .where(eq(employee.id, id))
+      .returning();
 
-    return await this.findById(id);
+    return decryptUser(updated ?? null);
   }
 
   static async getAll(filters?: {

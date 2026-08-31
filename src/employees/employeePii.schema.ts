@@ -3,16 +3,10 @@ import {
     serial,
     varchar,
     timestamp,
-    date,
-    pgEnum,
     customType,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee } from './employee.schema';
-
-// Enums
-export const employeeSexEnum = pgEnum('employee_sex', ['male', 'female']);
-export const maritalStatusEnum = pgEnum('marital_status', ['married', 'single']);
 
 // Custom type for PostgreSQL bytea (binary data)
 export const bytea = customType<{ data: Buffer; driverData: string | Buffer }>({
@@ -57,27 +51,29 @@ export const employeePii = pgTable('tbl_employee_pii', {
     emergencyContactName: bytea('emergency_contact_name'),
     emergencyContactPhone: bytea('emergency_contact_phone'),
     emergencyContactRelationship: bytea('emergency_contact_relationship'),
-    // Statutory (Tab 1) fields - added for the EPF/ETF profile enhancement.
-    // legalName/initialsName/birthPlace/spouseName/motherName/fatherName
-    // are encrypted like the rest of this table; dateOfBirth/sex/maritalStatus/
-    // nationality stay plain since maritalStatus gates Tab C visibility and
-    // dateOfBirth feeds a client-side age calculation.
     legalName: bytea('legal_name'),
     initialsName: bytea('initials_name'),
-    dateOfBirth: date('date_of_birth'),
+    callingName: bytea('calling_name'),
     birthPlace: bytea('birth_place'),
-    sex: employeeSexEnum('sex'),
-    maritalStatus: maritalStatusEnum('marital_status'),
-    nationality: varchar('nationality', { length: 100 }),
     spouseName: bytea('spouse_name'),
+    spouseNic: bytea('spouse_nic'),
+    spouseContactNumber: bytea('spouse_contact_number'),
+    spouseOccupation: bytea('spouse_occupation'),
     motherName: bytea('mother_name'),
+    motherOccupation: bytea('mother_occupation'),
+    motherContactNumber: bytea('mother_contact_number'),
     fatherName: bytea('father_name'),
-    // Tab B - residing address (if different from permanent) + landline
+    fatherOccupation: bytea('father_occupation'),
+    fatherContactNumber: bytea('father_contact_number'),
     residingAddressLine1: bytea('residing_address_line1'),
     residingAddressLine2: bytea('residing_address_line2'),
     residingCity: bytea('residing_city'),
     residingDistrict: bytea('residing_district'),
     landlineNumber: bytea('landline_number'),
+    secondaryContactNumber: bytea('secondary_contact_number'),
+    medicalConditions: bytea('medical_conditions'),
+    allergies: bytea('allergies'),
+    additionalNotes: bytea('additional_notes'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

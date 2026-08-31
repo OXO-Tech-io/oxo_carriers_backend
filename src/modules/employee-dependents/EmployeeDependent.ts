@@ -12,6 +12,8 @@ export type EmployeeDependentInput = {
   gender: 'male' | 'female';
   relationship: 'spouse' | 'child';
   mobileNumber?: string | null;
+  // Only meaningful for relationship = 'child'.
+  school?: string | null;
 };
 
 export type DecryptedEmployeeDependent = {
@@ -23,6 +25,7 @@ export type DecryptedEmployeeDependent = {
   gender: 'male' | 'female';
   relationship: 'spouse' | 'child';
   mobileNumber: string | null;
+  school: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 };
@@ -39,6 +42,7 @@ export class EmployeeDependentModel {
         gender: employeeDependents.gender,
         relationship: employeeDependents.relationship,
         mobileNumber: pgpDecrypt(employeeDependents.mobileNumber),
+        school: pgpDecrypt(employeeDependents.school),
         createdAt: employeeDependents.createdAt,
         updatedAt: employeeDependents.updatedAt,
       })
@@ -57,6 +61,7 @@ export class EmployeeDependentModel {
         gender: data.gender,
         relationship: data.relationship,
         mobileNumber: pgpEncrypt(data.mobileNumber),
+        school: pgpEncrypt(data.school),
       } as any)
       .returning({ id: employeeDependents.id });
     return inserted;
@@ -70,6 +75,7 @@ export class EmployeeDependentModel {
     if (data.gender !== undefined) values.gender = data.gender;
     if (data.relationship !== undefined) values.relationship = data.relationship;
     if (data.mobileNumber !== undefined) values.mobileNumber = pgpEncrypt(data.mobileNumber);
+    if (data.school !== undefined) values.school = pgpEncrypt(data.school);
     await executor.update(employeeDependents).set(values).where(eq(employeeDependents.id, id));
   }
 

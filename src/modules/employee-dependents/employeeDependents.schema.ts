@@ -1,14 +1,14 @@
 import { pgTable, serial, varchar, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
-import { employee as users } from '../../employees/employee.schema';
-import { bytea, employeeSexEnum } from '../../employees/employeePii.schema';
+import { employee as users, employeeSexEnum } from '../../employees/employee.schema';
+import { bytea } from '../../employees/employeePii.schema';
 
 // Enums
 export const dependentRelationshipEnum = pgEnum('dependent_relationship', ['spouse', 'child']);
 
 // Employee Dependents Table (Tab C - medical insurance/welfare family members).
-// Multi-record, only meaningful while the employee's employeePii.maritalStatus
-// is 'married' (enforced in profileChangeRequest.service.ts). fullName/nic/
+// Multi-record, only meaningful while the employee's maritalStatus (now on
+// tbl_employee) is 'married' (enforced in profileChangeRequest.service.ts). fullName/nic/
 // mobileNumber are encrypted like tbl_employee_pii; writes only ever happen
 // via ProfileChangeRequest approval (see profileChangeRequests.ts).
 export const employeeDependents = pgTable('tbl_employee_dependents', {
@@ -23,6 +23,8 @@ export const employeeDependents = pgTable('tbl_employee_dependents', {
     gender: employeeSexEnum('gender').notNull(),
     relationship: dependentRelationshipEnum('relationship').notNull(),
     mobileNumber: bytea('mobile_number'),
+    // Only meaningful for relationship = 'child'.
+    school: bytea('school'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

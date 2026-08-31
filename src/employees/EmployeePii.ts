@@ -35,20 +35,30 @@ export class EmployeePiiModel {
         // Tab 1 (statutory) fields
         legalName: pgpDecrypt(employeePii.legalName),
         initialsName: pgpDecrypt(employeePii.initialsName),
-        dateOfBirth: employeePii.dateOfBirth,
+        callingName: pgpDecrypt(employeePii.callingName),
         birthPlace: pgpDecrypt(employeePii.birthPlace),
-        sex: employeePii.sex,
-        maritalStatus: employeePii.maritalStatus,
-        nationality: employeePii.nationality,
         spouseName: pgpDecrypt(employeePii.spouseName),
+        spouseNic: pgpDecrypt(employeePii.spouseNic),
+        spouseContactNumber: pgpDecrypt(employeePii.spouseContactNumber),
+        spouseOccupation: pgpDecrypt(employeePii.spouseOccupation),
         motherName: pgpDecrypt(employeePii.motherName),
+        motherOccupation: pgpDecrypt(employeePii.motherOccupation),
+        motherContactNumber: pgpDecrypt(employeePii.motherContactNumber),
         fatherName: pgpDecrypt(employeePii.fatherName),
+        fatherOccupation: pgpDecrypt(employeePii.fatherOccupation),
+        fatherContactNumber: pgpDecrypt(employeePii.fatherContactNumber),
         // Tab B (remittance/correspondence) fields
         residingAddressLine1: pgpDecrypt(employeePii.residingAddressLine1),
         residingAddressLine2: pgpDecrypt(employeePii.residingAddressLine2),
         residingCity: pgpDecrypt(employeePii.residingCity),
         residingDistrict: pgpDecrypt(employeePii.residingDistrict),
         landlineNumber: pgpDecrypt(employeePii.landlineNumber),
+        secondaryContactNumber: pgpDecrypt(employeePii.secondaryContactNumber),
+        // Health fields
+        medicalConditions: pgpDecrypt(employeePii.medicalConditions),
+        allergies: pgpDecrypt(employeePii.allergies),
+        // Social & declaration fields
+        additionalNotes: pgpDecrypt(employeePii.additionalNotes),
         createdAt: employeePii.createdAt,
         updatedAt: employeePii.updatedAt,
       })
@@ -74,19 +84,27 @@ export class EmployeePiiModel {
       emergencyContactRelationship?: string | null;
       legalName?: string | null;
       initialsName?: string | null;
+      callingName?: string | null;
       birthPlace?: string | null;
       spouseName?: string | null;
+      spouseNic?: string | null;
+      spouseContactNumber?: string | null;
+      spouseOccupation?: string | null;
       motherName?: string | null;
+      motherOccupation?: string | null;
+      motherContactNumber?: string | null;
       fatherName?: string | null;
+      fatherOccupation?: string | null;
+      fatherContactNumber?: string | null;
       residingAddressLine1?: string | null;
       residingAddressLine2?: string | null;
       residingCity?: string | null;
       residingDistrict?: string | null;
       landlineNumber?: string | null;
-      dateOfBirth?: string | null;
-      sex?: 'male' | 'female' | null;
-      maritalStatus?: 'married' | 'single' | null;
-      nationality?: string | null;
+      secondaryContactNumber?: string | null;
+      medicalConditions?: string | null;
+      allergies?: string | null;
+      additionalNotes?: string | null;
     },
     executor: DbExecutor = db
   ) {
@@ -111,30 +129,32 @@ export class EmployeePiiModel {
       'emergencyContactRelationship',
       'legalName',
       'initialsName',
+      'callingName',
       'birthPlace',
       'spouseName',
+      'spouseNic',
+      'spouseContactNumber',
+      'spouseOccupation',
       'motherName',
+      'motherOccupation',
+      'motherContactNumber',
       'fatherName',
+      'fatherOccupation',
+      'fatherContactNumber',
       'residingAddressLine1',
       'residingAddressLine2',
       'residingCity',
       'residingDistrict',
       'landlineNumber',
+      'secondaryContactNumber',
+      'medicalConditions',
+      'allergies',
+      'additionalNotes',
     ];
     for (const field of encryptedFields) {
       const value = data[field] as string | null | undefined;
       if (value !== undefined) {
         valuesToInsert[field] = value === null ? null : sql`pgp_sym_encrypt(${value}, ${key})`;
-      }
-    }
-
-    // Plain (unencrypted) fields - not identity/contact secrets, and
-    // dateOfBirth/maritalStatus need to be queryable (age calc, Tab C gating).
-    const plainFields: (keyof typeof data)[] = ['dateOfBirth', 'sex', 'maritalStatus', 'nationality'];
-    for (const field of plainFields) {
-      const value = data[field];
-      if (value !== undefined) {
-        valuesToInsert[field] = value;
       }
     }
 

@@ -69,6 +69,10 @@ export const leaveRequests = pgTable('tbl_leave_requests', {
     hrApprovalDate: timestamp('hr_approval_date'),
     rejectionReason: text('rejection_reason'),
     attachmentUrl: varchar('attachment_url', { length: 500 }),
+    // Required (enforced in leave.service.ts) when the requester is an
+    // Internal employee - the colleague covering their work while on leave.
+    coverupEmployeeId: varchar('coverup_employee_id', { length: 50 })
+        .references(() => employee.employeeId, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

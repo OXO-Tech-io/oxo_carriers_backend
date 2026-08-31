@@ -83,6 +83,10 @@ export class UsersService {
       throw new BadRequestException('Required fields are missing');
     }
 
+    if (!dto.employee_category) {
+      throw new BadRequestException('Employee Type (Internal/Client Side) is required');
+    }
+
     if (
       dto.role === UserRole.CONSULTANT &&
       (dto.hourly_rate == null || dto.hourly_rate === '' || isNaN(parseFloat(String(dto.hourly_rate))))
@@ -124,8 +128,10 @@ export class UsersService {
       first_name: dto.first_name,
       last_name: dto.last_name,
       role: userRole,
+      employee_category: dto.employee_category,
       department: dto.department,
       position: dto.position,
+      work_location: dto.work_location || null,
       hire_date: dto.hire_date ? new Date(dto.hire_date) : undefined,
       manager_id: dto.manager_id ? parseInt(String(dto.manager_id)) : undefined,
       hourly_rate: dto.role === UserRole.CONSULTANT && dto.hourly_rate != null ? parseFloat(String(dto.hourly_rate)) : null,
