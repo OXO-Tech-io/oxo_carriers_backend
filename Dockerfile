@@ -4,7 +4,7 @@
 FROM mirror.gcr.io/library/node:20-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 COPY tsconfig*.json ./
 RUN pnpm install --frozen-lockfile
 COPY . .
@@ -20,7 +20,7 @@ RUN curl -o /cloud-sql-proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linu
     chmod +x /cloud-sql-proxy
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/src/db ./src/db
