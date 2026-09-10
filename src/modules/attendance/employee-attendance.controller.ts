@@ -26,15 +26,20 @@ export class EmployeeAttendanceController {
     @CurrentEmployee() employee: JwtPayload,
   ) {
     const ownEmployeeId = requireOwnEmployeeId(employeeId, employee);
-    const session =
-      dto.action === SessionAction.CLOCK_IN
-        ? await this.attendanceService.clockIn(ownEmployeeId)
-        : await this.attendanceService.clockOut(ownEmployeeId);
-    return {
-      success: true,
-      message: dto.action === SessionAction.CLOCK_IN ? 'Clocked in' : 'Clocked out',
-      data: session,
-    };
+    switch (dto.action) {
+      case SessionAction.CLOCK_IN:
+        return { success: true, message: 'Clocked in', data: await this.attendanceService.clockIn(ownEmployeeId) };
+      case SessionAction.CLOCK_OUT:
+        return { success: true, message: 'Clocked out', data: await this.attendanceService.clockOut(ownEmployeeId) };
+      case SessionAction.BREAK_START:
+        return {
+          success: true,
+          message: 'Break started',
+          data: await this.attendanceService.startBreak(ownEmployeeId),
+        };
+      case SessionAction.BREAK_END:
+        return { success: true, message: 'Break ended', data: await this.attendanceService.endBreak(ownEmployeeId) };
+    }
   }
 
   /**

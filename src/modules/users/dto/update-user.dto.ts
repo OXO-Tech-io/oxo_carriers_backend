@@ -26,4 +26,11 @@ export class UpdateUserDto {
   @IsOptional()
   @IsIn(Object.values(UserRole))
   role?: UserRole;
+
+  // Identifies the local-PC agent this employee's in/out/break events should be
+  // pushed to over the attendance WebSocket gateway - see
+  // src/modules/attendance/attendance.gateway.ts. Pass '' to clear it.
+  @IsOptional()
+  @IsString()
+  device_id?: string;
 }

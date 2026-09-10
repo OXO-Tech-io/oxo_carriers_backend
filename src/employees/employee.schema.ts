@@ -103,6 +103,11 @@ export const employee = pgTable('tbl_employee', {
     linkedinProfile: varchar('linkedin_profile', { length: 255 }),
     declarationAccepted: boolean('declaration_accepted').default(false),
     declarationAcceptedAt: timestamp('declaration_accepted_at'),
+    // Identifies the local-PC agent this employee's in/out/break events should
+    // be pushed to over the attendance WebSocket gateway (see
+    // src/modules/attendance/attendance.gateway.ts). Set at user-creation time
+    // or later via user update; not unique at the DB level (see migration 0024).
+    deviceId: varchar('device_id', { length: 100 }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
     // Set when UsersService.delete() removes the employee. Distinct from

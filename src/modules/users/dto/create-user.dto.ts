@@ -86,6 +86,13 @@ export class CreateUserDto {
   @IsString()
   contact_number?: string;
 
+  // Identifies the local-PC agent this employee's in/out/break events should be
+  // pushed to over the attendance WebSocket gateway - see
+  // src/modules/attendance/attendance.gateway.ts.
+  @IsOptional()
+  @IsString()
+  device_id?: string;
+
   // Validated separately with the existing createEmployeeProfileSchema Zod
   // schema (see users.service.ts) - it's a deeply nested, optional composite
   // object (statutory/nominees/remittance/dependents/...), not worth
