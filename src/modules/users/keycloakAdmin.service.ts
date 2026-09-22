@@ -8,6 +8,7 @@
 import { UserRole } from '../../types';
 import { AppError } from '../../utils/AppError';
 import { env } from '../../config/env';
+import { evaluatePasswordPolicy } from '../../utils/passwordPolicy';
 
 const KC_URL = env.KC_URL.replace(/\/$/, '');
 const REALM = env.KC_REALM;
@@ -244,6 +245,18 @@ export const keycloakAdminService = {
   },
 
   async updatePassword(userId: string, password: string, temporary = false): Promise<void> {
+    // OCD-447: enforce the strong password policy on every password that
+    // reaches Keycloak, not just the ones typed by a person. This is a
+    // no-op for `generateSecureTemporaryPassword()` output (already
+    // compliant) and guards any future caller that passes through a
+    // user-supplied password.
+    const policy = evaluatePasswordPolicy(password);
+    if (!policy.isValid) {
+      throw new AppError(
+        `Password does not meet the required policy: ${policy.failedMessages.join('; ')}`,
+        400
+      );
+    }
     const res = await adminFetch(`/users/${userId}/reset-password`, {
       method: 'PUT',
       body: JSON.stringify({

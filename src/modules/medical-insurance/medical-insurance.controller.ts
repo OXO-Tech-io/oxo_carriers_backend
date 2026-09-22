@@ -20,6 +20,7 @@ import { MedicalInsuranceService, MedicalDocumentFiles } from './medical-insuran
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
 import { MEDICAL_DOCUMENT_FIELDS, medicalDocumentsMulterOptions } from './medical-insurance.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
@@ -70,6 +71,19 @@ export class MedicalInsuranceController {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid claim id');
     return this.medicalInsuranceService.decideClaim(employee, id, dto);
+  }
+
+  @Put(':id/payments')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  recordPayment(
+    @CurrentEmployee() employee: JwtPayload,
+    @Param('id') idParam: string,
+    @Body() dto: RecordMedicalClaimPaymentDto,
+  ) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.recordPayment(employee, id, dto);
   }
 
   @Post(':id/resubmissions')

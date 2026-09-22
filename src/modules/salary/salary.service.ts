@@ -218,6 +218,33 @@ export class SalaryService {
     return { year: currentYear, totalEarnings, totalDeductions, totalNet, salaryCount: salaries.length };
   }
 
+  async generateBulkUploadTemplate(): Promise<ExcelJS.Buffer> {
+    const workbook = new ExcelJS.Workbook();
+    const worksheet = workbook.addWorksheet('Salary Upload Template');
+    worksheet.columns = [
+      { header: 'id', key: 'id', width: 10 },
+      { header: 'name', key: 'name', width: 25 },
+      { header: 'Local Salary', key: 'localSalary', width: 15 },
+      { header: 'OXO International Salary', key: 'oxoSalary', width: 22 },
+      { header: 'Working Days', key: 'workingDays', width: 22 },
+      { header: 'EPF 8%', key: 'epf', width: 12 },
+      { header: 'Allowances', key: 'allowances', width: 14 },
+      { header: 'Salary Advance/Deductions', key: 'deductions', width: 20 },
+    ];
+    worksheet.getRow(1).font = { bold: true };
+    worksheet.addRow({
+      id: 101,
+      name: 'John Doe',
+      localSalary: 150000,
+      oxoSalary: 50000,
+      workingDays: '30, 2, 28',
+      epf: 12000,
+      allowances: 5000,
+      deductions: 0,
+    });
+    return workbook.xlsx.writeBuffer();
+  }
+
   async uploadBulkSalaries(
     filePath: string,
     dto: BulkUploadSalaryDtoLike,
@@ -374,6 +401,12 @@ export class SalaryService {
       try {
         const idValue = row.getCell(idCol).value?.toString().trim();
         if (!idValue || idValue === '') continue;
+
+        // Skip a stray repeated header row (e.g. a frozen/duplicated header
+        // pasted into the data area) instead of reporting it as an invalid ID.
+        if (idValue.toLowerCase() === 'id' || (nameCol > 0 && row.getCell(nameCol).value?.toString().trim().toLowerCase() === 'name')) {
+          continue;
+        }
 
         let userId: number | null = null;
         const parsedId = parseInt(idValue);

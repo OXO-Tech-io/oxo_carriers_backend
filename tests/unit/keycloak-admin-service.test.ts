@@ -182,9 +182,17 @@ describe("keycloakAdminService", () => {
     it("throws an AppError on failure", async () => {
       const keycloakAdminService = await freshService();
       fetchMock.mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(jsonResponse({}, false, 400));
-      await expect(keycloakAdminService.updatePassword("kc-1", "newpass")).rejects.toMatchObject({
+      await expect(keycloakAdminService.updatePassword("kc-1", "NewPass1!")).rejects.toMatchObject({
         statusCode: 502,
       });
+    });
+
+    it("throws a 400 AppError without calling Keycloak when the password fails the policy", async () => {
+      const keycloakAdminService = await freshService();
+      await expect(keycloakAdminService.updatePassword("kc-1", "newpass")).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(fetchMock).not.toHaveBeenCalled();
     });
   });
 });

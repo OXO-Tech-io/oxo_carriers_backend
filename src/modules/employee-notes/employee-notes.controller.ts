@@ -63,9 +63,13 @@ export class EmployeeNotesController {
   @Put(':id')
   @UseGuards(RolesGuard)
   @Roles(UserRole.HR_MANAGER)
-  update(@Param('id') idParam: string, @Body() dto: UpdateEmployeeNoteDto) {
+  update(
+    @Param('id') idParam: string,
+    @Body() dto: UpdateEmployeeNoteDto,
+    @CurrentEmployee() employee: JwtPayload,
+  ) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid note id');
-    return this.employeeNotesService.update(id, dto);
+    return this.employeeNotesService.update(id, dto, employee);
   }
 }

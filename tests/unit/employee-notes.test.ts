@@ -91,14 +91,43 @@ describe("EmployeeNotesService", () => {
   });
 
   describe("update", () => {
+    const superAdmin = { userId: 1, role: UserRole.SUPER_ADMIN } as any;
+
     it("throws NotFoundException when the note doesn't exist", async () => {
-      updateMock.mockResolvedValue(null);
-      await expect(service.update(99, "new content")).rejects.toThrow(NotFoundException);
+      getByIdMock.mockResolvedValue(null);
+      await expect(service.update(99, { content: "new content" } as any, superAdmin)).rejects.toThrow(
+        NotFoundException,
+      );
     });
 
-    it("returns the updated note", async () => {
+    it("throws ForbiddenException when a non-author HR Manager edits another HR Manager's note", async () => {
+      getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
+      findByIdMock.mockResolvedValue({ role: UserRole.HR_MANAGER });
+      const hrManager = { userId: 5, role: UserRole.HR_MANAGER } as any;
+      await expect(service.update(1, { content: "updated" } as any, hrManager)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("allows a super admin to edit any note", async () => {
+      getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
       updateMock.mockResolvedValue({ id: 1, content: "updated" });
-      const result = await service.update(1, "updated");
+      const result = await service.update(1, { content: "updated" } as any, superAdmin);
+      expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
+    });
+
+    it("allows the author to edit their own note", async () => {
+      getByIdMock.mockResolvedValue({ id: 1, authorUserId: 5 });
+      updateMock.mockResolvedValue({ id: 1, content: "updated" });
+      const hrManager = { userId: 5, role: UserRole.HR_MANAGER } as any;
+      const result = await service.update(1, { content: "updated" } as any, hrManager);
+      expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
+    });
+
+    it("allows a more senior role to edit a subordinate's note", async () => {
+      getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
+      findByIdMock.mockResolvedValue({ role: UserRole.HR_EXECUTIVE });
+      updateMock.mockResolvedValue({ id: 1, content: "updated" });
+      const hrManager = { userId: 5, role: UserRole.HR_MANAGER } as any;
+      const result = await service.update(1, { content: "updated" } as any, hrManager);
       expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
     });
   });
@@ -141,12 +170,16 @@ describe("EmployeeNotesController", () => {
   });
 
   it("update rejects a non-numeric id param", () => {
-    expect(() => controller.update("xyz", { content: "c" } as any)).toThrow(BadRequestException);
+    expect(() =>
+      controller.update("xyz", { content: "c" } as any, { userId: 1, role: UserRole.SUPER_ADMIN } as any),
+    ).toThrow(BadRequestException);
   });
 
   it("update parses the id param and delegates", async () => {
+    const superAdmin = { userId: 1, role: UserRole.SUPER_ADMIN } as any;
+    getByIdMock.mockResolvedValue({ id: 3, authorUserId: 1 });
     updateMock.mockResolvedValue({ id: 3, content: "c" });
-    await controller.update("3", { content: "c" } as any);
+    await controller.update("3", { content: "c" } as any, superAdmin);
     expect(updateMock).toHaveBeenCalledWith(3, "c");
   });
 });

@@ -1,8 +1,9 @@
 import { db } from '../db';
 import { employee, userPermissions, type Employee as DrizzleEmployee } from '../db/schema';
 import { User, UserRole } from '../types';
-import { eq, like, and, sql, inArray, isNull } from 'drizzle-orm';
+import { eq, like, and, sql, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
+import { DEFAULT_PERMISSIONS_BY_ROLE } from '../common/constants/defaultRolePermissions';
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
@@ -20,6 +21,7 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
     bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
     companyName: user.companyName ? decryptPII(user.companyName) : null,
     contactNumber: user.contactNumber ? decryptPII(user.contactNumber) : null,
+    personalEmail: user.personalEmail ? decryptPII(user.personalEmail) : null,
   };
 }
 
@@ -84,26 +86,18 @@ export class EmployeeModel {
 
     if (!insertedUser) throw new Error('Failed to create user from Keycloak claims');
 
-    // Initialize default permissions for employee role
-    if (claims.role === UserRole.EMPLOYEE) {
-      const defaultPermissions = [
-        'dashboard',
-        'leaves',
-        'salaries',
-        'facilities',
-        'medical_claims',
-        'reports',
-        'profile_change_requests',
-        'work_logs',
-        'communications',
-        'forms',
-        'document_vault',
-      ];
-      for (const permission of defaultPermissions) {
+    // Initialize default permissions for this role (OCD-445 / OCD-457) - kept
+    // in sync with UsersService.create and the main.ts bootstrap backfill via
+    // the same DEFAULT_PERMISSIONS_BY_ROLE map, so a user who is JIT
+    // provisioned from Keycloak (rather than pre-created via POST /users)
+    // gets the same default access.
+    const defaultGrants = DEFAULT_PERMISSIONS_BY_ROLE[claims.role];
+    if (defaultGrants) {
+      for (const grant of defaultGrants) {
         await db.insert(userPermissions).values({
           employeeId,
-          permissionKey: permission,
-          accessLevel: 'read',
+          permissionKey: grant.key,
+          accessLevel: grant.accessLevel,
         });
       }
     }
@@ -151,8 +145,10 @@ export class EmployeeModel {
   static async create(employeeData: {
     employee_id: string;
     email: string;
+    personal_email?: string | null;
     first_name: string;
     last_name: string;
+    title?: string | null;
     role: UserRole;
     employee_type_id?: number | null;
     employee_category?: string | null;
@@ -160,6 +156,7 @@ export class EmployeeModel {
     position?: string;
     work_location?: string | null;
     hire_date?: Date;
+    undergraduate_degree_completion_date?: Date | null;
     manager_id?: number;
     hourly_rate?: number | null;
     bank_name?: string | null;
@@ -177,8 +174,10 @@ export class EmployeeModel {
         employeeId: employeeData.employee_id,
         email: encryptPII(employeeData.email)!,
         emailHash: hashEmail(employeeData.email),
+        personalEmail: encryptPII(employeeData.personal_email) ?? null,
         firstName: encryptPII(employeeData.first_name)!,
         lastName: encryptPII(employeeData.last_name)!,
+        title: (employeeData.title || null) as 'mr' | 'ms' | 'mrs' | 'dr' | 'prof' | null,
         role: employeeData.role,
         employeeTypeId: employeeData.employee_type_id ?? null,
         employeeCategory: (employeeData.employee_category ?? null) as 'internal' | 'client_side' | null,
@@ -186,6 +185,9 @@ export class EmployeeModel {
         position: employeeData.position || null,
         workLocation: (employeeData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
         hireDate: employeeData.hire_date ? employeeData.hire_date.toISOString().split('T')[0] : null,
+        undergraduateDegreeCompletionDate: employeeData.undergraduate_degree_completion_date
+          ? employeeData.undergraduate_degree_completion_date.toISOString().split('T')[0]
+          : null,
         managerId: employeeData.manager_id || null,
         hourlyRate: encryptPII(employeeData.hourly_rate?.toString()) ?? null,
         bankName: encryptPII(employeeData.bank_name) ?? null,
@@ -298,13 +300,50 @@ export class EmployeeModel {
       return decrypted;
     }
 
-    const term = filters.search.toLowerCase();
-    return decrypted.filter(user =>
-      user.firstName?.toLowerCase().includes(term) ||
-      user.lastName?.toLowerCase().includes(term) ||
-      user.email?.toLowerCase().includes(term) ||
-      user.employeeId?.toLowerCase().includes(term)
-    );
+    // OCD-451: a multi-word query (e.g. "mahen jayalath") must match across
+    // the concatenated searchable fields, not just as one exact substring
+    // tested against a single field - "mahen jayalath" is never a substring
+    // of firstName ("Mahen") or lastName ("Jayalath") alone, only of the two
+    // joined together. Split the query into whitespace-separated tokens and
+    // require every token to be found somewhere in the employee's combined
+    // searchable text (order-independent, so "jayalath mahen" also matches).
+    const tokens = filters.search.toLowerCase().split(/\s+/).filter(Boolean);
+    if (tokens.length === 0) return decrypted;
+
+    return decrypted.filter(user => {
+      const haystack = [user.firstName, user.lastName, user.email, user.employeeId]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return tokens.every(token => haystack.includes(token));
+    });
+  }
+
+  /**
+   * OCD-444: bank account numbers must be unique across employee profiles.
+   * accountNumber is encrypted with encryptPII (application-level AES-256-CBC
+   * with a random IV per call, same scheme as firstName/lastName/email) - not
+   * pgp_sym_encrypt like tbl_employee_pii.national_id - so equal plaintexts
+   * never produce equal ciphertext and a SQL-level equality WHERE can't be
+   * used. Mirrors the decrypt-then-compare approach EmployeeModel.getAll's
+   * `search` filter already uses for the same reason.
+   */
+  static async findByAccountNumber(accountNumber: string, excludeEmployeeId?: string): Promise<DrizzleEmployee | null> {
+    const trimmed = accountNumber.trim();
+    if (!trimmed) return null;
+
+    const rows = await db.query.employee.findMany({
+      where: and(isNull(employee.deletedAt), isNotNull(employee.accountNumber)),
+    });
+
+    for (const row of rows) {
+      if (excludeEmployeeId && row.employeeId === excludeEmployeeId) continue;
+      const decrypted = row.accountNumber ? decryptPII(row.accountNumber) : null;
+      if (decrypted && decrypted.trim() === trimmed) {
+        return decryptUser(row);
+      }
+    }
+    return null;
   }
 
   static async delete(id: number): Promise<void> {

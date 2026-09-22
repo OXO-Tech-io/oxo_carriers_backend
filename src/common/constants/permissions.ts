@@ -25,6 +25,11 @@ export const PERMISSIONS = {
   NOTICES: "notices",
   ATTENDANCE: "attendance",
   DOCUMENT_VAULT: "document_vault",
+  // OCD-453: gates GET /archive (list + detail) - deleted employee profile
+  // snapshots. Granted by default to SUPER_ADMIN (bypasses this table
+  // entirely) and HR_MANAGER only, matching who can already delete/view
+  // sensitive employee records elsewhere in this app.
+  ARCHIVE: "archive",
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -60,7 +65,8 @@ export interface PermissionDefinition {
     | "groups"
     | "notices"
     | "attendance"
-    | "documents";
+    | "documents"
+    | "archive";
 }
 
 export const PERMISSION_CATALOG: PermissionDefinition[] = [
@@ -226,6 +232,13 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     description:
       "Write access lets a user upload documents to specific employees or to everyone. Read access lets an employee view the documents assigned to them plus any sent to all employees.",
     group: "documents",
+  },
+  {
+    key: PERMISSIONS.ARCHIVE,
+    label: "Archive",
+    description:
+      "Can view archived employee profiles - the full snapshot, deletion timestamp and who performed the deletion - captured whenever an employee record is deleted.",
+    group: "archive",
   },
 ];
 

@@ -8,6 +8,7 @@ import {
     boolean,
     timestamp,
     pgEnum,
+    uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee } from '../../employees/employee.schema';
@@ -62,7 +63,10 @@ export const monthlySalaries = pgTable('tbl_monthly_salaries', {
     paidDate: date('paid_date'),
     pdfUrl: varchar('pdf_url', { length: 500 }),
     createdAt: timestamp('created_at').defaultNow(),
-});
+}, (table) => ({
+    // Backs the bulk-upload upsert's ON CONFLICT (employee_id, month_year) clause.
+    employeeMonthUnique: uniqueIndex('tbl_monthly_salaries_employee_month_unique').on(table.employeeId, table.monthYear),
+}));
 
 // Salary Slip Details Table
 export const salarySlipDetails = pgTable('tbl_salary_slip_details', {

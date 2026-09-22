@@ -1,6 +1,6 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import {
   sendMedicalClaimApprovedEmail,
@@ -10,6 +10,16 @@ import {
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
+
+const PAYMENT_PROCESSING_ROLES = new Set<UserRole>([
+  UserRole.HR_MANAGER,
+  UserRole.HR_EXECUTIVE,
+  UserRole.FINANCE_MANAGER,
+  UserRole.FINANCE_EXECUTIVE,
+  UserRole.SUPER_ADMIN,
+]);
+const PAYMENT_STATUS_VALUES = Object.values(MedicalClaimPaymentStatus) as string[];
 
 export type MedicalDocumentFiles = {
   supportive_document?: Express.Multer.File[];
@@ -90,7 +100,10 @@ export class MedicalInsuranceService {
 
   /** Single list endpoint - branches on role so the frontend only calls one route. */
   async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType) {
-    if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN) {
+    // Finance Manager/Executive need to see every claim too (OCD-494) - they
+    // process payment for approved claims across all employees, not just
+    // their own.
+    if (employee.role && PAYMENT_PROCESSING_ROLES.has(employee.role)) {
       return this.getAll(status, type);
     }
     return this.getMyClaims(this.requireEmployeeId(employee), status);
@@ -151,6 +164,70 @@ export class MedicalInsuranceService {
       message: action === 'approve' ? 'Claim approved' : 'Claim rejected',
       claim: updated,
     };
+  }
+
+  /**
+   * OCD-494: payment processing for an approved claim - lets HR/Finance mark
+   * a claim Paid/Partly Paid/Not Paid and record amount/date/reference.
+   */
+  async recordPayment(employee: JwtPayload, id: number, dto: RecordMedicalClaimPaymentDto) {
+    if (!employee.role || !PAYMENT_PROCESSING_ROLES.has(employee.role)) {
+      throw new ForbiddenException('Only HR and Finance can process claim payments');
+    }
+
+    const paymentStatus = dto.payment_status;
+    if (!paymentStatus || !PAYMENT_STATUS_VALUES.includes(paymentStatus)) {
+      throw new BadRequestException(
+        `payment_status must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      );
+    }
+
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.status !== MedicalClaimStatus.APPROVED) {
+      throw new BadRequestException('Payment can only be recorded for approved claims');
+    }
+
+    const isPaidOrPartial =
+      paymentStatus === MedicalClaimPaymentStatus.PAID || paymentStatus === MedicalClaimPaymentStatus.PARTIALLY_PAID;
+
+    let paidAmount: number | null = null;
+    if (dto.paid_amount != null && dto.paid_amount !== '') {
+      paidAmount = parseFloat(dto.paid_amount);
+      if (isNaN(paidAmount) || paidAmount < 0) {
+        throw new BadRequestException('Amount Paid must be a valid non-negative number');
+      }
+    }
+    if (isPaidOrPartial) {
+      if (paidAmount == null || paidAmount <= 0) {
+        throw new BadRequestException('Amount Paid is required when marking a claim as Paid or Partly Paid');
+      }
+      if (paidAmount > Number(claim.amount)) {
+        throw new BadRequestException('Amount Paid cannot exceed the approved claim amount');
+      }
+    }
+
+    let paymentDate: Date | null = null;
+    if (dto.payment_date) {
+      paymentDate = new Date(dto.payment_date);
+      if (isNaN(paymentDate.getTime())) {
+        throw new BadRequestException('Payment Date is invalid');
+      }
+    } else if (isPaidOrPartial) {
+      throw new BadRequestException('Payment Date is required when marking a claim as Paid or Partly Paid');
+    }
+
+    const updated = await MedicalInsuranceModel.recordPayment(id, paymentStatus as MedicalClaimPaymentStatus, {
+      paid_amount: paidAmount,
+      payment_date: paymentDate,
+      payment_reference: dto.payment_reference?.trim() || null,
+      paid_by: employee.userId,
+      paid_at: new Date(),
+    });
+
+    return { success: true, message: 'Payment details recorded', claim: updated };
   }
 
   async resubmit(

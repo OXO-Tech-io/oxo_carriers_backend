@@ -40,7 +40,11 @@
     "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts",
     "db:encrypt-grama-niladari-division": "ts-node src/scripts/encryptGramaNiladariDivision.ts",
     "db:encrypt-additional-notes": "ts-node src/scripts/encryptAdditionalNotes.ts",
-    "db:move-non-pii-fields-to-employee": "ts-node src/scripts/moveNonPiiFieldsToEmployee.ts"
+    "db:move-non-pii-fields-to-employee": "ts-node src/scripts/moveNonPiiFieldsToEmployee.ts",
+    "db:add-personal-email-column": "ts-node src/scripts/addPersonalEmailColumn.ts",
+    "db:add-employee-archive-table": "ts-node src/scripts/addEmployeeArchiveTable.ts",
+    "db:add-profile-picture-url-column": "ts-node src/scripts/addProfilePictureUrlColumn.ts",
+    "db:add-medical-claim-payment-fields": "ts-node src/scripts/addMedicalClaimPaymentFields.ts"
   },
   "keywords": [],
   "author": "",

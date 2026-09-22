@@ -85,7 +85,12 @@ describe("ProfileChangeRequestsController", () => {
       emailMocks.submitted.mockResolvedValue(undefined);
 
       const result = await controller.submit(validChanges, employee);
-      expect(pcrs.submitChangeRequest).toHaveBeenCalledWith(1, "EMP1", expect.objectContaining({ changes: expect.any(Array) }));
+      expect(pcrs.submitChangeRequest).toHaveBeenCalledWith(
+        1,
+        "EMP1",
+        expect.objectContaining({ changes: expect.any(Array) }),
+        [],
+      );
       expect(result).toEqual({ success: true, message: "Profile change request submitted", data: { id: 10 } });
 
       await flush();

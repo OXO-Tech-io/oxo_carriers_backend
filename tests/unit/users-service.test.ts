@@ -74,10 +74,15 @@ const selfEmployee = { userId: 5, employeeId: "EMP5", role: UserRole.EMPLOYEE } 
 
 describe("UsersService", () => {
   let service: UsersService;
+  // OCD-453: UsersService.delete() now snapshots the profile to the Archive
+  // before removing anything - stubbed out here so these tests exercise
+  // only UsersService's own delete/keycloak/PII logic, not the Archive
+  // module's model/DB calls.
+  const archiveServiceMock = { archiveEmployeeDeletion: vi.fn() } as any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new UsersService();
+    service = new UsersService(archiveServiceMock);
     poolQueryMock.mockResolvedValue({ rows: [] });
   });
 
@@ -336,9 +341,19 @@ describe("UsersService", () => {
       await expect(service.delete(hr.userId, hr)).rejects.toThrow(BadRequestException);
     });
 
+    it("throws NotFoundException when the target user doesn't exist", async () => {
+      em.findById.mockResolvedValue(null);
+      await expect(service.delete(3, hr)).rejects.toThrow(NotFoundException);
+      expect(archiveServiceMock.archiveEmployeeDeletion).not.toHaveBeenCalled();
+    });
+
     it("purges PII and the keycloak account but keeps the employee row, deactivating it instead", async () => {
-      em.findById.mockResolvedValue({ id: 3, employeeId: "EMP3", keycloakSub: "kc-3" });
+      const user = { id: 3, employeeId: "EMP3", keycloakSub: "kc-3" };
+      em.findById.mockResolvedValue(user);
       await service.delete(3, hr);
+      // OCD-453: the full-profile snapshot is written to the Archive before
+      // the PII row is destroyed / the Keycloak account is removed.
+      expect(archiveServiceMock.archiveEmployeeDeletion).toHaveBeenCalledWith(user, { userId: hr.userId });
       expect(kc.deleteUser).toHaveBeenCalledWith("kc-3");
       expect(piiDeleteMock).toHaveBeenCalledWith("EMP3");
       expect(em.delete).not.toHaveBeenCalled();

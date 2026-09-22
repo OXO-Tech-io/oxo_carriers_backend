@@ -16,11 +16,22 @@ export class CreateUserDto {
   @IsEmail()
   email!: string;
 
+  // OCD-449: a personal contact address, distinct from the account/login
+  // email above.
+  @IsOptional()
+  @IsEmail()
+  personal_email?: string;
+
   @IsString()
   first_name!: string;
 
   @IsString()
   last_name!: string;
+
+  // OCD-475: parity with Edit Profile (see userTitleEnum in employee.schema.ts).
+  @IsOptional()
+  @IsIn(['mr', 'ms', 'mrs', 'dr', 'prof'])
+  title?: 'mr' | 'ms' | 'mrs' | 'dr' | 'prof';
 
   @IsOptional()
   @IsIn(Object.values(UserRole))
@@ -47,6 +58,11 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   hire_date?: string;
+
+  // OCD-477: parity with My Profile's Education tab (undergraduate_degree_completion_date column).
+  @IsOptional()
+  @IsString()
+  undergraduate_degree_completion_date?: string;
 
   @IsOptional()
   manager_id?: string | number;

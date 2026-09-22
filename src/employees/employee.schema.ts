@@ -81,6 +81,11 @@ export const employee = pgTable('tbl_employee', {
     swiftCode: varchar('swift_code', { length: 500 }),
     companyName: varchar('company_name', { length: 500 }),
     contactNumber: varchar('contact_number', { length: 500 }),
+    // OCD-449: personal contact email, distinct from the account/login
+    // `email` column above - not unique/not the Keycloak identity, so it
+    // gets no emailHash-style lookup column. Encrypted at rest like the
+    // other optional PII varchars (contactNumber, companyName, ...) above.
+    personalEmail: varchar('personal_email', { length: 500 }),
     undergraduateDegreeCompletionDate: date('undergraduate_degree_completion_date'),
     hireDate: date('hire_date'),
     managerId: integer('manager_id'),
@@ -101,6 +106,11 @@ export const employee = pgTable('tbl_employee', {
     electorate: varchar('electorate', { length: 150 }),
     postalCode: varchar('postal_code', { length: 20 }),
     linkedinProfile: varchar('linkedin_profile', { length: 255 }),
+    // OCD-454: relative /uploads/... path to the employee's uploaded profile
+    // picture (served statically - see main.ts's useStaticAssets). Not PII-
+    // encrypted like email/firstName/lastName - it's a storage path, not
+    // personal data itself.
+    profilePictureUrl: varchar('profile_picture_url', { length: 500 }),
     declarationAccepted: boolean('declaration_accepted').default(false),
     declarationAcceptedAt: timestamp('declaration_accepted_at'),
     createdAt: timestamp('created_at').defaultNow(),

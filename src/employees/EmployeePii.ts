@@ -173,6 +173,30 @@ export class EmployeePiiModel {
     return this.findByEmployeeId(employeeId, executor);
   }
 
+  /**
+   * OCD-444: NIC numbers must be unique across employee profiles.
+   * national_id is a bytea column encrypted with pgp_sym_encrypt (Postgres
+   * pgcrypto), which is deterministic for a given plaintext+key on decrypt -
+   * unlike tbl_employee.account_number (app-level AES-256-CBC with a random
+   * IV per call) - so, unlike that column, the comparison can be pushed down
+   * into the WHERE clause instead of decrypting every row in JS.
+   */
+  static async findByNationalId(nationalId: string, excludeEmployeeId?: string, executor: DbExecutor = db) {
+    const trimmed = nationalId.trim();
+    if (!trimmed) return null;
+    const key = this.getKey();
+
+    const rows = await executor
+      .select({ employeeId: employeePii.employeeId })
+      .from(employeePii)
+      .where(
+        sql`${employeePii.nationalId} IS NOT NULL AND pgp_sym_decrypt(${employeePii.nationalId}, ${key}) = ${trimmed}`
+      );
+
+    const match = rows.find((r) => !excludeEmployeeId || r.employeeId !== excludeEmployeeId);
+    return match ?? null;
+  }
+
   static async delete(employeeId: string): Promise<void> {
     await db.delete(employeePii).where(eq(employeePii.employeeId, employeeId));
   }

@@ -82,6 +82,16 @@ export class SalaryController {
     return { success: true, ...(await this.salaryService.getYearToDateEarnings(employee, year)) };
   }
 
+  @Get('bulk-uploads/template')
+  @UseGuards(RolesGuard)
+  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  async downloadBulkUploadTemplate(@Res() res: Response) {
+    const buffer = await this.salaryService.generateBulkUploadTemplate();
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=salary-bulk-upload-template.xlsx');
+    res.send(buffer);
+  }
+
   @Get()
   async getSalaries(
     @CurrentEmployee() employee: JwtPayload,
