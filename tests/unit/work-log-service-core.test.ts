@@ -10,6 +10,9 @@ vi.mock("../../src/modules/work-logs/WorkLog", () => ({
     findByEmployeeId: vi.fn(),
     listAll: vi.fn(),
     summaryByUser: vi.fn(),
+    sumMinutesForDate: vi.fn(),
+    findById: vi.fn(),
+    update: vi.fn(),
   },
 }));
 vi.mock("../../src/employees/Employee", () => ({
@@ -18,10 +21,23 @@ vi.mock("../../src/employees/Employee", () => ({
 // The deadline stamp hits tbl_work_log_settings + tbl_leave_calendar; it has its
 // own coverage in work-log-deadline.test.ts, so it's stubbed here to keep these
 // DB-free. "No deadline applied" is what an unconfigured install returns.
+// getSettings().isEnabled drives whether read paths neutralize isLate/lateCount
+// to zero (see OCD-469) - defaults to false (disabled), tests that need late
+// data preserved flip deadlineSettingsState.isEnabled to true.
+const { deadlineSettingsState } = vi.hoisted(() => ({ deadlineSettingsState: { isEnabled: false } }));
 vi.mock("../../src/modules/work-logs/work-log-deadline.service", () => ({
   WorkLogDeadlineService: class {
     async evaluateMany(workDates: string[]) {
       return workDates.map(() => ({ deadlineAt: null, isLate: false, exemptReason: "disabled" as const }));
+    }
+    async getSettings() {
+      return {
+        isEnabled: deadlineSettingsState.isEnabled,
+        deadlineTime: "18:00",
+        timezone: "Asia/Colombo",
+        updatedBy: null,
+        updatedAt: null,
+      };
     }
   },
 }));
@@ -49,6 +65,8 @@ async function writeWorkbook(rows: (string | number | Date)[][]): Promise<string
 describe("workLogService (core)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    wlm.sumMinutesForDate.mockResolvedValue(0);
+    deadlineSettingsState.isEnabled = false;
   });
 
   afterEach(() => {
@@ -57,22 +75,100 @@ describe("workLogService (core)", () => {
     }
   });
 
-  it("submitEntries maps entries into WorkLogModel rows", async () => {
-    wlm.createMany.mockResolvedValue([{ id: 1 }]);
-    await workLogService.submitEntries("EMP1", [
-      { workDate: "2026-01-01", taskDescription: "Task", hoursSpent: 4 },
-    ] as any);
-    expect(wlm.createMany).toHaveBeenCalledWith([
-      {
-        employeeId: "EMP1",
+  describe("submitEntries", () => {
+    it("maps entries into WorkLogModel rows", async () => {
+      wlm.createMany.mockResolvedValue([{ id: 1 }]);
+      await workLogService.submitEntries("EMP1", [
+        { workDate: "2026-01-01", taskDescription: "Task", minutesSpent: 240 },
+      ] as any);
+      expect(wlm.createMany).toHaveBeenCalledWith([
+        {
+          employeeId: "EMP1",
+          workDate: "2026-01-01",
+          taskDescription: "Task",
+          minutesSpent: 240,
+          remarks: null,
+          isLate: false,
+          deadlineAt: null,
+        },
+      ]);
+    });
+
+    it("rejects a future-dated entry", async () => {
+      await expect(
+        workLogService.submitEntries("EMP1", [
+          { workDate: "2999-01-01", taskDescription: "Task", minutesSpent: 60 },
+        ] as any),
+      ).rejects.toThrow(/future/i);
+      expect(wlm.createMany).not.toHaveBeenCalled();
+    });
+
+    it("rejects when the day's total (including entries already stored) exceeds 1440 minutes", async () => {
+      wlm.sumMinutesForDate.mockResolvedValue(1400);
+      await expect(
+        workLogService.submitEntries("EMP1", [
+          { workDate: "2026-01-01", taskDescription: "Task", minutesSpent: 100 },
+        ] as any),
+      ).rejects.toThrow(/1440/);
+      expect(wlm.createMany).not.toHaveBeenCalled();
+    });
+
+    it("sums multiple entries for the same date before checking the cap", async () => {
+      wlm.createMany.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      await workLogService.submitEntries("EMP1", [
+        { workDate: "2026-01-01", taskDescription: "A", minutesSpent: 700 },
+        { workDate: "2026-01-01", taskDescription: "B", minutesSpent: 700 },
+      ] as any);
+      expect(wlm.createMany).toHaveBeenCalled();
+
+      await expect(
+        workLogService.submitEntries("EMP1", [
+          { workDate: "2026-02-01", taskDescription: "A", minutesSpent: 800 },
+          { workDate: "2026-02-01", taskDescription: "B", minutesSpent: 800 },
+        ] as any),
+      ).rejects.toThrow(/1440/);
+    });
+  });
+
+  describe("updateEntry", () => {
+    it("updates an entry the caller owns", async () => {
+      wlm.findById.mockResolvedValue({ id: 1, employeeId: "EMP1" });
+      wlm.update.mockResolvedValue({ id: 1 });
+      await workLogService.updateEntry("EMP1", 1, {
         workDate: "2026-01-01",
-        taskDescription: "Task",
-        hoursSpent: 4,
+        taskDescription: "Fixed",
+        minutesSpent: 90,
+      } as any);
+      expect(wlm.update).toHaveBeenCalledWith(1, {
+        workDate: "2026-01-01",
+        taskDescription: "Fixed",
+        minutesSpent: 90,
         remarks: null,
-        isLate: false,
-        deadlineAt: null,
-      },
-    ]);
+      });
+    });
+
+    it("rejects editing another employee's entry", async () => {
+      wlm.findById.mockResolvedValue({ id: 1, employeeId: "EMP2" });
+      await expect(
+        workLogService.updateEntry("EMP1", 1, {
+          workDate: "2026-01-01",
+          taskDescription: "Fixed",
+          minutesSpent: 90,
+        } as any),
+      ).rejects.toThrow(/own/i);
+      expect(wlm.update).not.toHaveBeenCalled();
+    });
+
+    it("throws when the entry does not exist", async () => {
+      wlm.findById.mockResolvedValue(null);
+      await expect(
+        workLogService.updateEntry("EMP1", 999, {
+          workDate: "2026-01-01",
+          taskDescription: "Fixed",
+          minutesSpent: 90,
+        } as any),
+      ).rejects.toThrow(/not found/i);
+    });
   });
 
   it("listAll resolves a numeric userId filter to an employeeId", async () => {
@@ -90,19 +186,21 @@ describe("workLogService (core)", () => {
   });
 
   describe("getDailyStatus", () => {
-    it("combines eligible-employee count with the day's summary rows", async () => {
+    it("combines eligible-employee count with the range's summary rows", async () => {
+      deadlineSettingsState.isEnabled = true; // preserve lateCount instead of neutralizing it
       wlm.summaryByUser.mockResolvedValue([
-        { employeeId: "EMP1", firstName: "A", lastName: "B", totalHours: 4, entryCount: 1, lateCount: 0 },
-        { employeeId: "EMP2", firstName: "C", lastName: "D", totalHours: 2, entryCount: 1, lateCount: 1 },
+        { employeeId: "EMP1", firstName: "A", lastName: "B", totalMinutes: 240, entryCount: 1, lateCount: 0 },
+        { employeeId: "EMP2", firstName: "C", lastName: "D", totalMinutes: 120, entryCount: 1, lateCount: 1 },
       ]);
       poolQuery.mockResolvedValue({ rows: [{ count: "5" }] });
 
-      const status = await workLogService.getDailyStatus("2026-08-03");
+      const status = await workLogService.getDailyStatus({ date: "2026-08-03" });
 
       expect(wlm.summaryByUser).toHaveBeenCalledWith({ from: "2026-08-03", to: "2026-08-03" });
-      expect(poolQuery).toHaveBeenCalledWith(expect.stringContaining("tbl_user_permissions"), ["work_logs"]);
+      expect(poolQuery).toHaveBeenCalledWith(expect.stringContaining("tbl_employee"));
       expect(status).toEqual({
-        date: "2026-08-03",
+        from: "2026-08-03",
+        to: "2026-08-03",
         totalEligible: 5,
         submittedCount: 2,
         onTimeCount: 1,
@@ -111,31 +209,42 @@ describe("workLogService (core)", () => {
       });
     });
 
-    it("defaults to today when no date is given", async () => {
+    it("accepts an explicit from/to range spanning multiple days", async () => {
+      wlm.summaryByUser.mockResolvedValue([]);
+      poolQuery.mockResolvedValue({ rows: [{ count: "0" }] });
+
+      const status = await workLogService.getDailyStatus({ from: "2026-08-01", to: "2026-08-07" });
+      expect(wlm.summaryByUser).toHaveBeenCalledWith({ from: "2026-08-01", to: "2026-08-07" });
+      expect(status.from).toBe("2026-08-01");
+      expect(status.to).toBe("2026-08-07");
+    });
+
+    it("defaults to today when no date/range is given", async () => {
       wlm.summaryByUser.mockResolvedValue([]);
       poolQuery.mockResolvedValue({ rows: [{ count: "0" }] });
 
       const today = new Date().toISOString().slice(0, 10);
       const status = await workLogService.getDailyStatus();
 
-      expect(status.date).toBe(today);
+      expect(status.from).toBe(today);
+      expect(status.to).toBe(today);
       expect(wlm.summaryByUser).toHaveBeenCalledWith({ from: today, to: today });
     });
 
     it("clamps pendingCount at zero when more employees submitted than are recorded eligible", async () => {
       wlm.summaryByUser.mockResolvedValue([
-        { employeeId: "EMP1", firstName: "A", lastName: "B", totalHours: 4, entryCount: 1, lateCount: 0 },
+        { employeeId: "EMP1", firstName: "A", lastName: "B", totalMinutes: 240, entryCount: 1, lateCount: 0 },
       ]);
       poolQuery.mockResolvedValue({ rows: [{ count: "0" }] });
 
-      const status = await workLogService.getDailyStatus("2026-08-03");
+      const status = await workLogService.getDailyStatus({ date: "2026-08-03" });
       expect(status.pendingCount).toBe(0);
     });
   });
 
   it("generateSummaryReport builds a workbook with one row per summary entry", async () => {
     wlm.summaryByUser.mockResolvedValue([
-      { employeeId: "EMP1", firstName: "A", lastName: "B", totalHours: 40, entryCount: 5 },
+      { employeeId: "EMP1", firstName: "A", lastName: "B", totalMinutes: 2400, entryCount: 5, lateCount: 0 },
     ]);
     const buffer = await workLogService.generateSummaryReport({});
     expect(buffer).toBeInstanceOf(Buffer);
@@ -149,8 +258,8 @@ describe("workLogService (core)", () => {
 
     it("parses valid rows, converts Date cells, and skips blank rows", async () => {
       const filePath = await writeWorkbook([
-        ["Date", "Task Description", "Hours Spent", "Remarks"],
-        [new Date("2026-01-15T00:00:00.000Z"), "Reviewed contracts", 3, "note"],
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        [new Date("2026-01-15T00:00:00.000Z"), "Reviewed contracts", 180, "note"],
         ["", "", "", ""],
       ]);
       wlm.createMany.mockResolvedValue([{ id: 1 }]);
@@ -163,26 +272,70 @@ describe("workLogService (core)", () => {
           employeeId: "EMP1",
           workDate: "2026-01-15",
           taskDescription: "Reviewed contracts",
-          hoursSpent: 3,
+          minutesSpent: 180,
           remarks: "note",
         }),
       ]);
     });
 
-    it("counts invalid rows (bad date/negative hours) as failures with a message", async () => {
+    it("flags a bad date with a message naming the expected format", async () => {
       const filePath = await writeWorkbook([
-        ["Date", "Task Description", "Hours Spent", "Remarks"],
-        ["not-a-date", "Task", -5, ""],
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        ["not-a-date", "Task", 60, ""],
       ]);
       const result = await workLogService.bulkUpload("EMP1", filePath);
       expect(result.failed).toBe(1);
-      expect(result.errors[0]).toContain("invalid or incomplete data");
+      expect(result.errors[0]).toMatch(/date/i);
+      expect(wlm.createMany).not.toHaveBeenCalled();
+    });
+
+    it("flags an out-of-range minutes value with a message naming the 1440/24h limit", async () => {
+      const filePath = await writeWorkbook([
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        ["2026-01-15", "Task", 1500, ""],
+      ]);
+      const result = await workLogService.bulkUpload("EMP1", filePath);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toContain("1440");
+      expect(wlm.createMany).not.toHaveBeenCalled();
+    });
+
+    it("flags a negative minutes value the same way as any other out-of-range value", async () => {
+      const filePath = await writeWorkbook([
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        ["2026-01-15", "Task", -5, ""],
+      ]);
+      const result = await workLogService.bulkUpload("EMP1", filePath);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toMatch(/minutes/i);
+      expect(wlm.createMany).not.toHaveBeenCalled();
+    });
+
+    it("flags a future-dated row separately from a data-validation failure", async () => {
+      const filePath = await writeWorkbook([
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        ["2999-01-01", "Task", 60, ""],
+      ]);
+      const result = await workLogService.bulkUpload("EMP1", filePath);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toMatch(/future/i);
+    });
+
+    it("flags a row that would push the day's total over 1440 minutes", async () => {
+      wlm.sumMinutesForDate.mockResolvedValue(1400);
+      const filePath = await writeWorkbook([
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
+        ["2026-01-15", "Task", 100, ""],
+      ]);
+      const result = await workLogService.bulkUpload("EMP1", filePath);
+      expect(result.failed).toBe(1);
+      expect(result.errors[0]).toContain("1440");
       expect(wlm.createMany).not.toHaveBeenCalled();
     });
 
     it("does not call createMany when every row is invalid or blank", async () => {
       const filePath = await writeWorkbook([
-        ["Date", "Task Description", "Hours Spent", "Remarks"],
+        ["Date", "Task Description", "Minutes Spent", "Remarks"],
         ["", "", "", ""],
       ]);
       const result = await workLogService.bulkUpload("EMP1", filePath);

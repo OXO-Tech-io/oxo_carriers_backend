@@ -5,7 +5,8 @@ const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Date must be in YYYY-MM
 export const workLogEntrySchema = z.object({
   workDate: isoDate,
   taskDescription: z.string().min(1, 'Task description is required').max(1000),
-  hoursSpent: z.coerce.number().positive().max(24),
+  // Recorded in minutes per the requirements doc - 1440 minutes = 24 hours/day.
+  minutesSpent: z.coerce.number().int('Minutes must be a whole number').min(1).max(1440),
   remarks: z.string().max(1000).optional(),
 });
 export type WorkLogEntryInput = z.infer<typeof workLogEntrySchema>;

@@ -1,17 +1,24 @@
 import { db } from '../../db';
 import { workLogs, employee as users, type WorkLog as DrizzleWorkLog } from '../../db/schema';
-import { and, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, eq, gte, lte, ne, sql } from 'drizzle-orm';
 import { EmployeeModel } from '../../employees/Employee';
 
 export type WorkLogInput = {
   employeeId: string;
   workDate: string;
   taskDescription: string;
-  hoursSpent: number;
+  minutesSpent: number;
   remarks?: string | null;
   // Stamped by WorkLogDeadlineService before insert - see work-log-deadline.service.ts.
   isLate?: boolean;
   deadlineAt?: Date | null;
+};
+
+export type WorkLogUpdateInput = {
+  workDate: string;
+  taskDescription: string;
+  minutesSpent: number;
+  remarks?: string | null;
 };
 
 export interface WorkLogUserSummary {
@@ -19,7 +26,7 @@ export interface WorkLogUserSummary {
   employeeId: string | null;
   firstName: string;
   lastName: string;
-  totalHours: number;
+  totalMinutes: number;
   entryCount: number;
   lateCount: number;
 }
@@ -30,7 +37,6 @@ export class WorkLogModel {
       .insert(workLogs)
       .values({
         ...data,
-        hoursSpent: String(data.hoursSpent),
         isLate: data.isLate ?? false,
         deadlineAt: data.deadlineAt ?? null,
       })
@@ -42,6 +48,49 @@ export class WorkLogModel {
   static async createMany(entries: WorkLogInput[]): Promise<DrizzleWorkLog[]> {
     if (!entries.length) return [];
     return Promise.all(entries.map((entry) => this.create(entry)));
+  }
+
+  static async findById(id: number): Promise<DrizzleWorkLog | null> {
+    const row = await db.query.workLogs.findFirst({ where: eq(workLogs.id, id) });
+    return row ?? null;
+  }
+
+  static async update(id: number, data: WorkLogUpdateInput): Promise<DrizzleWorkLog> {
+    const [updated] = await db
+      .update(workLogs)
+      .set({
+        workDate: data.workDate,
+        taskDescription: data.taskDescription,
+        minutesSpent: data.minutesSpent,
+        remarks: data.remarks ?? null,
+        isEdited: true,
+        lastModifiedAt: new Date(),
+      })
+      .where(eq(workLogs.id, id))
+      .returning();
+    if (!updated) throw new Error('Failed to update work log');
+    return updated;
+  }
+
+  /**
+   * Sum of minutesSpent already recorded for an employee on a given work date,
+   * used to enforce the 24h/day (1440 minute) cap across entries submitted in
+   * separate requests - not just within a single Daily Entry/bulk upload
+   * payload. `excludeId` omits the row being edited so an in-place edit isn't
+   * double-counted against itself.
+   */
+  static async sumMinutesForDate(
+    employeeId: string,
+    workDate: string,
+    excludeId?: number,
+  ): Promise<number> {
+    const conditions = [eq(workLogs.employeeId, employeeId), eq(workLogs.workDate, workDate)];
+    if (excludeId) conditions.push(ne(workLogs.id, excludeId));
+    const [row] = await db
+      .select({ total: sql<string>`COALESCE(SUM(${workLogs.minutesSpent}), 0)` })
+      .from(workLogs)
+      .where(and(...conditions));
+    return Number(row?.total ?? 0);
   }
 
   static async findByEmployeeId(
@@ -80,7 +129,7 @@ export class WorkLogModel {
       .select({
         userId: users.id,
         employeeId: workLogs.employeeId,
-        totalHours: sql<string>`SUM(${workLogs.hoursSpent})`,
+        totalMinutes: sql<string>`SUM(${workLogs.minutesSpent})`,
         entryCount: sql<string>`COUNT(*)`,
         lateCount: sql<string>`COUNT(*) FILTER (WHERE ${workLogs.isLate})`,
       })
@@ -97,7 +146,7 @@ export class WorkLogModel {
         employeeId: row.employeeId,
         firstName: emp?.firstName ?? '',
         lastName: emp?.lastName ?? '',
-        totalHours: Number(row.totalHours),
+        totalMinutes: Number(row.totalMinutes),
         entryCount: Number(row.entryCount),
         lateCount: Number(row.lateCount),
       };

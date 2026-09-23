@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
@@ -11,6 +11,7 @@ import { hasPermission } from '../../middleware/permissions';
 import { JwtPayload, UserRole } from '../../types';
 import { WorkLogsService } from './work-logs.service';
 import { SubmitWorkLogsDto } from './dto/submit-work-logs.dto';
+import { UpdateWorkLogDto } from './dto/update-work-log.dto';
 import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
 import { UpdateWorkLogDeadlineDto } from './dto/update-work-log-deadline.dto';
 import { GetWorkLogDeadlineQueryDto } from './dto/get-work-log-deadline-query.dto';
@@ -112,6 +113,18 @@ export class WorkLogsController {
   async submit(@Body() dto: SubmitWorkLogsDto, @CurrentEmployee() employee: JwtPayload) {
     const result = await this.workLogsService.submitEntries(employee.employeeId!, dto);
     return { success: true, message: 'Work log entries submitted', data: result };
+  }
+
+  /** Employees may edit their own submitted entries - see OCD-464. Ownership is
+   *  enforced in WorkLogsService/workLogService, not by a role guard here. */
+  @Put(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkLogDto,
+    @CurrentEmployee() employee: JwtPayload,
+  ) {
+    const result = await this.workLogsService.updateEntry(employee.employeeId!, id, dto);
+    return { success: true, message: 'Work log entry updated', data: result };
   }
 
   @Post('bulk-uploads')

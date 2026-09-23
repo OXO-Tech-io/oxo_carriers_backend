@@ -44,7 +44,8 @@
     "db:add-personal-email-column": "ts-node src/scripts/addPersonalEmailColumn.ts",
     "db:add-employee-archive-table": "ts-node src/scripts/addEmployeeArchiveTable.ts",
     "db:add-profile-picture-url-column": "ts-node src/scripts/addProfilePictureUrlColumn.ts",
-    "db:add-medical-claim-payment-fields": "ts-node src/scripts/addMedicalClaimPaymentFields.ts"
+    "db:add-medical-claim-payment-fields": "ts-node src/scripts/addMedicalClaimPaymentFields.ts",
+    "db:add-work-log-minutes-and-edit-tracking": "ts-node src/scripts/addWorkLogMinutesAndEditTracking.ts"
   },
   "keywords": [],
   "author": "",
