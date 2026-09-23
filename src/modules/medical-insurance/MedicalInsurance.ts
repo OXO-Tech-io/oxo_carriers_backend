@@ -1,3 +1,4 @@
+import fs from 'fs';
 import pool from '../../config/database';
 import { MedicalInsuranceClaim, MedicalClaimType, MedicalClaimStatus, MedicalClaimPaymentStatus } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
@@ -91,15 +92,32 @@ export class MedicalInsuranceModel {
     return this.mapRows(result.rows as any[]);
   }
 
+  // OCD-487: the quarterly limit must be enforced against everything that can
+  // still turn into a paid claim - Pending (awaiting a decision) as well as
+  // Approved - not just Approved, otherwise an employee can queue up several
+  // Pending claims that together blow past the limit before any of them are
+  // reviewed.
   static async getUsedOPDAmountForQuarter(employeeId: string, quarter: string): Promise<number> {
     const result = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total
        FROM tbl_medical_insurance_claims
-       WHERE employee_id = $1 AND quarter = $2 AND type = 'OPD' AND status = 'approved'`,
+       WHERE employee_id = $1 AND quarter = $2 AND type = 'OPD' AND status IN ('pending', 'approved')`,
       [employeeId, quarter]
     );
     const row = (result.rows as any[])[0];
     return parseFloat(row?.total || 0);
+  }
+
+  // OCD-486: lets an employee withdraw their own claim while it's still
+  // Pending. Cancellation is intentionally its own status/method (not
+  // routed through updateStatus) since it isn't an HR/Finance decision -
+  // no reviewed_by/admin_comment is recorded.
+  static async cancel(id: number): Promise<MedicalInsuranceClaim | null> {
+    await pool.query(
+      `UPDATE tbl_medical_insurance_claims SET status = 'cancelled' WHERE id = $1`,
+      [id]
+    );
+    return this.findById(id);
   }
 
   static async updateStatus(
@@ -166,6 +184,53 @@ export class MedicalInsuranceModel {
       ]
     );
     return this.findById(id);
+  }
+
+  private static async ensureDocumentsTable(): Promise<void> {
+    try {
+      await pool.query(`
+        CREATE TABLE IF NOT EXISTS tbl_medical_insurance_claim_documents (
+          filename VARCHAR(255) PRIMARY KEY,
+          mime_type VARCHAR(150) NOT NULL,
+          data BYTEA NOT NULL,
+          created_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+      `);
+    } catch (error: any) {
+      logger.warn({ err: error }, 'Medical claim document table check/create warning');
+    }
+  }
+
+  /**
+   * OCD-493: Cloud Run's local disk is ephemeral - files multer writes to
+   * uploads/ disappear whenever the container instance recycles (scale to
+   * zero, a redeploy, or a request simply landing on a different instance),
+   * which is why previously-submitted claim documents 404 later. This
+   * mirrors the just-uploaded file into Postgres (already the durable store
+   * for everything else here) right after multer saves it to disk, so it
+   * survives regardless of instance lifecycle. See main.ts for the read
+   * side - it falls back to this table when the on-disk static file is gone.
+   */
+  static async persistDocumentBlob(file: { filename: string; mimetype: string; path: string }): Promise<void> {
+    await this.ensureDocumentsTable();
+    const data = fs.readFileSync(file.path);
+    await pool.query(
+      `INSERT INTO tbl_medical_insurance_claim_documents (filename, mime_type, data)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (filename) DO NOTHING`,
+      [file.filename, file.mimetype, data]
+    );
+  }
+
+  static async getDocumentBlob(filename: string): Promise<{ mimeType: string; data: Buffer } | null> {
+    await this.ensureDocumentsTable();
+    const result = await pool.query(
+      `SELECT mime_type, data FROM tbl_medical_insurance_claim_documents WHERE filename = $1`,
+      [filename]
+    );
+    const row = (result.rows as any[])[0];
+    if (!row) return null;
+    return { mimeType: row.mime_type, data: row.data };
   }
 
   private static async mapRows(rows: any[]): Promise<MedicalInsuranceClaim[]> {

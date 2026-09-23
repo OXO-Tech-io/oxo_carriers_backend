@@ -292,6 +292,7 @@ export enum MedicalClaimStatus {
   PENDING = "pending",
   APPROVED = "approved",
   REJECTED = "rejected",
+  CANCELLED = "cancelled",
 }
 
 export enum MedicalClaimPaymentStatus {

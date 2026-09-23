@@ -11,6 +11,9 @@ vi.mock("../../src/modules/medical-insurance/MedicalInsurance", () => ({
     findById: vi.fn(),
     updateStatus: vi.fn(),
     recordPayment: vi.fn(),
+    cancel: vi.fn(),
+    persistDocumentBlob: vi.fn().mockResolvedValue(undefined),
+    getDocumentBlob: vi.fn(),
   },
   getCurrentQuarter: vi.fn().mockReturnValue("2026-Q3"),
   getMaxAmountForType: vi.fn((type: string) => (type === "IN" ? 300000 : 6000)),
@@ -23,14 +26,20 @@ vi.mock("../../src/config/email", () => ({
 vi.mock("../../src/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
+// No hire_date on file by default -> assertServiceEligibility no-ops (see its own tests below for the enforced case).
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: { findByEmployeeId: vi.fn().mockResolvedValue(null) },
+}));
 
 import { MedicalInsuranceModel } from "../../src/modules/medical-insurance/MedicalInsurance";
 import { sendMedicalClaimSubmittedEmail } from "../../src/config/email";
+import { EmployeeModel } from "../../src/employees/Employee";
 import { MedicalInsuranceService } from "../../src/modules/medical-insurance/medical-insurance.service";
 import { MedicalInsuranceController } from "../../src/modules/medical-insurance/medical-insurance.controller";
 
 const model = MedicalInsuranceModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const submittedEmailMock = sendMedicalClaimSubmittedEmail as unknown as ReturnType<typeof vi.fn>;
+const employeeModel = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
@@ -42,6 +51,8 @@ describe("MedicalInsuranceService", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    employeeModel.findByEmployeeId.mockResolvedValue(null);
+    model.persistDocumentBlob.mockResolvedValue(undefined);
   });
 
   describe("apply", () => {
@@ -95,6 +106,24 @@ describe("MedicalInsuranceService", () => {
       await flush();
       expect(submittedEmailMock).toHaveBeenCalled();
     });
+
+    it("rejects submission when the employee has under 6 months of service (OCD-489)", async () => {
+      const hireDate = new Date();
+      hireDate.setMonth(hireDate.getMonth() - 1);
+      employeeModel.findByEmployeeId.mockResolvedValue({ hireDate });
+      await expect(service.apply(employee, { type: "IN", amount: "100" } as any, files)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it("allows submission once 6 months of service have passed (OCD-489)", async () => {
+      const hireDate = new Date();
+      hireDate.setMonth(hireDate.getMonth() - 7);
+      employeeModel.findByEmployeeId.mockResolvedValue({ hireDate });
+      model.create.mockResolvedValue({ id: 1, type: "IN", amount: 100 });
+      const result = await service.apply(employee, { type: "IN", amount: "100" } as any, files);
+      expect(result.message).toBe("Medical insurance claim submitted");
+    });
   });
 
   describe("getClaims", () => {
@@ -117,6 +146,20 @@ describe("MedicalInsuranceService", () => {
       const result = await service.getClaims(finance);
       expect(model.getAll).toHaveBeenCalled();
       expect(result.claims).toEqual([{ id: 1 }]);
+    });
+
+    it("forces the caller's own claims when mine=true, even for HR/Super Admin (OCD-488)", async () => {
+      model.findByEmployeeId.mockResolvedValue([{ id: 5 }]);
+      const result = await service.getClaims(hr, undefined, undefined, true);
+      expect(model.findByEmployeeId).toHaveBeenCalledWith("HR1", { status: undefined });
+      expect(model.getAll).not.toHaveBeenCalled();
+      expect(result.claims).toEqual([{ id: 5 }]);
+    });
+
+    it("returns an empty list for mine=true when the caller has no employeeId (OCD-488)", async () => {
+      const result = await service.getClaims({ ...hr, employeeId: null }, undefined, undefined, true);
+      expect(result.claims).toEqual([]);
+      expect(model.findByEmployeeId).not.toHaveBeenCalled();
     });
   });
 
@@ -278,6 +321,48 @@ describe("MedicalInsuranceService", () => {
     });
   });
 
+  describe("cancelClaim", () => {
+    it("throws NotFoundException for a missing claim", async () => {
+      model.findById.mockResolvedValue(null);
+      await expect(service.cancelClaim(employee, 1)).rejects.toThrow(NotFoundException);
+    });
+
+    it("forbids cancelling someone else's claim", async () => {
+      model.findById.mockResolvedValue({ id: 1, employee_id: "OTHER", status: MedicalClaimStatus.PENDING });
+      await expect(service.cancelClaim(employee, 1)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("only allows cancelling claims that are still pending", async () => {
+      model.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: MedicalClaimStatus.APPROVED });
+      await expect(service.cancelClaim(employee, 1)).rejects.toThrow(BadRequestException);
+    });
+
+    it("cancels a pending claim owned by the employee", async () => {
+      model.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: MedicalClaimStatus.PENDING });
+      model.cancel.mockResolvedValue({ id: 1, status: MedicalClaimStatus.CANCELLED });
+      const result = await service.cancelClaim(employee, 1);
+      expect(model.cancel).toHaveBeenCalledWith(1);
+      expect(result.message).toBe("Claim cancelled");
+    });
+  });
+
+  describe("getOpdBalance", () => {
+    it("returns used and remaining balance for the current quarter", async () => {
+      model.getUsedOPDAmountForQuarter.mockResolvedValue(4000);
+      const result = await service.getOpdBalance(employee);
+      expect(result.quarter).toBe("2026-Q3");
+      expect(result.limit).toBe(6000);
+      expect(result.used).toBe(4000);
+      expect(result.remaining).toBe(2000);
+    });
+
+    it("floors the remaining balance at zero when usage already exceeds the limit", async () => {
+      model.getUsedOPDAmountForQuarter.mockResolvedValue(9000);
+      const result = await service.getOpdBalance(employee);
+      expect(result.remaining).toBe(0);
+    });
+  });
+
   it("getLimits returns static limits with the current quarter", () => {
     const result = service.getLimits();
     expect(result.currentQuarter).toBe("2026-Q3");
@@ -311,5 +396,25 @@ describe("MedicalInsuranceController", () => {
     const dto = { payment_status: "paid" } as any;
     controller.recordPayment(finance, "1", dto);
     expect(serviceMock.recordPayment).toHaveBeenCalledWith(finance, 1, dto);
+  });
+
+  it("cancelClaim rejects a non-numeric id", () => {
+    const serviceMock = { cancelClaim: vi.fn() };
+    const controller = new MedicalInsuranceController(serviceMock as any);
+    expect(() => controller.cancelClaim(employee, "abc")).toThrow(BadRequestException);
+  });
+
+  it("cancelClaim delegates to the service", () => {
+    const serviceMock = { cancelClaim: vi.fn().mockReturnValue({ success: true }) };
+    const controller = new MedicalInsuranceController(serviceMock as any);
+    controller.cancelClaim(employee, "1");
+    expect(serviceMock.cancelClaim).toHaveBeenCalledWith(employee, 1);
+  });
+
+  it("getClaims passes mine=true only when the query string says so", () => {
+    const serviceMock = { getClaims: vi.fn().mockReturnValue({ success: true }) };
+    const controller = new MedicalInsuranceController(serviceMock as any);
+    controller.getClaims(employee, undefined, undefined, "true");
+    expect(serviceMock.getClaims).toHaveBeenCalledWith(employee, undefined, undefined, true);
   });
 });

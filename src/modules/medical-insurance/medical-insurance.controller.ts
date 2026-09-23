@@ -34,13 +34,19 @@ export class MedicalInsuranceController {
     return this.medicalInsuranceService.getLimits();
   }
 
+  @Get('opd-balance')
+  getOpdBalance(@CurrentEmployee() employee: JwtPayload, @Query('quarter') quarter?: string) {
+    return this.medicalInsuranceService.getOpdBalance(employee, quarter);
+  }
+
   @Get()
   getClaims(
     @CurrentEmployee() employee: JwtPayload,
     @Query('status') status?: MedicalClaimStatus,
     @Query('type') type?: MedicalClaimType,
+    @Query('mine') mine?: string,
   ) {
-    return this.medicalInsuranceService.getClaims(employee, status, type);
+    return this.medicalInsuranceService.getClaims(employee, status, type, mine === 'true');
   }
 
   @Get(':id')
@@ -84,6 +90,13 @@ export class MedicalInsuranceController {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid claim id');
     return this.medicalInsuranceService.recordPayment(employee, id, dto);
+  }
+
+  @Put(':id/cancel')
+  cancelClaim(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.cancelClaim(employee, id);
   }
 
   @Post(':id/resubmissions')
