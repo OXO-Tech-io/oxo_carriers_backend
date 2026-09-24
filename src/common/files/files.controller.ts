@@ -1,7 +1,8 @@
-import { BadRequestException, Controller, ForbiddenException, Get, NotFoundException, Param, Res } from '@nestjs/common';
+import { BadRequestException, Controller, ForbiddenException, Get, NotFoundException, Param, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
+import { FILE_CATEGORIES, RESTRICTED_FILE_CATEGORY } from '../constants/fileCategories';
 
 // Replaces the old public `app.useStaticAssets('/uploads')` mount. Every
 // route in this controller sits behind the global JwtAuthGuard (no
@@ -11,11 +12,7 @@ import path from 'path';
 // having gated who could obtain its URL).
 const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
 
-// documents/others: shared destination used by document-upload.options.ts
-// and the *.upload.ts multer configs across communications, vouchers,
-// leaves, notices, forms, work-logs, medical-insurance, employee-notes,
-// consultant-submissions and document-vault.
-const ALLOWED_CATEGORIES = new Set(['documents', 'others']);
+const ALLOWED_CATEGORIES: Set<string> = new Set(Object.values(FILE_CATEGORIES));
 
 // No path separators or traversal sequences - filenames in this tree are
 // always either a multer-generated random name or a crypto.randomUUID().
@@ -36,15 +33,19 @@ const CONTENT_TYPES: Record<string, string> = {
 
 @Controller('files')
 export class FilesController {
-  @Get(':category/:filename')
-  async download(@Param('category') category: string, @Param('filename') filename: string, @Res() res: Response) {
+  @Get(':filename')
+  async download(
+    @Param('filename') filename: string,
+    @Query('category') category: string | undefined,
+    @Res() res: Response,
+  ) {
     // Salary slip PDFs are payroll-sensitive and are only ever served through
     // SalaryController's guarded, ownership-checked endpoint (which streams a
     // freshly generated buffer) - never through this generic pass-through.
-    if (category === 'salary-slips') {
+    if (category === RESTRICTED_FILE_CATEGORY) {
       throw new ForbiddenException('Forbidden');
     }
-    if (!ALLOWED_CATEGORIES.has(category) || !SAFE_FILENAME.test(filename)) {
+    if (!category || !ALLOWED_CATEGORIES.has(category) || !SAFE_FILENAME.test(filename)) {
       throw new BadRequestException('Invalid file reference');
     }
 
