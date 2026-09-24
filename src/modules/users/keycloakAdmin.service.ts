@@ -8,7 +8,6 @@
 import { UserRole } from '../../types';
 import { AppError } from '../../utils/AppError';
 import { env } from '../../config/env';
-import { evaluatePasswordPolicy } from '../../utils/passwordPolicy';
 
 const KC_URL = env.KC_URL.replace(/\/$/, '');
 const REALM = env.KC_REALM;
@@ -245,18 +244,10 @@ export const keycloakAdminService = {
   },
 
   async updatePassword(userId: string, password: string, temporary = false): Promise<void> {
-    // OCD-447: enforce the strong password policy on every password that
-    // reaches Keycloak, not just the ones typed by a person. This is a
-    // no-op for `generateSecureTemporaryPassword()` output (already
-    // compliant) and guards any future caller that passes through a
-    // user-supplied password.
-    const policy = evaluatePasswordPolicy(password);
-    if (!policy.isValid) {
-      throw new AppError(
-        `Password does not meet the required policy: ${policy.failedMessages.join('; ')}`,
-        400
-      );
-    }
+    // OCD-447: the password policy (length, character classes, blacklist,
+    // etc.) is enforced by the Keycloak realm's Password Policy, not here.
+    // Keycloak rejects a non-compliant password with a 400, which we
+    // surface as-is instead of masking it as a 502.
     const res = await adminFetch(`/users/${userId}/reset-password`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -267,7 +258,10 @@ export const keycloakAdminService = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new AppError(`Keycloak update password failed (${res.status}): ${text}`, 502);
+      throw new AppError(
+        `Keycloak update password failed (${res.status}): ${text}`,
+        res.status === 400 ? 400 : 502
+      );
     }
   },
 
