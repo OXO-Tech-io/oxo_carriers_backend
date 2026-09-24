@@ -3,7 +3,7 @@ import { employee, userPermissions, type Employee as DrizzleEmployee } from '../
 import { User, UserRole } from '../types';
 import { eq, like, and, sql, inArray, isNull, isNotNull } from 'drizzle-orm';
 import { encryptPII, decryptPII, hashEmail } from '../utils/encryption';
-import { DEFAULT_PERMISSIONS_BY_ROLE } from '../common/constants/defaultRolePermissions';
+import { getRoleDefaultPermissions } from '../modules/permissions/rolePermissions.model';
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
@@ -88,18 +88,17 @@ export class EmployeeModel {
 
     // Initialize default permissions for this role (OCD-445 / OCD-457) - kept
     // in sync with UsersService.create and the main.ts bootstrap backfill via
-    // the same DEFAULT_PERMISSIONS_BY_ROLE map, so a user who is JIT
-    // provisioned from Keycloak (rather than pre-created via POST /users)
-    // gets the same default access.
-    const defaultGrants = DEFAULT_PERMISSIONS_BY_ROLE[claims.role];
-    if (defaultGrants) {
-      for (const grant of defaultGrants) {
-        await db.insert(userPermissions).values({
-          employeeId,
-          permissionKey: grant.key,
-          accessLevel: grant.accessLevel,
-        });
-      }
+    // the same DB-backed tbl_role_permissions template (admin-editable via
+    // PUT /permissions/roles/:role), so a user who is JIT provisioned from
+    // Keycloak (rather than pre-created via POST /users) gets the same
+    // default access.
+    const defaultGrants = await getRoleDefaultPermissions(claims.role);
+    for (const grant of defaultGrants) {
+      await db.insert(userPermissions).values({
+        employeeId,
+        permissionKey: grant.key,
+        accessLevel: grant.accessLevel,
+      });
     }
 
     return decryptUser(insertedUser) as DrizzleEmployee;

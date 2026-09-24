@@ -11,6 +11,7 @@ vi.mock("../../src/modules/leaves/Leave", () => ({
     createRequest: vi.fn(),
     updateStatus: vi.fn(),
     findEmployeeIdsWithOverlappingLeave: vi.fn(),
+    findOverlappingRequestsForEmployee: vi.fn(),
   },
 }));
 vi.mock("../../src/modules/leave-calendar/LeaveCalendar", () => ({
@@ -34,28 +35,31 @@ const lcm = LeaveCalendarModel as unknown as Record<string, ReturnType<typeof vi
 const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const poolQueryMock = (pool as any).query as ReturnType<typeof vi.fn>;
 
+const ATTACHMENT_URL = "/uploads/documents/doc.pdf";
+
 describe("leaveService (core)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     lcm.getHolidaysInRange.mockResolvedValue([]);
     // Default: requester has no employeeCategory on record (pre-existing
-    // employees predate this field) - matches "not Internal", so the
-    // coverup requirement doesn't kick in unless a test opts in below.
+    // employees predate this field) - not that it matters anymore, since a
+    // coverup employee is never mandatory (OCD-503).
     em.findByEmployeeId.mockResolvedValue(undefined);
     lm.findEmployeeIdsWithOverlappingLeave.mockResolvedValue(new Set());
+    lm.findOverlappingRequestsForEmployee.mockResolvedValue([]);
   });
 
   describe("listLeaveRequests", () => {
-    it("scopes employee role to their own requests", async () => {
+    it("scopes to the caller's own requests when selfOnly is true", async () => {
       lm.findByEmployeeId.mockResolvedValue([{ id: 1 }]);
-      const result = await leaveService.listLeaveRequests("EMP1", UserRole.EMPLOYEE, {} as any);
+      const result = await leaveService.listLeaveRequests("EMP1", true, {} as any);
       expect(lm.findByEmployeeId).toHaveBeenCalledWith("EMP1", { status: undefined, year: undefined });
       expect(result).toEqual([{ id: 1 }]);
     });
 
-    it("returns all requests for HR roles", async () => {
+    it("returns every request when selfOnly is false", async () => {
       lm.getAll.mockResolvedValue([{ id: 2 }]);
-      const result = await leaveService.listLeaveRequests("HR1", UserRole.HR_MANAGER, {} as any);
+      const result = await leaveService.listLeaveRequests("HR1", false, {} as any);
       expect(lm.getAll).toHaveBeenCalled();
       expect(result).toEqual([{ id: 2 }]);
     });
@@ -91,85 +95,155 @@ describe("leaveService (core)", () => {
       is_half_day: false,
     } as any;
 
+    it("throws when no attachment is provided", async () => {
+      await expect(leaveService.createLeaveRequest("EMP1", fullDayInput)).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      expect(lm.createRequest).not.toHaveBeenCalled();
+    });
+
     it("computes total_days as working days excluding weekends/holidays", async () => {
-      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10 }]);
+      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 10 }]);
       lm.createRequest.mockResolvedValue({ id: 1 });
-      await leaveService.createLeaveRequest("EMP1", fullDayInput);
+      await leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL);
       expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ total_days: 2 }));
     });
 
     it("uses 0.5 days for a half-day request", async () => {
-      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10 }]);
+      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 10 }]);
       lm.createRequest.mockResolvedValue({ id: 1 });
-      await leaveService.createLeaveRequest("EMP1", {
-        ...fullDayInput,
-        end_date: fullDayInput.start_date,
-        is_half_day: true,
-      });
+      await leaveService.createLeaveRequest(
+        "EMP1",
+        { ...fullDayInput, end_date: fullDayInput.start_date, is_half_day: true, half_day_period: "morning" },
+        ATTACHMENT_URL,
+      );
       expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ total_days: 0.5 }));
     });
 
     it("excludes weekend-only ranges, yielding an invalid (0-day) range error", async () => {
       await expect(
-        leaveService.createLeaveRequest("EMP1", {
-          ...fullDayInput,
-          start_date: "2026-08-08", // Saturday
-          end_date: "2026-08-09", // Sunday
-        }),
+        leaveService.createLeaveRequest(
+          "EMP1",
+          { ...fullDayInput, start_date: "2026-08-08", end_date: "2026-08-09" }, // Sat-Sun
+          ATTACHMENT_URL,
+        ),
       ).rejects.toMatchObject({ statusCode: 400 });
     });
 
     it("throws when no balance exists for the leave type", async () => {
-      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 2, remaining_days: 10 }]);
-      await expect(leaveService.createLeaveRequest("EMP1", fullDayInput)).rejects.toMatchObject({ statusCode: 400 });
+      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 2, remaining_days: 10, available_days: 10 }]);
+      await expect(leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL)).rejects.toMatchObject({
+        statusCode: 400,
+      });
     });
 
-    it("throws when the balance is insufficient", async () => {
-      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 1 }]);
-      await expect(leaveService.createLeaveRequest("EMP1", fullDayInput)).rejects.toMatchObject({ statusCode: 400 });
+    it("throws when the available balance is insufficient", async () => {
+      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 1 }]);
+      await expect(leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL)).rejects.toMatchObject({
+        statusCode: 400,
+      });
     });
 
     it("excludes calendar holidays from the working-day count", async () => {
       lcm.getHolidaysInRange.mockResolvedValue([{ date: new Date("2026-08-03T00:00:00.000Z") }]);
-      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10 }]);
+      lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 10 }]);
       lm.createRequest.mockResolvedValue({ id: 1 });
-      await leaveService.createLeaveRequest("EMP1", fullDayInput);
+      await leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL);
       expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ total_days: 1 }));
     });
 
-    describe("coverup employee requirement (Internal employees only)", () => {
+    describe("self-overlap validation", () => {
       beforeEach(() => {
-        lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10 }]);
+        lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 10 }]);
+        lm.createRequest.mockResolvedValue({ id: 1 });
       });
 
-      it("requires a coverup employee when the requester is Internal", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" });
-        await expect(leaveService.createLeaveRequest("EMP1", fullDayInput)).rejects.toMatchObject({
-          statusCode: 400,
-        });
+      it("blocks a new request when an existing full-day request overlaps the date", async () => {
+        lm.findOverlappingRequestsForEmployee.mockResolvedValue([{ is_half_day: false, half_day_period: null }]);
+        await expect(
+          leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL),
+        ).rejects.toMatchObject({ statusCode: 400 });
         expect(lm.createRequest).not.toHaveBeenCalled();
       });
 
-      it("rejects selecting yourself as the coverup employee", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" });
+      it("blocks a new full-day request when a half-day request already exists on that date", async () => {
+        lm.findOverlappingRequestsForEmployee.mockResolvedValue([
+          { is_half_day: true, half_day_period: "morning" },
+        ]);
         await expect(
-          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP1" }),
+          leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL),
+        ).rejects.toMatchObject({ statusCode: 400 });
+      });
+
+      it("blocks a new half-day request for the same half-day period", async () => {
+        lm.findOverlappingRequestsForEmployee.mockResolvedValue([
+          { is_half_day: true, half_day_period: "morning" },
+        ]);
+        await expect(
+          leaveService.createLeaveRequest(
+            "EMP1",
+            { ...fullDayInput, end_date: fullDayInput.start_date, is_half_day: true, half_day_period: "morning" },
+            ATTACHMENT_URL,
+          ),
+        ).rejects.toMatchObject({ statusCode: 400 });
+      });
+
+      it("allows a new half-day request for the opposite half-day period", async () => {
+        lm.findOverlappingRequestsForEmployee.mockResolvedValue([
+          { is_half_day: true, half_day_period: "morning" },
+        ]);
+        await leaveService.createLeaveRequest(
+          "EMP1",
+          { ...fullDayInput, end_date: fullDayInput.start_date, is_half_day: true, half_day_period: "evening" },
+          ATTACHMENT_URL,
+        );
+        expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ total_days: 0.5 }));
+      });
+    });
+
+    describe("coverup employee (optional)", () => {
+      beforeEach(() => {
+        lm.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1, remaining_days: 10, available_days: 10 }]);
+      });
+
+      it("does not require a coverup employee, even for an Internal employee", async () => {
+        // No coverup_employee_id in the input at all - EmployeeModel.findByEmployeeId
+        // is never called for this path, since there's no requester-category
+        // gate anymore (OCD-503).
+        lm.createRequest.mockResolvedValue({ id: 1 });
+        await leaveService.createLeaveRequest("EMP1", fullDayInput, ATTACHMENT_URL);
+        expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ coverup_employee_id: undefined }));
+      });
+
+      it("rejects selecting yourself as the coverup employee", async () => {
+        await expect(
+          leaveService.createLeaveRequest(
+            "EMP1",
+            { ...fullDayInput, coverup_employee_id: "EMP1" },
+            ATTACHMENT_URL,
+          ),
         ).rejects.toMatchObject({ statusCode: 400 });
       });
 
       it("rejects a coverup employee that doesn't exist or isn't active", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
         em.findByEmployeeId.mockResolvedValueOnce(undefined); // coverup lookup
         await expect(
-          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" }),
+          leaveService.createLeaveRequest(
+            "EMP1",
+            { ...fullDayInput, coverup_employee_id: "EMP2" },
+            ATTACHMENT_URL,
+          ),
         ).rejects.toMatchObject({ statusCode: 400 });
       });
 
       it("accepts a valid, active coverup employee and passes it through", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
         em.findByEmployeeId.mockResolvedValueOnce({ status: "active" }); // coverup
         lm.createRequest.mockResolvedValue({ id: 1 });
-        await leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" });
+        await leaveService.createLeaveRequest(
+          "EMP1",
+          { ...fullDayInput, coverup_employee_id: "EMP2" },
+          ATTACHMENT_URL,
+        );
         expect(lm.findEmployeeIdsWithOverlappingLeave).toHaveBeenCalledWith(
           ["EMP2"],
           fullDayInput.start_date,
@@ -179,20 +253,16 @@ describe("leaveService (core)", () => {
       });
 
       it("rejects a coverup employee who already has leave scheduled during this period", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "internal" }); // requester
         em.findByEmployeeId.mockResolvedValueOnce({ status: "active" }); // coverup
         lm.findEmployeeIdsWithOverlappingLeave.mockResolvedValue(new Set(["EMP2"]));
         await expect(
-          leaveService.createLeaveRequest("EMP1", { ...fullDayInput, coverup_employee_id: "EMP2" }),
+          leaveService.createLeaveRequest(
+            "EMP1",
+            { ...fullDayInput, coverup_employee_id: "EMP2" },
+            ATTACHMENT_URL,
+          ),
         ).rejects.toMatchObject({ statusCode: 400 });
         expect(lm.createRequest).not.toHaveBeenCalled();
-      });
-
-      it("doesn't require a coverup employee for a Client Side requester", async () => {
-        em.findByEmployeeId.mockResolvedValueOnce({ employeeCategory: "client_side" });
-        lm.createRequest.mockResolvedValue({ id: 1 });
-        await leaveService.createLeaveRequest("EMP1", fullDayInput);
-        expect(lm.createRequest).toHaveBeenCalledWith(expect.objectContaining({ coverup_employee_id: undefined }));
       });
     });
   });
@@ -240,6 +310,13 @@ describe("leaveService (core)", () => {
         ).rejects.toMatchObject({ statusCode: 403 });
       });
 
+      it("forbids HR Executive from approving (Administrator/HR Manager only)", async () => {
+        lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.PENDING });
+        await expect(
+          leaveService.approveLeaveRequest(1, 9, UserRole.HR_EXECUTIVE, "hr"),
+        ).rejects.toMatchObject({ statusCode: 403 });
+      });
+
       it("rejects an invalid status for HR approval", async () => {
         lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.REJECTED });
         await expect(
@@ -267,6 +344,12 @@ describe("leaveService (core)", () => {
   describe("rejectLeaveRequest", () => {
     it("forbids non-HR roles", async () => {
       await expect(leaveService.rejectLeaveRequest(1, UserRole.EMPLOYEE, "reason")).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+
+    it("forbids HR Executive (Administrator/HR Manager only)", async () => {
+      await expect(leaveService.rejectLeaveRequest(1, UserRole.HR_EXECUTIVE, "reason")).rejects.toMatchObject({
         statusCode: 403,
       });
     });

@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { UserRole } from "../../src/types";
+
+vi.mock("../../src/middleware/permissions", () => ({
+  hasPermission: vi.fn(),
+}));
+
+import { hasPermission } from "../../src/middleware/permissions";
 import { FormsController } from "../../src/modules/forms/forms.controller";
+
+const hasPermissionMock = hasPermission as unknown as ReturnType<typeof vi.fn>;
 
 const createServiceMock = () => ({
   listAssignedToMe: vi.fn(),
@@ -25,14 +33,15 @@ const createServiceMock = () => ({
 
 const createRes = () => ({ setHeader: vi.fn(), send: vi.fn() });
 
-const employee = { userId: 1, role: UserRole.EMPLOYEE } as any;
-const hr = { userId: 2, role: UserRole.HR_MANAGER } as any;
+const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
+const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
 
 describe("FormsController", () => {
   let service: ReturnType<typeof createServiceMock>;
   let controller: FormsController;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     service = createServiceMock();
     controller = new FormsController(service as any);
   });
@@ -43,16 +52,27 @@ describe("FormsController", () => {
       const result = await controller.list(employee, "true");
       expect(service.listAssignedToMe).toHaveBeenCalledWith(1);
       expect(result.data).toEqual([{ id: 1 }]);
+      expect(hasPermissionMock).not.toHaveBeenCalled();
     });
 
     it("forbids a non-HR caller from listing all forms", async () => {
+      hasPermissionMock.mockResolvedValue(false);
       await expect(controller.list(employee, undefined)).rejects.toThrow(ForbiddenException);
     });
 
     it("allows HR to list all forms", async () => {
+      hasPermissionMock.mockResolvedValue(true);
       service.list.mockResolvedValue([{ id: 2 }]);
       const result = await controller.list(hr, undefined);
+      expect(hasPermissionMock).toHaveBeenCalledWith("HR1", "forms", "write");
       expect(result.data).toEqual([{ id: 2 }]);
+    });
+
+    it("allows a super admin to list all forms without a permission lookup", async () => {
+      service.list.mockResolvedValue([{ id: 3 }]);
+      const result = await controller.list({ ...hr, role: UserRole.SUPER_ADMIN }, undefined);
+      expect(hasPermissionMock).not.toHaveBeenCalled();
+      expect(result.data).toEqual([{ id: 3 }]);
     });
   });
 

@@ -6,7 +6,8 @@ import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
 import { pool } from './config/database';
 import { calculateProRatedAnnualLeave } from './utils/leaveCalculation';
-import { DEFAULT_PERMISSIONS_BY_ROLE, DefaultPermissionGrant } from './common/constants/defaultRolePermissions';
+import { getAllRoleDefaultPermissions } from './modules/permissions/rolePermissions.model';
+import { PermissionAssignment } from './common/constants/permissions';
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -272,19 +273,21 @@ async function bootstrap() {
     }
 
     // 3. Assign default role permissions to existing employee accounts if
-    // they don't already have them (OCD-445 / OCD-457). Every role listed in
-    // DEFAULT_PERMISSIONS_BY_ROLE (EMPLOYEE, HR_MANAGER, HR_EXECUTIVE,
-    // FINANCE_MANAGER, FINANCE_EXECUTIVE, CONSULTANT) is backfilled here on
-    // every boot, not just EMPLOYEE - this used to be the only role handled,
-    // which is why HR/Finance/Consultant accounts saw an empty/partial side
-    // nav. Missing rows are inserted; rows that already exist at 'read' are
-    // upgraded to 'write' when the role's default calls for 'write'. Existing
-    // grants are never downgraded/removed here (an admin may have hand-tuned
-    // them via the Permissions UI) - the one exception (HR Executive losing
-    // profile_change_requests) is handled explicitly in step 4 below.
+    // they don't already have them (OCD-445 / OCD-457). Every role with a
+    // configured default in tbl_role_permissions (admin-editable via the
+    // "Role Defaults" screen / PUT /permissions/roles/:role) is backfilled
+    // here on every boot, not just EMPLOYEE - this used to be the only role
+    // handled, which is why HR/Finance/Consultant accounts saw an
+    // empty/partial side nav. Missing rows are inserted; rows that already
+    // exist at 'read' are upgraded to 'write' when the role's default calls
+    // for 'write'. Existing grants are never downgraded/removed here (an
+    // admin may have hand-tuned them via the Permissions UI) - the one
+    // exception (HR Executive losing profile_change_requests) is handled
+    // explicitly in step 4 below.
     try {
       logger.info('Checking default role permissions for existing employees...');
-      const roleEntries = Object.entries(DEFAULT_PERMISSIONS_BY_ROLE) as [string, DefaultPermissionGrant[]][];
+      const roleDefaultsByRole = await getAllRoleDefaultPermissions();
+      const roleEntries = Object.entries(roleDefaultsByRole) as [string, PermissionAssignment[]][];
       const rolesWithDefaults = roleEntries.map(([role]) => role);
 
       // tbl_user_permissions is keyed by the business employee_id (varchar),

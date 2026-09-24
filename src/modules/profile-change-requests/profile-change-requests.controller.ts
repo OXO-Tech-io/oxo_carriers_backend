@@ -5,8 +5,9 @@ import { DOCUMENTS_FIELD, DOCUMENTS_MAX_COUNT, profileChangeDocumentsMulterOptio
 import { EmployeeModel } from '../../employees/Employee';
 import { UserRole, JwtPayload } from '../../types';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import {
   decideProfileChangeRequestSchema,
   listProfileChangeRequestsQuerySchema,
@@ -84,8 +85,8 @@ export class ProfileChangeRequestsController {
   // Administrator (super_admin, bypasses RolesGuard) and HR Manager only -
   // HR Executive no longer qualifies.
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.PROFILE_CHANGE_REQUESTS, 'write')
   decision(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
     return this.decideAndNotify(params, body, employee);
   }

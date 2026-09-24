@@ -17,15 +17,16 @@ import {
 } from '@nestjs/common';
 import { AnyFilesInterceptor, FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
+import { hasPermission } from '../../middleware/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload, UserRole } from '../../types';
 import { FormsService } from './forms.service';
 import { formResponseMulterOptions, formThemeMulterOptions } from './forms.upload';
 
 const XLSX_CONTENT_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 
 @Controller('forms')
 export class FormsController {
@@ -42,7 +43,10 @@ export class FormsController {
       const result = await this.formsService.listAssignedToMe(employee.userId);
       return { success: true, message: 'Assigned forms fetched', data: result };
     }
-    if (employee.role !== UserRole.SUPER_ADMIN && !HR_ROLES.includes(employee.role)) {
+    const canManage =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.FORMS, 'write')));
+    if (!canManage) {
       throw new ForbiddenException('Forbidden: Insufficient permissions');
     }
     const forms = await this.formsService.list();
@@ -50,8 +54,8 @@ export class FormsController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async create(@CurrentEmployee() employee: JwtPayload, @Body() body: unknown) {
     const form = await this.formsService.create(body, employee.userId);
     return { success: true, message: 'Form created', data: form };
@@ -65,8 +69,8 @@ export class FormsController {
   }
 
   @Put(':id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async update(@Param('id') idParam: string, @Body() body: unknown) {
     const id = this.parseId(idParam);
     const form = await this.formsService.update(id, body);
@@ -74,8 +78,8 @@ export class FormsController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async delete(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     await this.formsService.delete(id);
@@ -83,8 +87,8 @@ export class FormsController {
   }
 
   @Post(':id/duplicate')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async duplicate(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = this.parseId(idParam);
     const form = await this.formsService.duplicate(id, employee.userId);
@@ -92,8 +96,8 @@ export class FormsController {
   }
 
   @Post(':id/publishes')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async publish(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     const form = await this.formsService.publish(id);
@@ -101,8 +105,8 @@ export class FormsController {
   }
 
   @Post(':id/unpublishes')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async unpublish(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     const form = await this.formsService.unpublish(id);
@@ -110,8 +114,8 @@ export class FormsController {
   }
 
   @Post(':id/archives')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async archive(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     const form = await this.formsService.archive(id);
@@ -119,8 +123,8 @@ export class FormsController {
   }
 
   @Post(':id/distributes')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async distribute(@Param('id') idParam: string, @Body() body: unknown) {
     const id = this.parseId(idParam);
     const result = await this.formsService.distribute(id, body);
@@ -148,8 +152,8 @@ export class FormsController {
   }
 
   @Get(':id/responses')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async listResponses(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     const responses = await this.formsService.listResponses(id);
@@ -157,8 +161,8 @@ export class FormsController {
   }
 
   @Get(':id/responses/export')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async exportResponses(@Param('id') idParam: string, @Query('format') format: string | undefined, @Res() res: Response) {
     const id = this.parseId(idParam);
     const fmt = format === 'csv' ? 'csv' : 'xlsx';
@@ -174,8 +178,8 @@ export class FormsController {
   }
 
   @Post(':formId/sections')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async createSection(@Param('formId') formIdParam: string, @Body() body: unknown) {
     const formId = this.parseId(formIdParam);
     const section = await this.formsService.createSection(formId, body);
@@ -183,8 +187,8 @@ export class FormsController {
   }
 
   @Put('sections/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async updateSection(@Param('id') idParam: string, @Body() body: unknown) {
     const id = this.parseId(idParam);
     const section = await this.formsService.updateSection(id, body);
@@ -192,8 +196,8 @@ export class FormsController {
   }
 
   @Delete('sections/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async deleteSection(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     await this.formsService.deleteSection(id);
@@ -201,8 +205,8 @@ export class FormsController {
   }
 
   @Post(':formId/sections/reorder')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async reorderSections(@Param('formId') formIdParam: string, @Body() body: unknown) {
     this.parseId(formIdParam);
     await this.formsService.reorderSections(body);
@@ -210,8 +214,8 @@ export class FormsController {
   }
 
   @Post(':formId/questions')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async createQuestion(@Param('formId') formIdParam: string, @Body() body: unknown) {
     const formId = this.parseId(formIdParam);
     const question = await this.formsService.createQuestion(formId, body);
@@ -219,8 +223,8 @@ export class FormsController {
   }
 
   @Put('questions/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async updateQuestion(@Param('id') idParam: string, @Body() body: unknown) {
     const id = this.parseId(idParam);
     const question = await this.formsService.updateQuestion(id, body);
@@ -228,8 +232,8 @@ export class FormsController {
   }
 
   @Delete('questions/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async deleteQuestion(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     await this.formsService.deleteQuestion(id);
@@ -237,8 +241,8 @@ export class FormsController {
   }
 
   @Post(':formId/questions/reorder')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async reorderQuestions(@Param('formId') formIdParam: string, @Body() body: unknown) {
     this.parseId(formIdParam);
     await this.formsService.reorderQuestions(body);
@@ -246,8 +250,8 @@ export class FormsController {
   }
 
   @Post(':formId/logic-rules')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async createLogicRule(@Param('formId') formIdParam: string, @Body() body: unknown) {
     const formId = this.parseId(formIdParam);
     const rule = await this.formsService.createLogicRule(formId, body);
@@ -255,8 +259,8 @@ export class FormsController {
   }
 
   @Put('logic-rules/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async updateLogicRule(@Param('id') idParam: string, @Body() body: unknown) {
     const id = this.parseId(idParam);
     const rule = await this.formsService.updateLogicRule(id, body);
@@ -264,8 +268,8 @@ export class FormsController {
   }
 
   @Delete('logic-rules/:id')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async deleteLogicRule(@Param('id') idParam: string) {
     const id = this.parseId(idParam);
     await this.formsService.deleteLogicRule(id);
@@ -273,8 +277,8 @@ export class FormsController {
   }
 
   @Get(':formId/settings')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async getSettings(@Param('formId') formIdParam: string) {
     const formId = this.parseId(formIdParam);
     const settings = await this.formsService.getSettings(formId);
@@ -282,8 +286,8 @@ export class FormsController {
   }
 
   @Put(':formId/settings')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async updateSettings(@Param('formId') formIdParam: string, @Body() body: unknown) {
     const formId = this.parseId(formIdParam);
     const settings = await this.formsService.updateSettings(formId, body);
@@ -291,8 +295,8 @@ export class FormsController {
   }
 
   @Get(':formId/themes')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async getTheme(@Param('formId') formIdParam: string) {
     const formId = this.parseId(formIdParam);
     const theme = await this.formsService.getTheme(formId);
@@ -300,8 +304,8 @@ export class FormsController {
   }
 
   @Put(':formId/themes')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   @UseInterceptors(FileInterceptor('headerImage', formThemeMulterOptions))
   async updateTheme(
     @Param('formId') formIdParam: string,
@@ -314,8 +318,8 @@ export class FormsController {
   }
 
   @Get(':formId/analytics')
-  @UseGuards(RolesGuard)
-  @Roles(...HR_ROLES)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
   async getAnalytics(@Param('formId') formIdParam: string) {
     const formId = this.parseId(formIdParam);
     const analytics = await this.formsService.getAnalytics(formId);

@@ -13,7 +13,10 @@ import { env } from '../../config/env';
 import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from '../../config/email';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { DEFAULT_PERMISSIONS_BY_ROLE } from '../../common/constants/defaultRolePermissions';
+import {
+  seedDefaultPermissionsForNewUser,
+  replaceUserPermissionsWithRoleDefaults,
+} from '../permissions/rolePermissions.model';
 import { ArchiveService } from '../archive/archive.service';
 
 const SELF_ONLY_ROLES = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
@@ -231,20 +234,12 @@ export class UsersService {
       }
     }
 
-    // OCD-445 / OCD-457: every role with an entry in DEFAULT_PERMISSIONS_BY_ROLE
-    // (EMPLOYEE, HR_MANAGER, HR_EXECUTIVE, FINANCE_MANAGER, FINANCE_EXECUTIVE,
-    // CONSULTANT) gets its default tbl_user_permissions rows here so the
-    // sidebar/API access it's meant to have works immediately, not just for
-    // EMPLOYEE. See defaultRolePermissions.ts for the per-role grant lists
-    // and why HR_EXECUTIVE deliberately excludes profile_change_requests.
-    const defaultGrants = DEFAULT_PERMISSIONS_BY_ROLE[userRole];
-    if (defaultGrants) {
-      for (const grant of defaultGrants) {
-        await pool.query(
-          `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)`,
-          [user.employeeId, grant.key, grant.accessLevel],
-        );
-      }
+    // OCD-445 / OCD-457: every role with a configured default (see the
+    // "Role Defaults" admin screen / tbl_role_permissions) gets its default
+    // tbl_user_permissions rows here so the sidebar/API access it's meant to
+    // have works immediately, not just for EMPLOYEE.
+    if (user.employeeId) {
+      await seedDefaultPermissionsForNewUser(user.employeeId, userRole);
     }
 
     // Auto-provision the Keycloak account so HR doesn't need a separate manual
@@ -301,15 +296,27 @@ export class UsersService {
 
     const canUpdateRole =
       isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    let roleChanged = false;
     if (canUpdateRole && dto.role) {
       if (dto.role === UserRole.SUPER_ADMIN && !isSuperAdmin(requester)) {
         throw new ForbiddenException('Only a Super Admin can promote a user to Super Admin.');
       }
+      const existingUser = await EmployeeModel.findById(userId);
+      roleChanged = !!existingUser && existingUser.role !== dto.role;
       updates.role = dto.role;
     }
 
     const user = await EmployeeModel.update(userId, updates);
     if (!user) throw new NotFoundException('User not found');
+
+    // A role change replaces the user's permissions with exactly the new
+    // role's current defaults (see replaceUserPermissionsWithRoleDefaults) -
+    // access always matches the role being moved to, not a mix of old and
+    // new grants.
+    if (roleChanged && user.employeeId) {
+      await replaceUserPermissionsWithRoleDefaults(user.employeeId, updates.role);
+    }
+
     return user;
   }
 
@@ -445,6 +452,12 @@ export class UsersService {
     const updated = await EmployeeModel.update(userId, { role: role as UserRole });
     if (!updated) {
       throw new BadRequestException('Failed to update role');
+    }
+
+    // Same "full replace" resync as UsersService.update - access always
+    // matches the role being moved to, not a mix of old and new grants.
+    if (previousRole !== role && updated.employeeId) {
+      await replaceUserPermissionsWithRoleDefaults(updated.employeeId, role);
     }
 
     logger.info(

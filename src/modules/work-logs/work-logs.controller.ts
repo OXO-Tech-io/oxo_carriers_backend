@@ -1,9 +1,7 @@
 import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { PERMISSIONS } from '../../common/constants/permissions';
@@ -63,16 +61,16 @@ export class WorkLogsController {
   }
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async listAll(@Query() query: ListWorkLogsQueryDto) {
     const logs = await this.workLogsService.listAll(query);
     return { success: true, message: 'Work logs fetched', data: logs };
   }
 
   @Get('summary')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async getSummary(@Query() query: ListWorkLogsQueryDto) {
     const summary = await this.workLogsService.getSummary(query);
     return { success: true, message: 'Work log summary fetched', data: summary };
@@ -81,16 +79,16 @@ export class WorkLogsController {
   /** Attendance-style snapshot for the All Work Logs admin page: how many of the
    *  employees expected to log work today have done so, and on time. */
   @Get('daily-status')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async getDailyStatus(@Query() query: GetWorkLogDailyStatusQueryDto) {
     const status = await this.workLogsService.getDailyStatus(query);
     return { success: true, message: 'Work log daily status fetched', data: status };
   }
 
   @Get('reports/summary')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async downloadSummaryReport(@Query() query: ListWorkLogsQueryDto, @Res() res: Response) {
     const buffer = await this.workLogsService.generateSummaryReport(query);
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
@@ -99,8 +97,8 @@ export class WorkLogsController {
   }
 
   @Get('reports/detailed')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async downloadDetailedReport(@Query() query: ListWorkLogsQueryDto, @Res() res: Response) {
     const buffer = await this.workLogsService.generateDetailedReport(query);
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);

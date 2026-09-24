@@ -12,10 +12,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimStatus, MedicalClaimType } from '../../types';
 import { MedicalInsuranceService, MedicalDocumentFiles } from './medical-insurance.service';
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
@@ -67,8 +68,8 @@ export class MedicalInsuranceController {
   }
 
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.MEDICAL_CLAIMS, 'write')
   decideClaim(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -80,8 +81,8 @@ export class MedicalInsuranceController {
   }
 
   @Put(':id/payments')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.MEDICAL_CLAIMS, 'write')
   recordPayment(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,

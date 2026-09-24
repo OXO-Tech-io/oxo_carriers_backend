@@ -6,7 +6,8 @@ import { ArchiveService } from './archive.service';
 
 // OCD-453: read-only Archive of deleted employee profiles - gated on the
 // `archive` permission key (super_admin bypasses PermissionGuard entirely;
-// HR Manager holds it by default - see defaultRolePermissions.ts).
+// HR Manager holds it by default - see the "Role Defaults" admin screen /
+// tbl_role_permissions).
 @Controller('archive')
 @UseGuards(PermissionGuard)
 @RequirePermission(PERMISSIONS.ARCHIVE, 'read')

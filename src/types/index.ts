@@ -132,6 +132,11 @@ export interface LeaveBalance {
   total_days: number;
   used_days: number;
   remaining_days: number;
+  /** Days tied up in requests still pending/team-leader-approved (not yet
+   * deducted from remaining_days, which only reflects HR-approved days). */
+  pending_days: number;
+  /** remaining_days minus pending_days - what can still be requested. */
+  available_days: number;
   year: number;
   leave_type: LeaveType;
   created_at?: Date;

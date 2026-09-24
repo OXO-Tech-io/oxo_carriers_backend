@@ -1,18 +1,21 @@
 import { BadRequestException, Body, Controller, Get, Param, Post, UseGuards } from '@nestjs/common';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, UserRole } from '../../types';
+import { JwtPayload } from '../../types';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { RecordParticipationDto } from './dto/record-participation.dto';
 
 // The original eventRoutes.ts applies `router.use(requireHR)` for the whole
 // router (HR_MANAGER/HR_EXECUTIVE only, super_admin always bypasses) -
-// replicated here at the controller level.
+// replicated here via the configurable `events` permission (both roles hold
+// it at 'write' by default, so behavior is unchanged, but it's now
+// admin-editable instead of hardcoded).
 @Controller('events')
-@UseGuards(RolesGuard)
-@Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+@UseGuards(PermissionGuard)
+@RequirePermission(PERMISSIONS.EVENTS, 'write')
 export class EventsController {
   constructor(private readonly eventsService: EventsService) {}
 

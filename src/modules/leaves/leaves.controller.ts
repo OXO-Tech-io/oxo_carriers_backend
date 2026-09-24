@@ -19,6 +19,7 @@ import { JwtPayload, LeaveStatus, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import { sendLeaveApprovedEmail, sendLeaveRejectedEmail, sendLeaveSubmittedEmail } from '../../config/email';
 import { communicationService } from '../communications/communication.service';
+import { notificationService } from '../notifications/notification.service';
 import { EmployeeModel } from '../../employees/Employee';
 import { LeavesService } from './leaves.service';
 import { ListLeaveRequestsQueryDto } from './dto/list-leave-requests-query.dto';
@@ -111,7 +112,7 @@ export class LeavesController {
 
   @Put(':id/rejections')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @Roles(UserRole.HR_MANAGER)
   async rejectLeaveRequest(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -134,6 +135,15 @@ export class LeavesController {
   }
 
   private async notifySubmitted(request: Awaited<ReturnType<LeavesService['createLeaveRequest']>>) {
+    await notificationService.notify(
+      request.employee_id,
+      'leave_submitted',
+      'Leave Request Submitted',
+      `Your ${request.leave_type?.name ?? 'leave'} request has been submitted and is awaiting approval.`,
+      { leaveRequestId: request.id },
+      '/leaves'
+    );
+
     const employeeName = request.user ? `${request.user.first_name} ${request.user.last_name}`.trim() : 'Employee';
     const employeeEmail = request.user?.email;
     if (!employeeEmail) return;
@@ -153,6 +163,15 @@ export class LeavesController {
     updated: Awaited<ReturnType<LeavesService['approveLeaveRequest']>>,
     approvedBy: 'team_leader' | 'hr',
   ) {
+    await notificationService.notify(
+      updated.employee_id,
+      'leave_approved',
+      'Leave Request Approved',
+      `Your ${updated.leave_type?.name ?? 'leave'} request has been approved${approvedBy === 'hr' ? '' : ' by your team leader'}.`,
+      { leaveRequestId: updated.id },
+      '/leaves'
+    );
+
     const employeeName = updated.user ? `${updated.user.first_name} ${updated.user.last_name}`.trim() : 'Employee';
     const employeeEmail = updated.user?.email;
     if (!employeeEmail) return;
@@ -208,6 +227,15 @@ export class LeavesController {
     updated: Awaited<ReturnType<LeavesService['rejectLeaveRequest']>>,
     rejectionReason: string | undefined,
   ) {
+    await notificationService.notify(
+      updated.employee_id,
+      'leave_rejected',
+      'Leave Request Rejected',
+      `Your ${updated.leave_type?.name ?? 'leave'} request was rejected. Reason: ${rejectionReason ?? 'No reason provided.'}`,
+      { leaveRequestId: updated.id },
+      '/leaves'
+    );
+
     const employeeName = updated.user ? `${updated.user.first_name} ${updated.user.last_name}`.trim() : 'Employee';
     const employeeEmail = updated.user?.email;
     if (!employeeEmail) return;

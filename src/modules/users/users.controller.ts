@@ -18,6 +18,9 @@ import {
 import { FileInterceptor } from '@nestjs/platform-express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { UserRole, JwtPayload } from '../../types';
 import { UsersService } from './users.service';
@@ -36,16 +39,16 @@ export class UsersController {
    * (cross-referenced against the local employee table by email).
    */
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'read')
   async getAll(@Query('search') search?: string) {
     const users = await this.usersService.getAll(search);
     return { success: true, users };
   }
 
   @Get('departments')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'read')
   async getDepartments() {
     const departments = await this.usersService.getDepartments();
     return { success: true, departments };
@@ -56,8 +59,8 @@ export class UsersController {
   // Must stay ahead of the ':employeeUserId' route below so "check-email"
   // isn't swallowed by that dynamic segment.
   @Get('check-email')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
   async checkEmail(@Query('email') email: string) {
     const result = await this.usersService.checkEmailAvailability(email);
     return { success: true, ...result };
@@ -121,8 +124,8 @@ export class UsersController {
   }
 
   @Post(':id/keycloak-accounts')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
   async provisionKeycloak(@Param('id', ParseIntPipe) id: number) {
     const result = await this.usersService.provisionKeycloak(id);
     if (result.alreadyProvisioned) {
@@ -171,8 +174,8 @@ export class UsersController {
   }
 
   @Post(':id/password-resets')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
   async resetPassword(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {
     const result = await this.usersService.resetPassword(id, employee);
     const message = result.emailSent

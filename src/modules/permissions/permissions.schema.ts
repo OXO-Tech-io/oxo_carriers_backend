@@ -20,6 +20,23 @@ export const userPermissions = pgTable('tbl_user_permissions', {
     updatedAt: timestamp('updated_at').defaultNow(),
 });
 
+// Role Default Permissions Table
+// Admin-editable "template" of what a newly created (or role-changed) user
+// gets granted by default, keyed by role. Previously hardcoded as the
+// DEFAULT_PERMISSIONS_BY_ROLE constant; now DB-backed and editable via
+// PUT /permissions/roles/:role (see permissions.service.ts). A role with no
+// rows here (SUPER_ADMIN, SERVICE_PROVIDER) simply has no defaults applied -
+// SUPER_ADMIN bypasses the permission table entirely regardless.
+export const rolePermissions = pgTable('tbl_role_permissions', {
+    id: serial('id').primaryKey(),
+    role: varchar('role', { length: 50 }).notNull(),
+    permissionKey: varchar('permission_key', { length: 100 }).notNull(),
+    accessLevel: accessLevelEnum('access_level').notNull().default('read'),
+    updatedBy: integer('updated_by').references(() => employee.id, { onDelete: 'set null' }),
+    createdAt: timestamp('created_at').defaultNow(),
+    updatedAt: timestamp('updated_at').defaultNow(),
+});
+
 // Relations
 export const userPermissionsRelations = relations(userPermissions, ({ one }) => ({
     user: one(employee, {
@@ -32,5 +49,14 @@ export const userPermissionsRelations = relations(userPermissions, ({ one }) => 
     }),
 }));
 
+export const rolePermissionsRelations = relations(rolePermissions, ({ one }) => ({
+    updater: one(employee, {
+        fields: [rolePermissions.updatedBy],
+        references: [employee.id],
+    }),
+}));
+
 export type UserPermission = typeof userPermissions.$inferSelect;
 export type NewUserPermission = typeof userPermissions.$inferInsert;
+export type RolePermission = typeof rolePermissions.$inferSelect;
+export type NewRolePermission = typeof rolePermissions.$inferInsert;

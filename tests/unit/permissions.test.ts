@@ -153,6 +153,90 @@ describe("PermissionsService", () => {
       expect(client.release).toHaveBeenCalled();
     });
   });
+
+  describe("getAllRoleDefaults", () => {
+    it("lists every configurable role, including ones with no rows yet, but never super_admin", async () => {
+      poolQueryMock.mockResolvedValue({
+        rows: [
+          { role: "hr_manager", permission_key: "leaves", access_level: "write" },
+          { role: "employee", permission_key: "leaves", access_level: "read" },
+        ],
+      });
+      const result = await service.getAllRoleDefaults();
+      const byRole = Object.fromEntries(result.roles.map((r) => [r.role, r]));
+
+      expect(byRole["super_admin"]).toBeUndefined();
+      expect(byRole["hr_manager"].assignments).toEqual([{ key: "leaves", accessLevel: "write" }]);
+      expect(byRole["hr_manager"].permissionLevels).toEqual({ leaves: "write" });
+      // consultant has no rows in the mocked query result - still listed, empty.
+      expect(byRole["consultant"].assignments).toEqual([]);
+    });
+  });
+
+  describe("getRoleDefaults", () => {
+    it("rejects super_admin - it bypasses the permission table entirely", async () => {
+      await expect(service.getRoleDefaults("super_admin")).rejects.toThrow(BadRequestException);
+    });
+
+    it("returns a role's current default assignments", async () => {
+      poolQueryMock.mockResolvedValue({
+        rows: [{ permission_key: "leaves", access_level: "read" }],
+      });
+      const result = await service.getRoleDefaults("employee");
+      expect(result).toEqual({
+        role: "employee",
+        assignments: [{ key: "leaves", accessLevel: "read" }],
+        permissionLevels: { leaves: "read" },
+      });
+    });
+  });
+
+  describe("replaceRoleDefaults", () => {
+    const createClient = () => ({ query: vi.fn().mockResolvedValue({}), release: vi.fn() });
+
+    it("rejects super_admin", async () => {
+      await expect(service.replaceRoleDefaults(9, "super_admin", [])).rejects.toThrow(BadRequestException);
+    });
+
+    it("rejects an unknown permission key", async () => {
+      await expect(
+        service.replaceRoleDefaults(9, "employee", [{ key: "unknown_key", accessLevel: "read" }]),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it("commits the transaction, deleting then inserting keyed by role", async () => {
+      const client = createClient();
+      poolConnectMock.mockResolvedValue(client);
+      const result = await service.replaceRoleDefaults(9, "hr_executive", [
+        { key: "leaves", accessLevel: "write" },
+      ]);
+      expect(client.query).toHaveBeenCalledWith("BEGIN");
+      expect(client.query).toHaveBeenCalledWith(
+        "DELETE FROM tbl_role_permissions WHERE role = $1",
+        ["hr_executive"],
+      );
+      expect(client.query).toHaveBeenCalledWith("COMMIT");
+      expect(result).toEqual({
+        message: "Role default permissions updated successfully",
+        role: "hr_executive",
+        assignments: [{ key: "leaves", accessLevel: "write" }],
+      });
+    });
+
+    it("rolls back and rethrows when the insert fails", async () => {
+      const client = createClient();
+      client.query.mockImplementation((sql: string) => {
+        if (sql.startsWith("INSERT")) return Promise.reject(new Error("insert failed"));
+        return Promise.resolve({});
+      });
+      poolConnectMock.mockResolvedValue(client);
+      await expect(
+        service.replaceRoleDefaults(9, "employee", [{ key: "leaves", accessLevel: "read" }]),
+      ).rejects.toThrow("insert failed");
+      expect(client.query).toHaveBeenCalledWith("ROLLBACK");
+      expect(client.release).toHaveBeenCalled();
+    });
+  });
 });
 
 describe("PermissionsController", () => {
@@ -163,6 +247,9 @@ describe("PermissionsController", () => {
     getAllUserPermissions: vi.fn(),
     getUserPermissions: vi.fn(),
     replaceUserPermissions: vi.fn(),
+    getAllRoleDefaults: vi.fn(),
+    getRoleDefaults: vi.fn(),
+    replaceRoleDefaults: vi.fn(),
   });
 
   let service: ReturnType<typeof createServiceMock>;
@@ -192,5 +279,31 @@ describe("PermissionsController", () => {
     service.getCatalog.mockReturnValue([{ key: "leaves" }]);
     const result = controller.getPermissionCatalog();
     expect(result).toEqual({ success: true, permissions: [{ key: "leaves" }] });
+  });
+
+  it("getAllRoleDefaults wraps every role's defaults", async () => {
+    service.getAllRoleDefaults.mockResolvedValue({ roles: [{ role: "employee", assignments: [] }] });
+    const result = await controller.getAllRoleDefaults();
+    expect(result).toEqual({ success: true, roles: [{ role: "employee", assignments: [] }] });
+  });
+
+  it("getRoleDefaults delegates the role param", async () => {
+    service.getRoleDefaults.mockResolvedValue({ role: "hr_manager", assignments: [] });
+    const result = await controller.getRoleDefaults("hr_manager");
+    expect(service.getRoleDefaults).toHaveBeenCalledWith("hr_manager");
+    expect(result).toEqual({ success: true, role: "hr_manager", assignments: [] });
+  });
+
+  it("replaceRoleDefaults delegates the role, permissions and actor id", async () => {
+    service.replaceRoleDefaults.mockResolvedValue({ message: "ok" });
+    const result = await controller.replaceRoleDefaults(
+      "hr_manager",
+      { permissions: [{ key: "leaves", accessLevel: "write" }] } as any,
+      { userId: 9 } as any,
+    );
+    expect(service.replaceRoleDefaults).toHaveBeenCalledWith(9, "hr_manager", [
+      { key: "leaves", accessLevel: "write" },
+    ]);
+    expect(result).toEqual({ success: true, message: "ok" });
   });
 });

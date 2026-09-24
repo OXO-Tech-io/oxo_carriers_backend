@@ -20,6 +20,9 @@ import fs from 'fs';
 import { diskStorage } from 'multer';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload, UserRole } from '../../types';
 import { SalaryService } from './salary.service';
@@ -83,8 +86,8 @@ export class SalaryController {
   }
 
   @Get('bulk-uploads/template')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.SALARIES, 'write')
   async downloadBulkUploadTemplate(@Res() res: Response) {
     const buffer = await this.salaryService.generateBulkUploadTemplate();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -126,16 +129,16 @@ export class SalaryController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.SALARIES, 'write')
   async generate(@Body() dto: GenerateSalaryDto, @CurrentEmployee() employee: JwtPayload) {
     const salary = await this.salaryService.generateSalary(dto, employee);
     return { success: true, message: 'Salary generated successfully', salary };
   }
 
   @Post('bulk-uploads')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.SALARIES, 'write')
   @UseInterceptors(FileInterceptor('excel', { storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } }))
   async bulkUpload(
     @UploadedFile() file: Express.Multer.File,
@@ -166,8 +169,8 @@ export class SalaryController {
   }
 
   @Put(':id/status')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.SALARIES, 'write')
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateSalaryStatusDto,

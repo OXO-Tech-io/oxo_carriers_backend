@@ -3,7 +3,6 @@ import { LeaveModel } from './Leave';
 import { LeaveCalendarModel } from '../leave-calendar/LeaveCalendar';
 import { EmployeeModel } from '../../employees/Employee';
 import {
-  EmployeeCategory,
   EmployeeStatus,
   LeaveBalance,
   LeaveRequest,
@@ -56,12 +55,16 @@ export const leaveService = {
     return LeaveModel.getLeaveBalance(employeeId, query.year);
   },
 
+  /** `selfOnly` is decided by the caller (LeavesService, based on role +
+   * the `mine` query flag) rather than by role here, since which roles are
+   * allowed to see everyone's requests is an access-control decision, not a
+   * data-shape one. */
   async listLeaveRequests(
     employeeId: string,
-    role: UserRole,
+    selfOnly: boolean,
     query: ListLeaveRequestsQuery
   ): Promise<LeaveRequest[]> {
-    if (role === UserRole.EMPLOYEE) {
+    if (selfOnly) {
       return LeaveModel.findByEmployeeId(employeeId, {
         status: query.status,
         year: query.year,
@@ -94,6 +97,10 @@ export const leaveService = {
     input: CreateLeaveRequestInput,
     attachmentUrl?: string
   ): Promise<LeaveRequest> {
+    if (!attachmentUrl) {
+      throw new BadRequestError('An attachment is required to submit a leave request');
+    }
+
     const start = new Date(input.start_date);
     const end = new Date(input.end_date);
 
@@ -105,6 +112,25 @@ export const leaveService = {
       throw new BadRequestError('Invalid date range');
     }
 
+    // Block a new request for a date the employee already has a pending or
+    // approved request on - two full-day (or same-half) requests can never
+    // coexist, but a morning half-day leaves the evening half still bookable.
+    const overlapping = await LeaveModel.findOverlappingRequestsForEmployee(
+      employeeId,
+      input.start_date,
+      input.end_date,
+    );
+    const hasBlockingOverlap = overlapping.some((existing) => {
+      if (!existing.is_half_day) return true;
+      if (!input.is_half_day) return true;
+      return existing.half_day_period === input.half_day_period;
+    });
+    if (hasBlockingOverlap) {
+      throw new BadRequestError(
+        'You already have a pending or approved leave request that overlaps this date'
+      );
+    }
+
     const balances = await LeaveModel.getLeaveBalance(employeeId);
     const balance = balances.find(b => b.leave_type_id === input.leave_type_id);
 
@@ -112,17 +138,13 @@ export const leaveService = {
       throw new BadRequestError('Leave balance not found for this leave type');
     }
 
-    if (balance.remaining_days < totalDays) {
+    if (balance.available_days < totalDays) {
       throw new BadRequestError(
-        `Insufficient leave balance. Available: ${balance.remaining_days} days, Requested: ${totalDays} days`
+        `Insufficient leave balance. Available: ${balance.available_days} days, Requested: ${totalDays} days`
       );
     }
 
-    const requester = await EmployeeModel.findByEmployeeId(employeeId);
-    if (requester?.employeeCategory === EmployeeCategory.INTERNAL) {
-      if (!input.coverup_employee_id) {
-        throw new BadRequestError('A coverup employee is required for internal employees');
-      }
+    if (input.coverup_employee_id) {
       if (input.coverup_employee_id === employeeId) {
         throw new BadRequestError('You cannot select yourself as the coverup employee');
       }
@@ -188,10 +210,9 @@ export const leaveService = {
     } else {
       if (
         actorRole !== UserRole.HR_MANAGER &&
-        actorRole !== UserRole.HR_EXECUTIVE &&
         actorRole !== UserRole.SUPER_ADMIN
       ) {
-        throw new ForbiddenError('Only HR can approve');
+        throw new ForbiddenError('Only an Administrator or HR Manager can approve');
       }
       if (
         request.status !== LeaveStatus.PENDING &&
@@ -221,10 +242,9 @@ export const leaveService = {
   ): Promise<LeaveRequest> {
     if (
       actorRole !== UserRole.HR_MANAGER &&
-      actorRole !== UserRole.HR_EXECUTIVE &&
       actorRole !== UserRole.SUPER_ADMIN
     ) {
-      throw new ForbiddenError('Only HR can reject leave requests');
+      throw new ForbiddenError('Only an Administrator or HR Manager can reject leave requests');
     }
 
     const request = await LeaveModel.findById(id);
