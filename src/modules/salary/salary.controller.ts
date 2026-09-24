@@ -85,7 +85,7 @@ export class SalaryController {
     return { success: true, ...(await this.salaryService.getYearToDateEarnings(employee, year)) };
   }
 
-  @Get('bulk-uploads/template')
+  @Get('bulk-uploads/templates')
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.SALARIES, 'write')
   async downloadBulkUploadTemplate(@Res() res: Response) {

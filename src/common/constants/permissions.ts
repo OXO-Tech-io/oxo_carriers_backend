@@ -25,7 +25,7 @@ export const PERMISSIONS = {
   NOTICES: "notices",
   ATTENDANCE: "attendance",
   DOCUMENT_VAULT: "document_vault",
-  // OCD-453: gates GET /archive (list + detail) - deleted employee profile
+  // OCD-453: gates GET /archives (list + detail) - deleted employee profile
   // snapshots. Granted by default to SUPER_ADMIN (bypasses this table
   // entirely) and HR_MANAGER only, matching who can already delete/view
   // sensitive employee records elsewhere in this app.

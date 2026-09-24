@@ -56,9 +56,9 @@ export class UsersController {
 
   // OCD-436: used by the Create Employee form to flag a duplicate email
   // inline on Step 1, before the user has filled in the rest of the wizard.
-  // Must stay ahead of the ':employeeUserId' route below so "check-email"
-  // isn't swallowed by that dynamic segment.
-  @Get('check-email')
+  // Must stay ahead of the ':employeeUserId' route below so
+  // "email-availability" isn't swallowed by that dynamic segment.
+  @Get('email-availability')
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.USERS, 'write')
   async checkEmail(@Query('email') email: string) {
@@ -67,20 +67,20 @@ export class UsersController {
   }
 
   // OCD-444: same "flag it as soon as the user leaves the field" pattern as
-  // check-email above, for the NIC Number (StepStatutory.tsx) and Bank A/C
-  // Number (StepRemittance.tsx) fields shared by the Create Employee and
+  // email-availability above, for the NIC Number (StepStatutory.tsx) and Bank
+  // A/C Number (StepRemittance.tsx) fields shared by the Create Employee and
   // self-service Profile wizards. Left open to any authenticated employee
-  // (rather than gated to HR/Finance like check-email) since the profile
-  // wizard is used by every role while editing their own NIC/bank details;
-  // `excludeEmployeeId` is what lets that self-edit path check against
-  // everyone else without flagging the employee's own current value.
-  @Get('check-nic')
+  // (rather than gated to HR/Finance like email-availability) since the
+  // profile wizard is used by every role while editing their own NIC/bank
+  // details; `excludeEmployeeId` is what lets that self-edit path check
+  // against everyone else without flagging the employee's own current value.
+  @Get('nic-availability')
   async checkNic(@Query('nationalId') nationalId: string, @Query('excludeEmployeeId') excludeEmployeeId?: string) {
     const result = await this.usersService.checkNicAvailability(nationalId, excludeEmployeeId);
     return { success: true, ...result };
   }
 
-  @Get('check-bank-account')
+  @Get('bank-account-availability')
   async checkBankAccount(
     @Query('accountNumber') accountNumber: string,
     @Query('excludeEmployeeId') excludeEmployeeId?: string
@@ -89,18 +89,21 @@ export class UsersController {
     return { success: true, ...result };
   }
 
-  // OCD-454: self-service "My Profile" camera-icon upload. Fixed 'me' path
-  // segment (not ':id') so it can't be used to set another employee's
-  // picture - the target is always the caller's own userId from the JWT.
-  @Post('me/profile-picture')
+  // OCD-454: "My Profile" camera-icon upload, keyed by :userId so it matches
+  // the rest of this controller's resource-style routes. Not self-only at
+  // the routing level - usersService.updateProfilePicture enforces that
+  // SELF_ONLY_ROLES can only target their own userId (from the JWT), same as
+  // getById/update above.
+  @Post(':userId/profile-pictures')
   @HttpCode(200)
   @UseInterceptors(FileInterceptor(PROFILE_PICTURE_FIELD, profilePictureMulterOptions))
-  async uploadMyProfilePicture(
+  async uploadProfilePicture(
+    @Param('userId', ParseIntPipe) userId: number,
     @CurrentEmployee() employee: JwtPayload,
     @UploadedFile() file: Express.Multer.File | undefined,
   ) {
     if (!file) throw new BadRequestException('No image file was provided');
-    const user = await this.usersService.updateProfilePicture(employee.userId, file);
+    const user = await this.usersService.updateProfilePicture(userId, file, employee);
     return { success: true, message: 'Profile picture updated', user };
   }
 

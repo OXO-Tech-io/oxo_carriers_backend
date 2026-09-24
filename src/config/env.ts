@@ -121,6 +121,10 @@ const Schema = z.object({
   // ─── Uploads ────────────────────────────────────────────────────────────
   /** Comma-separated multer field names routed to uploads/documents instead of uploads/others (communications attachments). */
   COMMUNICATIONS_DOCUMENT_FIELDS: z.string().min(1),
+
+  // ─── Medical Insurance ──────────────────────────────────────────────────
+  /** OCD-489: months of service an employee must complete before they're eligible to submit a claim. */
+  MEDICAL_INSURANCE_MIN_SERVICE_MONTHS: z.coerce.number().int().nonnegative().optional().default(6),
 });
 
 export type Env = z.infer<typeof Schema>;

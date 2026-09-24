@@ -333,7 +333,7 @@ export class UsersService {
    * the deletion timestamp and who performed it, so the data that's about to
    * be hard-deleted (the PII row) or become unreachable (everything else,
    * once this employee drops out of EmployeeModel.getAll()) stays available
-   * to Administrators/HR Manager via GET /archive.
+   * to Administrators/HR Manager via GET /archives.
    */
   async delete(userId: number, requester: JwtPayload) {
     const canDelete = isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER;
@@ -370,7 +370,10 @@ export class UsersService {
    * gate here since it's purely cosmetic and scoped to the caller's own
    * record (userId always comes from the JWT, never a route param).
    */
-  async updateProfilePicture(userId: number, file: Express.Multer.File) {
+  async updateProfilePicture(userId: number, file: Express.Multer.File, requester: JwtPayload) {
+    if (SELF_ONLY_ROLES.includes(requester.role) && requester.userId !== userId) {
+      throw new ForbiddenException('Forbidden');
+    }
     const profilePictureUrl = `/uploads/profile-pictures/${file.filename}`;
     const user = await EmployeeModel.update(userId, { profilePictureUrl });
     if (!user) throw new NotFoundException('User not found');

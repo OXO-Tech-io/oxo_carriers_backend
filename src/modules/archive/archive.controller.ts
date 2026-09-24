@@ -8,7 +8,7 @@ import { ArchiveService } from './archive.service';
 // `archive` permission key (super_admin bypasses PermissionGuard entirely;
 // HR Manager holds it by default - see the "Role Defaults" admin screen /
 // tbl_role_permissions).
-@Controller('archive')
+@Controller('archives')
 @UseGuards(PermissionGuard)
 @RequirePermission(PERMISSIONS.ARCHIVE, 'read')
 export class ArchiveController {

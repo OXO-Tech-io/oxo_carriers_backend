@@ -3,6 +3,7 @@ import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from '.
 import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import { EmployeeModel } from '../../employees/Employee';
+import { env } from '../../config/env';
 import {
   sendMedicalClaimApprovedEmail,
   sendMedicalClaimRejectedEmail,
@@ -22,8 +23,9 @@ const PAYMENT_PROCESSING_ROLES = new Set<UserRole>([
 ]);
 const PAYMENT_STATUS_VALUES = Object.values(MedicalClaimPaymentStatus) as string[];
 // OCD-489: employees only become eligible for the Medical Insurance benefit
-// after completing this many months of service.
-const MIN_SERVICE_MONTHS_FOR_ELIGIBILITY = 6;
+// after completing this many months of service. Configurable via
+// MEDICAL_INSURANCE_MIN_SERVICE_MONTHS (defaults to 6).
+const MIN_SERVICE_MONTHS_FOR_ELIGIBILITY = env.MEDICAL_INSURANCE_MIN_SERVICE_MONTHS;
 
 export type MedicalDocumentFiles = {
   supportive_document?: Express.Multer.File[];
