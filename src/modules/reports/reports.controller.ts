@@ -1,13 +1,13 @@
 import { Controller, Get, Query, Res, UseGuards } from '@nestjs/common';
 import type { Response } from 'express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
-import { UserRole } from '../../types';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { ReportsService } from './reports.service';
 
 @Controller('reports')
-@UseGuards(RolesGuard)
-@Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+@UseGuards(PermissionGuard)
+@RequirePermission(PERMISSIONS.REPORTS, 'read')
 export class ReportsController {
   constructor(private readonly reportsService: ReportsService) {}
 

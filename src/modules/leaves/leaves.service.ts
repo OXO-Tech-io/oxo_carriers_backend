@@ -37,17 +37,27 @@ export class LeavesService {
     return leaveService.getLeaveBalance(targetEmployeeId, query);
   }
 
+  /**
+   * Only Administrator (super_admin) and HR Manager are allowed to browse
+   * every employee's leave requests (org-wide Leave Management); every other
+   * role - including HR Executive, Finance, Consultant, Service Provider -
+   * is always scoped to their own requests, regardless of what the `mine`
+   * query flag says. An admin/HR Manager still opts into self-scoping via
+   * `mine=true` for their own personal "My Requests" view.
+   */
   async listLeaveRequests(employee: JwtPayload, query: ListLeaveRequestsQueryDto) {
     const employeeId = this.requireEmployeeId(employee);
-    const requests = await leaveService.listLeaveRequests(employeeId, employee.role, query);
+    const canViewAll = employee.role === UserRole.SUPER_ADMIN || employee.role === UserRole.HR_MANAGER;
+    const selfOnly = !canViewAll || query.mine === true;
+    const requests = await leaveService.listLeaveRequests(employeeId, selfOnly, query);
 
-    // The Pending Approvals tab (status=pending, non-employee role) is for
+    // The Pending Approvals tab (status=pending, org-wide scope) is for
     // reviewing OTHER people's leave - an approver's own pending request
     // would otherwise show up in their own approval queue, which reads as
     // self-approval. Excluded here rather than in the shared LeaveModel
-    // query since other callers (e.g. the History tab) still want every
-    // request, including the requester's own.
-    if (query.status === 'pending' && employee.role !== UserRole.EMPLOYEE) {
+    // query since other callers (e.g. the Approved/Rejected tabs) still
+    // want every request, including the approver's own.
+    if (!selfOnly && query.status === 'pending') {
       return requests.filter((request) => request.employee_id !== employeeId);
     }
 

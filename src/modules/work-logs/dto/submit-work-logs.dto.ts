@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMinSize, IsNumber, IsOptional, IsPositive, IsString, Matches, Max, MaxLength, MinLength, ValidateNested } from 'class-validator';
+import { ArrayMinSize, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength, ValidateNested } from 'class-validator';
 import { ISO_DATE_MESSAGE, ISO_DATE_REGEX } from '../../../common/constants/validation';
 
 export class WorkLogEntryDto {
@@ -11,11 +11,12 @@ export class WorkLogEntryDto {
   @MaxLength(1000)
   taskDescription!: string;
 
+  // Recorded in minutes per the requirements doc - 1440 minutes = 24 hours/day.
   @Type(() => Number)
-  @IsNumber()
-  @IsPositive()
-  @Max(24)
-  hoursSpent!: number;
+  @IsInt({ message: 'Minutes must be a whole number' })
+  @Min(1)
+  @Max(1440)
+  minutesSpent!: number;
 
   @IsOptional()
   @IsString()

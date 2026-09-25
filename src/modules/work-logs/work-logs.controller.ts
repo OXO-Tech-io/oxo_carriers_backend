@@ -1,9 +1,7 @@
-import { Body, Controller, Get, HttpCode, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, Post, Put, Query, Res, UploadedFile, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
-import { RolesGuard } from '../../common/guards/roles.guard';
 import { PermissionGuard } from '../../common/guards/permission.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { PERMISSIONS } from '../../common/constants/permissions';
@@ -11,6 +9,7 @@ import { hasPermission } from '../../middleware/permissions';
 import { JwtPayload, UserRole } from '../../types';
 import { WorkLogsService } from './work-logs.service';
 import { SubmitWorkLogsDto } from './dto/submit-work-logs.dto';
+import { UpdateWorkLogDto } from './dto/update-work-log.dto';
 import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
 import { UpdateWorkLogDeadlineDto } from './dto/update-work-log-deadline.dto';
 import { GetWorkLogDeadlineQueryDto } from './dto/get-work-log-deadline-query.dto';
@@ -62,16 +61,16 @@ export class WorkLogsController {
   }
 
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async listAll(@Query() query: ListWorkLogsQueryDto) {
     const logs = await this.workLogsService.listAll(query);
     return { success: true, message: 'Work logs fetched', data: logs };
   }
 
   @Get('summary')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async getSummary(@Query() query: ListWorkLogsQueryDto) {
     const summary = await this.workLogsService.getSummary(query);
     return { success: true, message: 'Work log summary fetched', data: summary };
@@ -80,16 +79,16 @@ export class WorkLogsController {
   /** Attendance-style snapshot for the All Work Logs admin page: how many of the
    *  employees expected to log work today have done so, and on time. */
   @Get('daily-status')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async getDailyStatus(@Query() query: GetWorkLogDailyStatusQueryDto) {
     const status = await this.workLogsService.getDailyStatus(query);
     return { success: true, message: 'Work log daily status fetched', data: status };
   }
 
   @Get('reports/summary')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async downloadSummaryReport(@Query() query: ListWorkLogsQueryDto, @Res() res: Response) {
     const buffer = await this.workLogsService.generateSummaryReport(query);
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
@@ -98,8 +97,8 @@ export class WorkLogsController {
   }
 
   @Get('reports/detailed')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.WORK_LOGS, 'write')
   async downloadDetailedReport(@Query() query: ListWorkLogsQueryDto, @Res() res: Response) {
     const buffer = await this.workLogsService.generateDetailedReport(query);
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
@@ -112,6 +111,18 @@ export class WorkLogsController {
   async submit(@Body() dto: SubmitWorkLogsDto, @CurrentEmployee() employee: JwtPayload) {
     const result = await this.workLogsService.submitEntries(employee.employeeId!, dto);
     return { success: true, message: 'Work log entries submitted', data: result };
+  }
+
+  /** Employees may edit their own submitted entries - see OCD-464. Ownership is
+   *  enforced in WorkLogsService/workLogService, not by a role guard here. */
+  @Put(':id')
+  async update(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateWorkLogDto,
+    @CurrentEmployee() employee: JwtPayload,
+  ) {
+    const result = await this.workLogsService.updateEntry(employee.employeeId!, id, dto);
+    return { success: true, message: 'Work log entry updated', data: result };
   }
 
   @Post('bulk-uploads')

@@ -281,3 +281,6 @@ uploads/*
 !uploads/.gitkeep
 logs/*
 !logs/.gitkeep
+
+# Local DB dumps (may contain real employee data, even if PII fields are encrypted)
+backups/

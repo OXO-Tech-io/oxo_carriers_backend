@@ -25,7 +25,7 @@ vi.mock("../../src/employees/EmployeePii", () => ({
   EmployeePiiModel: { findByEmployeeId: vi.fn(), delete: vi.fn() },
 }));
 vi.mock("../../src/config/database", () => ({
-  default: { query: vi.fn() },
+  default: { query: vi.fn(), connect: vi.fn() },
 }));
 vi.mock("../../src/modules/users/keycloakAdmin.service", () => ({
   keycloakAdminService: {
@@ -61,6 +61,7 @@ const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const piiFindMock = EmployeePiiModel.findByEmployeeId as unknown as ReturnType<typeof vi.fn>;
 const piiDeleteMock = EmployeePiiModel.delete as unknown as ReturnType<typeof vi.fn>;
 const poolQueryMock = (pool as any).query as ReturnType<typeof vi.fn>;
+const poolConnectMock = (pool as any).connect as ReturnType<typeof vi.fn>;
 const kc = keycloakAdminService as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const applyToNewEmployeeMock = employeeProfileCreationService.applyToNewEmployee as unknown as ReturnType<
   typeof vi.fn
@@ -74,10 +75,15 @@ const selfEmployee = { userId: 5, employeeId: "EMP5", role: UserRole.EMPLOYEE } 
 
 describe("UsersService", () => {
   let service: UsersService;
+  // OCD-453: UsersService.delete() now snapshots the profile to the Archive
+  // before removing anything - stubbed out here so these tests exercise
+  // only UsersService's own delete/keycloak/PII logic, not the Archive
+  // module's model/DB calls.
+  const archiveServiceMock = { archiveEmployeeDeletion: vi.fn() } as any;
 
   beforeEach(() => {
     vi.clearAllMocks();
-    service = new UsersService();
+    service = new UsersService(archiveServiceMock);
     poolQueryMock.mockResolvedValue({ rows: [] });
   });
 
@@ -209,13 +215,19 @@ describe("UsersService", () => {
       await expect(service.create({ ...baseDto, employee_id: "EMP1" }, hr)).rejects.toThrow(ConflictException);
     });
 
-    it("creates an employee, seeds leave balances/permissions, and auto-provisions keycloak", async () => {
+    it("creates an employee, seeds leave balances/permissions from the role's DB defaults, and auto-provisions keycloak", async () => {
       em.findByEmail.mockResolvedValue(null);
       em.generateEmployeeId.mockResolvedValue("EMP100");
       em.create.mockResolvedValue({ id: 10, employeeId: "EMP100", email: baseDto.email, hireDate: null });
       poolQueryMock.mockImplementation((query: string) => {
         if (query.includes("tbl_leave_types")) {
           return Promise.resolve({ rows: [{ id: 1, name: "Annual", max_days: 14 }] });
+        }
+        // baseDto has no role, so UsersService defaults it to EMPLOYEE -
+        // seedDefaultPermissionsForNewUser reads this role's current
+        // defaults from tbl_role_permissions before inserting per-user rows.
+        if (query.includes("tbl_role_permissions")) {
+          return Promise.resolve({ rows: [{ permission_key: "dashboard", access_level: "read" }] });
         }
         return Promise.resolve({ rows: [] });
       });
@@ -232,8 +244,26 @@ describe("UsersService", () => {
         expect.stringContaining("INSERT INTO tbl_employee_leave_balance (employee_id"),
         ["EMP100", 1, expect.any(Number), expect.any(Number), expect.any(Number)],
       );
-      expect(poolQueryMock).toHaveBeenCalledWith(expect.stringContaining("tbl_user_permissions"), expect.any(Array));
+      expect(poolQueryMock).toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO tbl_user_permissions"),
+        ["EMP100", "dashboard", "read"],
+      );
       expect(result.keycloak).toEqual({ provisioned: true, onboardingEmailSent: true });
+    });
+
+    it("grants no default permissions when the role has none configured in tbl_role_permissions", async () => {
+      em.findByEmail.mockResolvedValue(null);
+      em.generateEmployeeId.mockResolvedValue("EMP105");
+      em.create.mockResolvedValue({ id: 15, employeeId: "EMP105", email: baseDto.email, hireDate: null });
+      poolQueryMock.mockResolvedValue({ rows: [] });
+      em.findById.mockResolvedValue({ id: 15, employeeId: "EMP105", email: baseDto.email, keycloakSub: null });
+
+      await service.create(baseDto, hr);
+
+      expect(poolQueryMock).not.toHaveBeenCalledWith(
+        expect.stringContaining("INSERT INTO tbl_user_permissions"),
+        expect.any(Array),
+      );
     });
 
     it("skips keycloak provisioning when a super admin opts out", async () => {
@@ -325,6 +355,34 @@ describe("UsersService", () => {
       expect(em.update).toHaveBeenCalledWith(1, { firstName: "New", role: UserRole.HR_EXECUTIVE });
       expect(result).toEqual({ id: 1, firstName: "New" });
     });
+
+    describe("role-change permission resync (full replace)", () => {
+      const createClient = () => ({ query: vi.fn().mockResolvedValue({}), release: vi.fn() });
+
+      it("replaces the user's permissions with the new role's defaults when the role actually changes", async () => {
+        em.findById.mockResolvedValue({ id: 1, role: UserRole.EMPLOYEE });
+        em.update.mockResolvedValue({ id: 1, employeeId: "EMP1", role: UserRole.HR_MANAGER });
+        const client = createClient();
+        poolConnectMock.mockResolvedValue(client);
+        poolQueryMock.mockResolvedValue({ rows: [{ permission_key: "leaves", access_level: "write" }] });
+
+        await service.update(1, { role: UserRole.HR_MANAGER } as any, hr);
+
+        expect(client.query).toHaveBeenCalledWith("DELETE FROM tbl_user_permissions WHERE employee_id = $1", [
+          "EMP1",
+        ]);
+        expect(client.query).toHaveBeenCalledWith("COMMIT");
+      });
+
+      it("does not resync when the role field is set to the user's current role", async () => {
+        em.findById.mockResolvedValue({ id: 1, role: UserRole.HR_MANAGER });
+        em.update.mockResolvedValue({ id: 1, employeeId: "EMP1", role: UserRole.HR_MANAGER });
+
+        await service.update(1, { role: UserRole.HR_MANAGER } as any, hr);
+
+        expect(poolConnectMock).not.toHaveBeenCalled();
+      });
+    });
   });
 
   describe("delete", () => {
@@ -336,9 +394,19 @@ describe("UsersService", () => {
       await expect(service.delete(hr.userId, hr)).rejects.toThrow(BadRequestException);
     });
 
+    it("throws NotFoundException when the target user doesn't exist", async () => {
+      em.findById.mockResolvedValue(null);
+      await expect(service.delete(3, hr)).rejects.toThrow(NotFoundException);
+      expect(archiveServiceMock.archiveEmployeeDeletion).not.toHaveBeenCalled();
+    });
+
     it("purges PII and the keycloak account but keeps the employee row, deactivating it instead", async () => {
-      em.findById.mockResolvedValue({ id: 3, employeeId: "EMP3", keycloakSub: "kc-3" });
+      const user = { id: 3, employeeId: "EMP3", keycloakSub: "kc-3" };
+      em.findById.mockResolvedValue(user);
       await service.delete(3, hr);
+      // OCD-453: the full-profile snapshot is written to the Archive before
+      // the PII row is destroyed / the Keycloak account is removed.
+      expect(archiveServiceMock.archiveEmployeeDeletion).toHaveBeenCalledWith(user, { userId: hr.userId });
       expect(kc.deleteUser).toHaveBeenCalledWith("kc-3");
       expect(piiDeleteMock).toHaveBeenCalledWith("EMP3");
       expect(em.delete).not.toHaveBeenCalled();
@@ -438,6 +506,28 @@ describe("UsersService", () => {
       em.update.mockResolvedValue({ id: 5, role: UserRole.HR_MANAGER });
       const result = await service.updateRole(5, UserRole.HR_MANAGER, superAdmin);
       expect(result).toEqual({ id: 5, previous_role: UserRole.EMPLOYEE, new_role: UserRole.HR_MANAGER });
+    });
+
+    it("replaces the user's permissions with the new role's defaults (full replace)", async () => {
+      em.findById.mockResolvedValue({ id: 5, role: UserRole.EMPLOYEE });
+      em.update.mockResolvedValue({ id: 5, employeeId: "EMP5", role: UserRole.HR_MANAGER });
+      const client = { query: vi.fn().mockResolvedValue({}), release: vi.fn() };
+      poolConnectMock.mockResolvedValue(client);
+      poolQueryMock.mockResolvedValue({ rows: [{ permission_key: "leaves", access_level: "write" }] });
+
+      await service.updateRole(5, UserRole.HR_MANAGER, superAdmin);
+
+      expect(client.query).toHaveBeenCalledWith("DELETE FROM tbl_user_permissions WHERE employee_id = $1", ["EMP5"]);
+      expect(client.query).toHaveBeenCalledWith("COMMIT");
+    });
+
+    it("does not resync permissions when the requested role matches the current role", async () => {
+      em.findById.mockResolvedValue({ id: 5, role: UserRole.HR_MANAGER });
+      em.update.mockResolvedValue({ id: 5, employeeId: "EMP5", role: UserRole.HR_MANAGER });
+
+      await service.updateRole(5, UserRole.HR_MANAGER, superAdmin);
+
+      expect(poolConnectMock).not.toHaveBeenCalled();
     });
   });
 

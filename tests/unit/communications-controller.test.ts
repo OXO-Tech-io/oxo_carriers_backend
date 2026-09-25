@@ -1,7 +1,15 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { UserRole } from "../../src/types";
+
+vi.mock("../../src/middleware/permissions", () => ({
+  hasPermission: vi.fn(),
+}));
+
+import { hasPermission } from "../../src/middleware/permissions";
 import { CommunicationsController } from "../../src/modules/communications/communications.controller";
+
+const hasPermissionMock = hasPermission as unknown as ReturnType<typeof vi.fn>;
 
 const createServiceMock = () => ({
   respond: vi.fn(),
@@ -22,6 +30,7 @@ describe("CommunicationsController", () => {
   let controller: CommunicationsController;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     service = createServiceMock();
     controller = new CommunicationsController(service as any);
   });
@@ -47,6 +56,7 @@ describe("CommunicationsController", () => {
 
   describe("list", () => {
     it("returns the caller's own inbox when employee_id matches the caller", async () => {
+      hasPermissionMock.mockResolvedValue(false);
       service.listMine.mockResolvedValue([{ id: 1 }]);
       const result = await controller.list("EMP1", { employeeId: "EMP1", role: UserRole.EMPLOYEE } as any);
       expect(service.listMine).toHaveBeenCalledWith("EMP1");
@@ -54,28 +64,40 @@ describe("CommunicationsController", () => {
     });
 
     it("forbids viewing another employee's inbox for a non-HR caller", async () => {
+      hasPermissionMock.mockResolvedValue(false);
       await expect(
         controller.list("EMP2", { employeeId: "EMP1", role: UserRole.EMPLOYEE } as any),
       ).rejects.toThrow(ForbiddenException);
     });
 
     it("allows HR to view another employee's inbox", async () => {
+      hasPermissionMock.mockResolvedValue(true);
       service.listMine.mockResolvedValue([{ id: 2 }]);
       const result = await controller.list("EMP2", { employeeId: "EMPHR", role: UserRole.HR_MANAGER } as any);
+      expect(hasPermissionMock).toHaveBeenCalledWith("EMPHR", "communications", "write");
       expect(service.listMine).toHaveBeenCalledWith("EMP2");
       expect(result.data).toEqual([{ id: 2 }]);
     });
 
     it("returns the full list for HR when no employee_id is given", async () => {
+      hasPermissionMock.mockResolvedValue(true);
       service.listAll.mockResolvedValue([{ id: 3 }]);
       const result = await controller.list(undefined, { employeeId: "EMPHR", role: UserRole.HR_EXECUTIVE } as any);
       expect(result.data).toEqual([{ id: 3 }]);
     });
 
     it("forbids a non-HR caller from listing all communications", async () => {
+      hasPermissionMock.mockResolvedValue(false);
       await expect(
         controller.list(undefined, { employeeId: "EMP1", role: UserRole.EMPLOYEE } as any),
       ).rejects.toThrow(ForbiddenException);
+    });
+
+    it("allows a super admin to list everything without a permission lookup", async () => {
+      service.listAll.mockResolvedValue([{ id: 4 }]);
+      const result = await controller.list(undefined, { employeeId: "EMPSA", role: UserRole.SUPER_ADMIN } as any);
+      expect(hasPermissionMock).not.toHaveBeenCalled();
+      expect(result.data).toEqual([{ id: 4 }]);
     });
   });
 

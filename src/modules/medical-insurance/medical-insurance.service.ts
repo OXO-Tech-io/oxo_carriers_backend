@@ -1,7 +1,9 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
+import { EmployeeModel } from '../../employees/Employee';
+import { env } from '../../config/env';
 import {
   sendMedicalClaimApprovedEmail,
   sendMedicalClaimRejectedEmail,
@@ -10,6 +12,20 @@ import {
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
+
+const PAYMENT_PROCESSING_ROLES = new Set<UserRole>([
+  UserRole.HR_MANAGER,
+  UserRole.HR_EXECUTIVE,
+  UserRole.FINANCE_MANAGER,
+  UserRole.FINANCE_EXECUTIVE,
+  UserRole.SUPER_ADMIN,
+]);
+const PAYMENT_STATUS_VALUES = Object.values(MedicalClaimPaymentStatus) as string[];
+// OCD-489: employees only become eligible for the Medical Insurance benefit
+// after completing this many months of service. Configurable via
+// MEDICAL_INSURANCE_MIN_SERVICE_MONTHS (defaults to 6).
+const MIN_SERVICE_MONTHS_FOR_ELIGIBILITY = env.MEDICAL_INSURANCE_MIN_SERVICE_MONTHS;
 
 export type MedicalDocumentFiles = {
   supportive_document?: Express.Multer.File[];
@@ -25,8 +41,30 @@ export class MedicalInsuranceService {
     return employee.employeeId;
   }
 
+  /**
+   * OCD-489: blocks claim submission until the employee has completed the
+   * minimum service period. Employees with no hire_date on file are let
+   * through - there's nothing to validate against, and this predates the
+   * eligibility requirement being tracked at all.
+   */
+  private async assertServiceEligibility(employeeId: string): Promise<void> {
+    const employeeRecord = await EmployeeModel.findByEmployeeId(employeeId);
+    const hireDate = employeeRecord?.hireDate ? new Date(employeeRecord.hireDate) : null;
+    if (!hireDate || isNaN(hireDate.getTime())) return;
+
+    const eligibleFrom = new Date(hireDate);
+    eligibleFrom.setMonth(eligibleFrom.getMonth() + MIN_SERVICE_MONTHS_FOR_ELIGIBILITY);
+
+    if (new Date() < eligibleFrom) {
+      throw new BadRequestException(
+        `Medical insurance claims can only be submitted after completing ${MIN_SERVICE_MONTHS_FOR_ELIGIBILITY} months of service. You will be eligible from ${eligibleFrom.toLocaleDateString('en-GB')}.`,
+      );
+    }
+  }
+
   async apply(employee: JwtPayload, dto: CreateMedicalClaimDto, files: MedicalDocumentFiles | undefined) {
     const employeeId = this.requireEmployeeId(employee);
+    await this.assertServiceEligibility(employeeId);
     const type = dto.type as MedicalClaimType;
     const quarter = dto.quarter || getCurrentQuarter();
     const amount = parseFloat(dto.amount as string);
@@ -61,6 +99,7 @@ export class MedicalInsuranceService {
     const supportive_document_url = `/uploads/documents/${supportiveFile.filename}`;
     const relevantFile = files?.relevant_document?.[0];
     const relevant_document_url = relevantFile ? `/uploads/documents/${relevantFile.filename}` : null;
+    await this.persistUploadedDocuments(files);
 
     const claim = await MedicalInsuranceModel.create({
       employee_id: employeeId,
@@ -78,6 +117,18 @@ export class MedicalInsuranceService {
     return { success: true, message: 'Medical insurance claim submitted', claim };
   }
 
+  /** OCD-493: best-effort durable copy of every uploaded file - see MedicalInsuranceModel.persistDocumentBlob. */
+  private async persistUploadedDocuments(files: MedicalDocumentFiles | undefined): Promise<void> {
+    const uploaded = [...(files?.supportive_document ?? []), ...(files?.relevant_document ?? [])];
+    await Promise.all(
+      uploaded.map((file) =>
+        MedicalInsuranceModel.persistDocumentBlob(file).catch((err: unknown) =>
+          logger.error({ err, filename: file.filename }, 'Failed to persist medical claim document to the database'),
+        ),
+      ),
+    );
+  }
+
   async getMyClaims(employeeId: string, status?: MedicalClaimStatus) {
     const claims = await MedicalInsuranceModel.findByEmployeeId(employeeId, { status });
     return { success: true, claims };
@@ -88,9 +139,24 @@ export class MedicalInsuranceService {
     return { success: true, claims };
   }
 
-  /** Single list endpoint - branches on role so the frontend only calls one route. */
-  async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType) {
-    if (employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN) {
+  /**
+   * Single list endpoint - branches on role so the frontend only calls one
+   * route. `mine=true` (OCD-488) forces the "My Claims" view regardless of
+   * role: the personal /medical-insurance page must always show only the
+   * logged-in user's own claims, even for HR/Finance/Super Admin, who
+   * otherwise get every claim here for the separate admin review list.
+   */
+  async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType, mine?: boolean) {
+    if (mine) {
+      if (!employee.employeeId) {
+        return { success: true, claims: [] };
+      }
+      return this.getMyClaims(employee.employeeId, status);
+    }
+    // Finance Manager/Executive need to see every claim too (OCD-494) - they
+    // process payment for approved claims across all employees, not just
+    // their own.
+    if (employee.role && PAYMENT_PROCESSING_ROLES.has(employee.role)) {
       return this.getAll(status, type);
     }
     return this.getMyClaims(this.requireEmployeeId(employee), status);
@@ -153,6 +219,105 @@ export class MedicalInsuranceService {
     };
   }
 
+  /**
+   * OCD-494: payment processing for an approved claim - lets HR/Finance mark
+   * a claim Paid/Partly Paid/Not Paid and record amount/date/reference.
+   */
+  async recordPayment(employee: JwtPayload, id: number, dto: RecordMedicalClaimPaymentDto) {
+    if (!employee.role || !PAYMENT_PROCESSING_ROLES.has(employee.role)) {
+      throw new ForbiddenException('Only HR and Finance can process claim payments');
+    }
+
+    const paymentStatus = dto.payment_status;
+    if (!paymentStatus || !PAYMENT_STATUS_VALUES.includes(paymentStatus)) {
+      throw new BadRequestException(
+        `payment_status must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      );
+    }
+
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.status !== MedicalClaimStatus.APPROVED) {
+      throw new BadRequestException('Payment can only be recorded for approved claims');
+    }
+
+    const isPaidOrPartial =
+      paymentStatus === MedicalClaimPaymentStatus.PAID || paymentStatus === MedicalClaimPaymentStatus.PARTIALLY_PAID;
+
+    let paidAmount: number | null = null;
+    if (dto.paid_amount != null && dto.paid_amount !== '') {
+      paidAmount = parseFloat(dto.paid_amount);
+      if (isNaN(paidAmount) || paidAmount < 0) {
+        throw new BadRequestException('Amount Paid must be a valid non-negative number');
+      }
+    }
+    if (isPaidOrPartial) {
+      if (paidAmount == null || paidAmount <= 0) {
+        throw new BadRequestException('Amount Paid is required when marking a claim as Paid or Partly Paid');
+      }
+      if (paidAmount > Number(claim.amount)) {
+        throw new BadRequestException('Amount Paid cannot exceed the approved claim amount');
+      }
+    }
+
+    let paymentDate: Date | null = null;
+    if (dto.payment_date) {
+      paymentDate = new Date(dto.payment_date);
+      if (isNaN(paymentDate.getTime())) {
+        throw new BadRequestException('Payment Date is invalid');
+      }
+    } else if (isPaidOrPartial) {
+      throw new BadRequestException('Payment Date is required when marking a claim as Paid or Partly Paid');
+    }
+
+    const updated = await MedicalInsuranceModel.recordPayment(id, paymentStatus as MedicalClaimPaymentStatus, {
+      paid_amount: paidAmount,
+      payment_date: paymentDate,
+      payment_reference: dto.payment_reference?.trim() || null,
+      paid_by: employee.userId,
+      paid_at: new Date(),
+    });
+
+    return { success: true, message: 'Payment details recorded', claim: updated };
+  }
+
+  /** OCD-486: an employee withdraws their own claim while it's still Pending. */
+  async cancelClaim(employee: JwtPayload, id: number) {
+    const employeeId = this.requireEmployeeId(employee);
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.employee_id !== employeeId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    if (claim.status !== MedicalClaimStatus.PENDING) {
+      throw new BadRequestException('Only claims that are still Pending can be cancelled');
+    }
+
+    const updated = await MedicalInsuranceModel.cancel(id);
+    return { success: true, message: 'Claim cancelled', claim: updated };
+  }
+
+  /** OCD-487: remaining OPD quarterly balance for the current employee, used to drive live form validation. */
+  async getOpdBalance(employee: JwtPayload, quarter?: string) {
+    const employeeId = this.requireEmployeeId(employee);
+    const resolvedQuarter = quarter || getCurrentQuarter();
+    const maxAmount = getMaxAmountForType(MedicalClaimType.OPD);
+    const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, resolvedQuarter);
+    const remaining = Math.max(0, maxAmount - used);
+
+    return {
+      success: true,
+      quarter: resolvedQuarter,
+      limit: maxAmount,
+      used,
+      remaining,
+    };
+  }
+
   async resubmit(
     employee: JwtPayload,
     id: number,
@@ -160,6 +325,7 @@ export class MedicalInsuranceService {
     files: MedicalDocumentFiles | undefined,
   ) {
     const employeeId = this.requireEmployeeId(employee);
+    await this.assertServiceEligibility(employeeId);
     const type = (dto.type as MedicalClaimType) || undefined;
     const quarter = dto.quarter || undefined;
     const amount = dto.amount != null ? parseFloat(dto.amount) : undefined;
@@ -202,6 +368,7 @@ export class MedicalInsuranceService {
     const relevant_document_url = relevantFile
       ? `/uploads/documents/${relevantFile.filename}`
       : (original.relevant_document_url ?? null);
+    await this.persistUploadedDocuments(files);
 
     const claim = await MedicalInsuranceModel.create({
       employee_id: employeeId,

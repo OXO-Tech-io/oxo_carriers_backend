@@ -1,6 +1,26 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Put, Query, UseGuards } from '@nestjs/common';
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseIntPipe,
+  Patch,
+  Post,
+  Put,
+  Query,
+  UploadedFile,
+  UseGuards,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { UserRole, JwtPayload } from '../../types';
 import { UsersService } from './users.service';
@@ -8,6 +28,7 @@ import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
 import { UpdateUserRoleDto } from './dto/update-user-role.dto';
 import { UpdateUserStatusDto } from './dto/update-user-status.dto';
+import { PROFILE_PICTURE_FIELD, profilePictureMulterOptions } from './profile-picture.upload';
 
 @Controller('users')
 export class UsersController {
@@ -18,19 +39,72 @@ export class UsersController {
    * (cross-referenced against the local employee table by email).
    */
   @Get()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'read')
   async getAll(@Query('search') search?: string) {
     const users = await this.usersService.getAll(search);
     return { success: true, users };
   }
 
   @Get('departments')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'read')
   async getDepartments() {
     const departments = await this.usersService.getDepartments();
     return { success: true, departments };
+  }
+
+  // OCD-436: used by the Create Employee form to flag a duplicate email
+  // inline on Step 1, before the user has filled in the rest of the wizard.
+  // Must stay ahead of the ':employeeUserId' route below so
+  // "email-availability" isn't swallowed by that dynamic segment.
+  @Get('email-availability')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
+  async checkEmail(@Query('email') email: string) {
+    const result = await this.usersService.checkEmailAvailability(email);
+    return { success: true, ...result };
+  }
+
+  // OCD-444: same "flag it as soon as the user leaves the field" pattern as
+  // email-availability above, for the NIC Number (StepStatutory.tsx) and Bank
+  // A/C Number (StepRemittance.tsx) fields shared by the Create Employee and
+  // self-service Profile wizards. Left open to any authenticated employee
+  // (rather than gated to HR/Finance like email-availability) since the
+  // profile wizard is used by every role while editing their own NIC/bank
+  // details; `excludeEmployeeId` is what lets that self-edit path check
+  // against everyone else without flagging the employee's own current value.
+  @Get('nic-availability')
+  async checkNic(@Query('nationalId') nationalId: string, @Query('excludeEmployeeId') excludeEmployeeId?: string) {
+    const result = await this.usersService.checkNicAvailability(nationalId, excludeEmployeeId);
+    return { success: true, ...result };
+  }
+
+  @Get('bank-account-availability')
+  async checkBankAccount(
+    @Query('accountNumber') accountNumber: string,
+    @Query('excludeEmployeeId') excludeEmployeeId?: string
+  ) {
+    const result = await this.usersService.checkBankAccountAvailability(accountNumber, excludeEmployeeId);
+    return { success: true, ...result };
+  }
+
+  // OCD-454: "My Profile" camera-icon upload, keyed by :userId so it matches
+  // the rest of this controller's resource-style routes. Not self-only at
+  // the routing level - usersService.updateProfilePicture enforces that
+  // SELF_ONLY_ROLES can only target their own userId (from the JWT), same as
+  // getById/update above.
+  @Post(':userId/profile-pictures')
+  @HttpCode(200)
+  @UseInterceptors(FileInterceptor(PROFILE_PICTURE_FIELD, profilePictureMulterOptions))
+  async uploadProfilePicture(
+    @Param('userId', ParseIntPipe) userId: number,
+    @CurrentEmployee() employee: JwtPayload,
+    @UploadedFile() file: Express.Multer.File | undefined,
+  ) {
+    if (!file) throw new BadRequestException('No image file was provided');
+    const user = await this.usersService.updateProfilePicture(userId, file, employee);
+    return { success: true, message: 'Profile picture updated', user };
   }
 
   @Get(':employeeUserId')
@@ -53,8 +127,8 @@ export class UsersController {
   }
 
   @Post(':id/keycloak-accounts')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
   async provisionKeycloak(@Param('id', ParseIntPipe) id: number) {
     const result = await this.usersService.provisionKeycloak(id);
     if (result.alreadyProvisioned) {
@@ -88,9 +162,11 @@ export class UsersController {
     return { success: true, message: `Role updated from '${result.previous_role}' to '${result.new_role}'`, user: result };
   }
 
+  // OCD-490: Account Status changes are restricted to Administrator
+  // (super_admin) only.
   @Patch(':id/statuses')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @Roles(UserRole.SUPER_ADMIN)
   async updateStatus(
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateUserStatusDto,
@@ -101,8 +177,8 @@ export class UsersController {
   }
 
   @Post(':id/password-resets')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.USERS, 'write')
   async resetPassword(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {
     const result = await this.usersService.resetPassword(id, employee);
     const message = result.emailSent

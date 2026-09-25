@@ -12,10 +12,11 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { ConsultantSubmissionStatus, JwtPayload, UserRole } from '../../types';
+import { ConsultantSubmissionStatus, JwtPayload } from '../../types';
 import { ConsultantSubmissionsService } from './consultant-submissions.service';
 import { CreateConsultantSubmissionDto } from './dto/create-consultant-submission.dto';
 import { ResubmitConsultantSubmissionDto } from './dto/resubmit-consultant-submission.dto';
@@ -51,8 +52,8 @@ export class ConsultantSubmissionsController {
   }
 
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.CONSULTANT_SUBMISSIONS, 'write')
   decideSubmission(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,

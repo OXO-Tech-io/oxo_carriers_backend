@@ -1,7 +1,17 @@
 import pool from '../../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types';
-import { calculateProRatedAnnualLeave } from '../../utils/leaveCalculation';
+import { calculateProRatedAnnualLeave, calculateAccruedCasualLeave } from '../../utils/leaveCalculation';
 import { EmployeeModel } from '../../employees/Employee';
+
+function isAnnualLeaveType(name: string): boolean {
+  const n = name.toLowerCase();
+  return n === 'annual' || n === 'annual/paid leave' || n === 'annual leave';
+}
+
+function isCasualLeaveType(name: string): boolean {
+  const n = name.toLowerCase();
+  return n === 'casual' || n === 'casual leave';
+}
 
 /** first_name/last_name/email are encrypted on tbl_employee - the join can
  * still filter/select non-PII columns (e.g. department), but must not select
@@ -292,6 +302,26 @@ export class LeaveModel {
     );
   }
 
+  /** Annual Leave (joined-year rule) and Casual Leave (monthly accrual) both
+   * grow/shrink based on hire date and the current date rather than being a
+   * flat per-year constant, so unlike other leave types their entitlement
+   * can't just be snapshotted once when the balance row is first created -
+   * it has to be recomputed against "now" on every read and kept in sync. */
+  private static computeEntitlement(
+    leaveTypeName: string,
+    maxDays: number,
+    hireDate: Date,
+    year: number
+  ): number | null {
+    if (isAnnualLeaveType(leaveTypeName)) {
+      return calculateProRatedAnnualLeave(hireDate, year);
+    }
+    if (isCasualLeaveType(leaveTypeName)) {
+      return calculateAccruedCasualLeave(hireDate, year, maxDays);
+    }
+    return null;
+  }
+
   static async getLeaveBalance(employeeId: string, year?: number): Promise<LeaveBalance[]> {
     const currentYear = year || new Date().getFullYear();
 
@@ -307,26 +337,34 @@ export class LeaveModel {
       const user = userRes.rows[0];
       const hireDate = user?.hire_date ? new Date(user.hire_date) : new Date();
 
-      // For each active leave type, ensure the user has a balance record
+      // For each active leave type, ensure the user has a balance record with
+      // an up-to-date entitlement for accrual-based types (Annual/Casual).
       for (const type of activeLeaveTypes) {
+        const entitlement = this.computeEntitlement(type.name, type.max_days, hireDate, currentYear);
+
         const balanceCheck = await pool.query(
-          'SELECT 1 FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+          'SELECT total_days, used_days FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
           [employeeId, type.id, currentYear]
         );
         if (balanceCheck.rows.length === 0) {
-          let totalDays = type.max_days;
-          if (
-            type.name.toLowerCase() === 'annual' ||
-            type.name.toLowerCase() === 'annual/paid leave' ||
-            type.name.toLowerCase() === 'annual leave'
-          ) {
-            totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
-          }
+          const totalDays = entitlement !== null ? entitlement : type.max_days;
           await pool.query(
             `INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year)
              VALUES ($1, $2, $3, 0, $3, $4)`,
             [employeeId, type.id, totalDays, currentYear]
           );
+        } else if (entitlement !== null) {
+          const existing = balanceCheck.rows[0] as { total_days: string; used_days: string };
+          const storedTotal = parseFloat(existing.total_days);
+          if (Math.abs(storedTotal - entitlement) > 0.001) {
+            const usedDays = parseFloat(existing.used_days) || 0;
+            await pool.query(
+              `UPDATE tbl_employee_leave_balance
+               SET total_days = $1, remaining_days = $1 - $2
+               WHERE employee_id = $3 AND leave_type_id = $4 AND year = $5`,
+              [entitlement, usedDays, employeeId, type.id, currentYear]
+            );
+          }
         }
       }
     } catch (err) {
@@ -344,12 +382,33 @@ export class LeaveModel {
       [employeeId, currentYear]
     );
 
+    // Days tied up in requests that haven't been finally HR-approved yet -
+    // used_days (and therefore remaining_days) only reflects HR-approved
+    // requests, so without this a pending request doesn't reduce what still
+    // looks "available to request" until HR acts on it.
+    const pendingRes = await pool.query(
+      `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as pending_days
+       FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status IN ('pending', 'team_leader_approved')
+         AND EXTRACT(YEAR FROM start_date) = $2
+       GROUP BY leave_type_id`,
+      [employeeId, currentYear]
+    );
+    const pendingByType = new Map<number, number>();
+    for (const row of pendingRes.rows as any[]) {
+      pendingByType.set(row.leave_type_id, parseFloat(row.pending_days) || 0);
+    }
+
     // Transform the flat structure to nested structure
     const balances = (result.rows as any[]).map((row: any) => {
       // Use calculated remaining_days (always accurate)
       const remainingDays = row.calculated_remaining_days !== null && row.calculated_remaining_days !== undefined
         ? row.calculated_remaining_days
         : (row.total_days - row.used_days);
+      const remaining = parseFloat(remainingDays) || remainingDays;
+      const pendingDays = pendingByType.get(row.leave_type_id) || 0;
+      const availableDays = Math.max(0, remaining - pendingDays);
 
       return {
         id: row.id,
@@ -357,7 +416,9 @@ export class LeaveModel {
         leave_type_id: row.leave_type_id,
         total_days: parseFloat(row.total_days) || row.total_days,
         used_days: parseFloat(row.used_days) || row.used_days,
-        remaining_days: parseFloat(remainingDays) || remainingDays,
+        remaining_days: remaining,
+        pending_days: pendingDays,
+        available_days: availableDays,
         year: row.year,
         leave_type: {
           id: row.lt_id,
@@ -397,5 +458,27 @@ export class LeaveModel {
       [employeeIds, startDate, endDate]
     );
     return new Set((result.rows as Array<{ employee_id: string }>).map((r) => r.employee_id));
+  }
+
+  /** Of the requesting employee's own non-rejected/cancelled leave requests,
+   * which ones overlap [startDate, endDate] - used to block a new request
+   * for a date the employee already has a pending/approved request on. Only
+   * the half-day fields are needed by the caller's AM/PM compatibility check. */
+  static async findOverlappingRequestsForEmployee(
+    employeeId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<Array<{ is_half_day: boolean; half_day_period: 'morning' | 'evening' | null }>> {
+    const result = await pool.query(
+      `SELECT is_half_day, half_day_period FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND start_date <= $3 AND end_date >= $2`,
+      [employeeId, startDate, endDate]
+    );
+    return (result.rows as any[]).map((r) => ({
+      is_half_day: r.is_half_day === true || r.is_half_day === 1,
+      half_day_period: r.half_day_period || null,
+    }));
   }
 }

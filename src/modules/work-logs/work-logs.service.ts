@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { workLogService } from './workLog.service';
 import { SubmitWorkLogsDto } from './dto/submit-work-logs.dto';
+import { UpdateWorkLogDto } from './dto/update-work-log.dto';
 import { ListWorkLogsQueryDto } from './dto/list-work-logs-query.dto';
 import { UpdateWorkLogDeadlineDto } from './dto/update-work-log-deadline.dto';
 import { GetWorkLogDailyStatusQueryDto } from './dto/get-work-log-daily-status-query.dto';
@@ -10,6 +11,10 @@ import { isValidTimezone } from './work-log-deadline.service';
 export class WorkLogsService {
   submitEntries(employeeId: string, dto: SubmitWorkLogsDto) {
     return workLogService.submitEntries(employeeId, dto.entries);
+  }
+
+  updateEntry(employeeId: string, id: number, dto: UpdateWorkLogDto) {
+    return workLogService.updateEntry(employeeId, id, dto);
   }
 
   getDeadline(workDate?: string) {
@@ -39,7 +44,7 @@ export class WorkLogsService {
   }
 
   getDailyStatus(query: GetWorkLogDailyStatusQueryDto) {
-    return workLogService.getDailyStatus(query.date);
+    return workLogService.getDailyStatus(query);
   }
 
   generateSummaryReport(query: ListWorkLogsQueryDto) {

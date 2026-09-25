@@ -23,16 +23,21 @@ vi.mock("../../src/modules/facilities/FacilityBooking", () => ({
 vi.mock("../../src/employees/Employee", () => ({
   EmployeeModel: { findById: vi.fn() },
 }));
+vi.mock("../../src/middleware/permissions", () => ({
+  hasPermission: vi.fn(),
+}));
 
 import { FacilityModel } from "../../src/modules/facilities/Facility";
 import { FacilityBookingModel } from "../../src/modules/facilities/FacilityBooking";
 import { EmployeeModel } from "../../src/employees/Employee";
+import { hasPermission } from "../../src/middleware/permissions";
 import { FacilitiesService } from "../../src/modules/facilities/facilities.service";
 import { FacilitiesController } from "../../src/modules/facilities/facilities.controller";
 
 const fm = FacilityModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const fbm = FacilityBookingModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const hasPermissionMock = hasPermission as unknown as ReturnType<typeof vi.fn>;
 
 const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
@@ -189,6 +194,7 @@ describe("FacilitiesController", () => {
   let controller: FacilitiesController;
 
   beforeEach(() => {
+    vi.clearAllMocks();
     service = createServiceMock();
     controller = new FacilitiesController(service as any);
   });
@@ -208,8 +214,10 @@ describe("FacilitiesController", () => {
     expect(service.getMyBookings).toHaveBeenCalledWith(employee);
   });
 
-  it("getAllBookings routes to getAllBookings with numeric filters otherwise", () => {
-    controller.getAllBookings(employee, undefined, "5", "2", "confirmed", "2026-01-01", "2026-01-31");
+  it("getAllBookings routes to getAllBookings with numeric filters otherwise, when the caller has facilities read access", async () => {
+    hasPermissionMock.mockResolvedValue(true);
+    await controller.getAllBookings(employee, undefined, "5", "2", "confirmed", "2026-01-01", "2026-01-31");
+    expect(hasPermissionMock).toHaveBeenCalledWith("EMP1", "facilities", "read");
     expect(service.getAllBookings).toHaveBeenCalledWith({
       user_id: 5,
       facility_id: 2,
@@ -217,6 +225,19 @@ describe("FacilitiesController", () => {
       start_date: "2026-01-01",
       end_date: "2026-01-31",
     });
+  });
+
+  it("getAllBookings forbids the org-wide view without facilities read access", async () => {
+    hasPermissionMock.mockResolvedValue(false);
+    await expect(controller.getAllBookings(employee)).rejects.toThrow(ForbiddenException);
+    expect(service.getAllBookings).not.toHaveBeenCalled();
+  });
+
+  it("getAllBookings allows a super admin the org-wide view without a permission lookup", async () => {
+    service.getAllBookings.mockResolvedValue([]);
+    await controller.getAllBookings({ ...employee, role: UserRole.SUPER_ADMIN });
+    expect(hasPermissionMock).not.toHaveBeenCalled();
+    expect(service.getAllBookings).toHaveBeenCalled();
   });
 
   it("cancelBooking parses the id param", () => {

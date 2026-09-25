@@ -132,6 +132,11 @@ export interface LeaveBalance {
   total_days: number;
   used_days: number;
   remaining_days: number;
+  /** Days tied up in requests still pending/team-leader-approved (not yet
+   * deducted from remaining_days, which only reflects HR-approved days). */
+  pending_days: number;
+  /** remaining_days minus pending_days - what can still be requested. */
+  available_days: number;
   year: number;
   leave_type: LeaveType;
   created_at?: Date;
@@ -292,6 +297,13 @@ export enum MedicalClaimStatus {
   PENDING = "pending",
   APPROVED = "approved",
   REJECTED = "rejected",
+  CANCELLED = "cancelled",
+}
+
+export enum MedicalClaimPaymentStatus {
+  NOT_PAID = "not_paid",
+  PARTIALLY_PAID = "partially_paid",
+  PAID = "paid",
 }
 
 export interface MedicalInsuranceClaim {
@@ -307,6 +319,12 @@ export interface MedicalInsuranceClaim {
   reviewed_by?: number | null;
   reviewed_at?: Date | null;
   resubmission_of?: number | null;
+  payment_status: MedicalClaimPaymentStatus;
+  paid_amount?: number | null;
+  payment_date?: Date | null;
+  payment_reference?: string | null;
+  paid_by?: number | null;
+  paid_at?: Date | null;
   created_at: Date;
   updated_at: Date;
   user?: {

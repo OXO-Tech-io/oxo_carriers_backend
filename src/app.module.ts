@@ -34,6 +34,7 @@ import { FormsModule } from './modules/forms/forms.module';
 import { NoticesModule } from './modules/notices/notices.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { DocumentVaultModule } from './modules/document-vault/document-vault.module';
+import { ArchiveModule } from './modules/archive/archive.module';
 import { FilesModule } from './common/files/files.module';
 
 @Module({
@@ -73,6 +74,7 @@ import { FilesModule } from './common/files/files.module';
     NoticesModule,
     AttendanceModule,
     DocumentVaultModule,
+    ArchiveModule,
     FilesModule,
   ],
 })

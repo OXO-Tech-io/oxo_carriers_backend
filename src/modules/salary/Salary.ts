@@ -363,6 +363,19 @@ export class SalaryModel {
       log.warn({ err: error }, 'Column check/add warning');
     }
 
+    // Ensure the unique index the ON CONFLICT clause below targets exists
+    // (older databases were created without it, which makes Postgres reject
+    // the upsert with "no unique or exclusion constraint matching the ON
+    // CONFLICT specification").
+    try {
+      await pool.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS tbl_monthly_salaries_employee_month_unique
+        ON tbl_monthly_salaries (employee_id, month_year)
+      `);
+    } catch (error: any) {
+      log.warn({ err: error }, 'Unique index check/add warning');
+    }
+
     // Ensure values are numbers
     const localSalaryValue = Number(excelData.localSalary) || 0;
     const oxoInternationalSalaryValue = Number(excelData.oxoInternationalSalary) || 0;

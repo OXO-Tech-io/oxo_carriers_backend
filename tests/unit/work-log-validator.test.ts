@@ -11,28 +11,38 @@ describe("workLog.validator", () => {
       const result = workLogEntrySchema.safeParse({
         workDate: "2026-07-30",
         taskDescription: "Wrote unit tests",
-        hoursSpent: "8",
+        minutesSpent: "480",
       });
       expect(result.success).toBe(true);
-      if (result.success) expect(result.data.hoursSpent).toBe(8);
+      if (result.success) expect(result.data.minutesSpent).toBe(480);
     });
 
-    it("rejects hoursSpent above 24", () => {
+    it("rejects minutesSpent above 1440", () => {
       expect(
         workLogEntrySchema.safeParse({
           workDate: "2026-07-30",
           taskDescription: "Task",
-          hoursSpent: 25,
+          minutesSpent: 1441,
         }).success,
       ).toBe(false);
     });
 
-    it("rejects hoursSpent of 0 or negative", () => {
+    it("rejects minutesSpent of 0 or negative", () => {
       expect(
         workLogEntrySchema.safeParse({
           workDate: "2026-07-30",
           taskDescription: "Task",
-          hoursSpent: 0,
+          minutesSpent: 0,
+        }).success,
+      ).toBe(false);
+    });
+
+    it("rejects a non-integer minutesSpent", () => {
+      expect(
+        workLogEntrySchema.safeParse({
+          workDate: "2026-07-30",
+          taskDescription: "Task",
+          minutesSpent: 90.5,
         }).success,
       ).toBe(false);
     });
@@ -42,7 +52,7 @@ describe("workLog.validator", () => {
         workLogEntrySchema.safeParse({
           workDate: "2026-07-30",
           taskDescription: "",
-          hoursSpent: 4,
+          minutesSpent: 240,
         }).success,
       ).toBe(false);
     });
@@ -56,8 +66,8 @@ describe("workLog.validator", () => {
     it("accepts multiple valid entries", () => {
       const result = submitWorkLogsSchema.safeParse({
         entries: [
-          { workDate: "2026-07-30", taskDescription: "A", hoursSpent: 4 },
-          { workDate: "2026-07-31", taskDescription: "B", hoursSpent: 4 },
+          { workDate: "2026-07-30", taskDescription: "A", minutesSpent: 240 },
+          { workDate: "2026-07-31", taskDescription: "B", minutesSpent: 240 },
         ],
       });
       expect(result.success).toBe(true);

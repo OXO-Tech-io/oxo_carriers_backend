@@ -20,6 +20,17 @@ export const workHistoryAfterSchema = z
   .refine(data => !data.endDate || data.endDate >= data.startDate, {
     message: 'End date must be on or after start date',
     path: ['endDate'],
+  })
+  // OCD-418: mirrors the frontend's Start/End Date validation (StepWorkHistory.tsx)
+  // server-side, since the same "after" shape is also reused by
+  // employeeProfileCreation.validator.ts for the whole Create Employee submission.
+  .refine(data => data.startDate <= new Date().toISOString().slice(0, 10), {
+    message: 'Start date cannot be a future date',
+    path: ['startDate'],
+  })
+  .refine(data => !data.endDate || data.endDate <= new Date().toISOString().slice(0, 10), {
+    message: 'End date cannot be a future date',
+    path: ['endDate'],
   });
 export type WorkHistoryAfterInput = z.infer<typeof workHistoryAfterSchema>;
 

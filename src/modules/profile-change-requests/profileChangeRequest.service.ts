@@ -10,6 +10,7 @@ import {
   type ProfileChangeRequest as DrizzleProfileChangeRequest,
 } from '../../db/schema';
 import { ProfileChangeRequestModel } from './ProfileChangeRequest';
+import { AttachmentModel, type AttachmentFileInput } from '../../common/models/Attachment';
 import { EmployeePiiModel } from '../../employees/EmployeePii';
 import { EmployeeNomineeModel } from '../employee-nominees/EmployeeNominee';
 import { EmployeeDependentModel } from '../employee-dependents/EmployeeDependent';
@@ -30,8 +31,12 @@ import type {
   SubmitProfileChangeRequestInput,
 } from '../../validators/profileChangeRequest.validator';
 
-const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.SUPER_ADMIN];
-const MAX_NOMINEES = 2;
+// OCD-473: Profile Approvals (listing every employee's requests, viewing any
+// request, and deciding on it) is restricted to Administrator/HR Manager -
+// HR Executive is deliberately excluded so they can only see/act on their
+// own submitted requests via listMyRequests/submitChangeRequest, same as a
+// regular employee.
+const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.SUPER_ADMIN];
 
 const PII_FIELD_LABELS: Record<string, string> = {
   address: 'Permanent Address',
@@ -74,6 +79,8 @@ const USER_FIELD_LABELS: Record<string, string> = {
   electorate: 'Electorate',
   postalCode: 'Postal Code',
   linkedinProfile: 'LinkedIn Profile',
+  primarySchool: 'Primary School Attended',
+  secondarySchool: 'Secondary School Attended',
 };
 
 const WELFARE_FIELD_LABELS: Record<string, string> = {
@@ -82,6 +89,21 @@ const WELFARE_FIELD_LABELS: Record<string, string> = {
   community_activities: 'Community Activities',
   professional_memberships: 'Professional Memberships',
 };
+
+// OCD-478: entityType used to attach supporting documents (uploaded on the
+// final step of the self-service Edit Profile wizard) to a profile change
+// request, via the same generic tbl_attachments table employee-notes and
+// document-vault already use.
+const PROFILE_CHANGE_REQUEST_ATTACHMENT_ENTITY = 'profile_change_request';
+
+async function attachDocuments<T extends { id: number }>(requests: T[]): Promise<(T & { attachments: unknown[] })[]> {
+  if (!requests.length) return requests.map((r) => ({ ...r, attachments: [] }));
+  const attachments = await AttachmentModel.findByEntityMany(
+    PROFILE_CHANGE_REQUEST_ATTACHMENT_ENTITY,
+    requests.map((r) => r.id)
+  );
+  return requests.map((r) => ({ ...r, attachments: attachments.filter((a) => a.entityId === r.id) }));
+}
 
 const summarizeChanges = (changes: ProfileChangeItem[]): string[] =>
   changes.map(item => {
@@ -265,7 +287,8 @@ export const profileChangeRequestService = {
   async submitChangeRequest(
     userId: number,
     employeeId: string,
-    input: SubmitProfileChangeRequestInput
+    input: SubmitProfileChangeRequestInput,
+    files: AttachmentFileInput[] = []
   ): Promise<DrizzleProfileChangeRequest> {
     let previousRequestId: number | undefined;
     if (input.previousRequestId) {
@@ -286,6 +309,13 @@ export const profileChangeRequestService = {
       comments: input.comments ?? null,
       previousRequestId,
     });
+
+    // OCD-478: supporting documents (NIC copy, address proof, etc.) uploaded
+    // alongside the optional Reason for Change (input.comments, stored on
+    // the request row itself above).
+    if (files.length) {
+      await AttachmentModel.createMany(PROFILE_CHANGE_REQUEST_ATTACHMENT_ENTITY, created.id, files, userId);
+    }
 
     await db.insert(auditLogs).values({
       userId,
@@ -321,14 +351,16 @@ export const profileChangeRequestService = {
     if (!employeeId) {
       throw new BadRequestError('Your account has no employee ID assigned yet');
     }
-    return ProfileChangeRequestModel.listByEmployeeId(employeeId, { status: query.status });
+    const requests = await ProfileChangeRequestModel.listByEmployeeId(employeeId, { status: query.status });
+    return attachDocuments(requests);
   },
 
   async listAllRequests(actorRole: UserRole, query: ListProfileChangeRequestsQuery) {
     if (!HR_ROLES.includes(actorRole)) {
       throw new ForbiddenError('Only HR can view all profile change requests');
     }
-    return ProfileChangeRequestModel.listAll({ status: query.status });
+    const requests = await ProfileChangeRequestModel.listAll({ status: query.status });
+    return attachDocuments(requests);
   },
 
   // Branches like leaveService.listLeaveRequests: HR/super_admin see every
@@ -346,7 +378,8 @@ export const profileChangeRequestService = {
     if (!HR_ROLES.includes(actorRole) && request.employeeId !== actorEmployeeId) {
       throw new ForbiddenError();
     }
-    return request;
+    const [withDocuments] = await attachDocuments([request]);
+    return withDocuments;
   },
 
   async decide(
@@ -384,18 +417,10 @@ export const profileChangeRequestService = {
           effectiveMaritalStatus = maritalStatusChange.after as 'married' | 'single' | null;
         }
 
-        // Nominees are capped at 2 per employee (service-level, not DB-level).
-        const nomineeCreates = changes.filter(c => c.entityType === 'nominee' && c.operation === 'create').length;
-        const nomineeDeletes = changes.filter(c => c.entityType === 'nominee' && c.operation === 'delete').length;
-        if (nomineeCreates > 0) {
-          if (!employeeRow.employeeId) {
-            throw new BadRequestError('Employee has no employeeId; cannot manage nominees');
-          }
-          const existingNomineeCount = await EmployeeNomineeModel.countByEmployeeId(employeeRow.employeeId, tx);
-          if (existingNomineeCount + nomineeCreates - nomineeDeletes > MAX_NOMINEES) {
-            throw new BadRequestError(`An employee can have at most ${MAX_NOMINEES} nominees`);
-          }
-        }
+        // OCD-472: the old 2-nominee cap is removed - employees may register
+        // any number of nominees, subject only to the per-row/cumulative
+        // proportion validation already enforced by nomineeValueSchema
+        // (OCD-428) on each change item's `after` value.
 
         for (const item of changes) {
           if (item.entityType === 'user_field') {

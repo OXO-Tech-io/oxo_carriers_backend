@@ -1,10 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { FilesInterceptor } from '@nestjs/platform-express';
 import { profileChangeRequestService } from './profileChangeRequest.service';
+import { DOCUMENTS_FIELD, DOCUMENTS_MAX_COUNT, profileChangeDocumentsMulterOptions } from './profile-change-requests.upload';
 import { EmployeeModel } from '../../employees/Employee';
 import { UserRole, JwtPayload } from '../../types';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import {
   decideProfileChangeRequestSchema,
   listProfileChangeRequestsQuerySchema,
@@ -33,13 +36,26 @@ import { logger } from '../../lib/logger';
  */
 @Controller('profile-change-requests')
 export class ProfileChangeRequestsController {
+  // OCD-478: FilesInterceptor only kicks in for multipart/form-data requests
+  // (i.e. once the caller actually attaches a document) - a plain JSON
+  // submission with no files passes straight through untouched.
   @Post()
-  async submit(@Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
+  @UseInterceptors(FilesInterceptor(DOCUMENTS_FIELD, DOCUMENTS_MAX_COUNT, profileChangeDocumentsMulterOptions))
+  async submit(
+    @Body() body: unknown,
+    @CurrentEmployee() employee: JwtPayload,
+    @UploadedFiles() files: Express.Multer.File[] | undefined,
+  ) {
     if (!employee.employeeId) {
       throw new BadRequestException('Your account has no employee ID assigned yet');
     }
     const input = submitProfileChangeRequestSchema.parse(body);
-    const request = await profileChangeRequestService.submitChangeRequest(employee.userId, employee.employeeId, input);
+    const request = await profileChangeRequestService.submitChangeRequest(
+      employee.userId,
+      employee.employeeId,
+      input,
+      files ?? [],
+    );
 
     this.notifySubmitted(employee.userId, request, input.changes as ProfileChangeItem[]).catch((emailErr: any) => {
       logger.error({ err: emailErr }, 'Failed to send profile change submitted email');
@@ -65,9 +81,12 @@ export class ProfileChangeRequestsController {
   // A single noun-based endpoint for all decision outcomes (approved /
   // rejected / returned_for_modification), selected via `decision` in the
   // body rather than separate verb-named routes.
+  // OCD-473: Profile Approvals (approve/reject/return) is restricted to
+  // Administrator (super_admin, bypasses RolesGuard) and HR Manager only -
+  // HR Executive no longer qualifies.
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.PROFILE_CHANGE_REQUESTS, 'write')
   decision(@Param() params: unknown, @Body() body: unknown, @CurrentEmployee() employee: JwtPayload) {
     return this.decideAndNotify(params, body, employee);
   }

@@ -17,6 +17,10 @@ import { FilesInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
+import { hasPermission } from '../../middleware/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { JwtPayload, UserRole } from '../../types';
 import { CommunicationsService } from './communications.service';
@@ -46,17 +50,19 @@ export class CommunicationsController {
   // unless they're HR/super_admin, matching the access /mine used to give.
   @Get()
   async list(@Query('employee_id') employeeId: string | undefined, @CurrentEmployee() employee: JwtPayload) {
-    const isHr = employee.role === UserRole.HR_MANAGER || employee.role === UserRole.HR_EXECUTIVE || employee.role === UserRole.SUPER_ADMIN;
+    const canManage =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.COMMUNICATIONS, 'write')));
 
     if (employeeId) {
-      if (employeeId !== employee.employeeId && !isHr) {
+      if (employeeId !== employee.employeeId && !canManage) {
         throw new ForbiddenException('You can only view your own communications');
       }
       const communications = await this.communicationsService.listMine(employeeId);
       return { success: true, message: 'Communications fetched', data: communications };
     }
 
-    if (!isHr) {
+    if (!canManage) {
       throw new ForbiddenException('Forbidden: Insufficient permissions');
     }
     const communications = await this.communicationsService.listAll();
@@ -64,8 +70,8 @@ export class CommunicationsController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.COMMUNICATIONS, 'write')
   @UseInterceptors(FilesInterceptor(ATTACHMENTS_FIELD, MAX_ATTACHMENTS, communicationAttachmentsMulterOptions))
   async create(
     @CurrentEmployee() employee: JwtPayload,

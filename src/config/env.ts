@@ -122,6 +122,9 @@ const Schema = z.object({
   /** Comma-separated multer field names routed to uploads/documents instead of uploads/others (communications attachments). */
   COMMUNICATIONS_DOCUMENT_FIELDS: z.string().min(1),
 
+  // ─── Medical Insurance ──────────────────────────────────────────────────
+  /** OCD-489: months of service an employee must complete before they're eligible to submit a claim. */
+  MEDICAL_INSURANCE_MIN_SERVICE_MONTHS: z.coerce.number().int().nonnegative().optional().default(6),
   // ─── Storage (Google Cloud Storage) ────────────────────────────────────
   /** Private GCS bucket for HR/payroll documents (e.g. salary slip PDFs). When unset, such documents are generated on demand and never persisted to disk or a bucket. */
   GCS_BUCKET_NAME: optionalString,

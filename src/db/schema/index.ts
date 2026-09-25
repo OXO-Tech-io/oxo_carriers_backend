@@ -29,3 +29,4 @@ export * from '../../modules/groups/groups.schema';
 export * from '../../modules/notices/notices.schema';
 export * from '../../modules/attendance/attendance.schema';
 export * from '../../modules/document-vault/documents.schema';
+export * from '../../modules/archive/employeeArchive.schema';

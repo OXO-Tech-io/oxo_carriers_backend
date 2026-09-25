@@ -244,6 +244,10 @@ export const keycloakAdminService = {
   },
 
   async updatePassword(userId: string, password: string, temporary = false): Promise<void> {
+    // OCD-447: the password policy (length, character classes, blacklist,
+    // etc.) is enforced by the Keycloak realm's Password Policy, not here.
+    // Keycloak rejects a non-compliant password with a 400, which we
+    // surface as-is instead of masking it as a 502.
     const res = await adminFetch(`/users/${userId}/reset-password`, {
       method: 'PUT',
       body: JSON.stringify({
@@ -254,7 +258,10 @@ export const keycloakAdminService = {
     });
     if (!res.ok) {
       const text = await res.text();
-      throw new AppError(`Keycloak update password failed (${res.status}): ${text}`, 502);
+      throw new AppError(
+        `Keycloak update password failed (${res.status}): ${text}`,
+        res.status === 400 ? 400 : 502
+      );
     }
   },
 

@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -14,7 +15,8 @@ import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { PERMISSIONS } from '../../common/constants/permissions';
-import { BookingStatus, FacilityType, JwtPayload } from '../../types';
+import { hasPermission } from '../../middleware/permissions';
+import { BookingStatus, FacilityType, JwtPayload, UserRole } from '../../types';
 import { FacilitiesService } from './facilities.service';
 import { CreateFacilityDto } from './dto/create-facility.dto';
 import { UpdateFacilityDto } from './dto/update-facility.dto';
@@ -76,11 +78,14 @@ export class FacilitiesController {
   }
 
   /**
-   * GET /facilities/bookings?facility_id=1&status=confirmed
-   * GET /facilities/bookings?mine=true - the caller's own bookings.
+   * GET /facilities/bookings?facility_id=1&status=confirmed - every
+   * employee's bookings org-wide (gated on `facilities` read, matching the
+   * "Booking Calendar" admin page's sidebar entry).
+   * GET /facilities/bookings?mine=true - the caller's own bookings, open to
+   * any authenticated employee.
    */
   @Get('bookings')
-  getAllBookings(
+  async getAllBookings(
     @CurrentEmployee() employee: JwtPayload,
     @Query('mine') mine?: string,
     @Query('user_id') userId?: string,
@@ -92,6 +97,14 @@ export class FacilitiesController {
     if (mine === 'true') {
       return this.facilitiesService.getMyBookings(employee);
     }
+
+    const canViewAll =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.FACILITIES, 'read')));
+    if (!canViewAll) {
+      throw new ForbiddenException('Forbidden: Insufficient permissions');
+    }
+
     return this.facilitiesService.getAllBookings({
       user_id: userId ? Number(userId) : undefined,
       facility_id: facilityId ? Number(facilityId) : undefined,

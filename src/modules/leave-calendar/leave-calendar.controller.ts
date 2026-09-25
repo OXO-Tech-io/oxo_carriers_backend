@@ -10,10 +10,11 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, UserRole } from '../../types';
+import { JwtPayload } from '../../types';
 import { LeaveCalendarService } from './leave-calendar.service';
 import { CreateLeaveCalendarEntryDto } from './dto/create-leave-calendar-entry.dto';
 import { UpdateLeaveCalendarEntryDto } from './dto/update-leave-calendar-entry.dto';
@@ -49,15 +50,15 @@ export class LeaveCalendarController {
   }
 
   @Post()
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.LEAVES, 'write')
   createCalendarEntry(@CurrentEmployee() employee: JwtPayload, @Body() dto: CreateLeaveCalendarEntryDto) {
     return this.leaveCalendarService.createCalendarEntry(employee.userId, dto);
   }
 
   @Put(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.LEAVES, 'write')
   updateCalendarEntry(@Param('id') idParam: string, @Body() dto: UpdateLeaveCalendarEntryDto) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid calendar entry id');
@@ -65,8 +66,8 @@ export class LeaveCalendarController {
   }
 
   @Delete(':id')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.LEAVES, 'write')
   deleteCalendarEntry(@Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid calendar entry id');

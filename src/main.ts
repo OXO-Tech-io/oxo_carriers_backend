@@ -6,6 +6,8 @@ import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
 import { pool } from './config/database';
 import { calculateProRatedAnnualLeave } from './utils/leaveCalculation';
+import { getAllRoleDefaultPermissions } from './modules/permissions/rolePermissions.model';
+import { PermissionAssignment } from './common/constants/permissions';
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -17,6 +19,7 @@ import { randomUUID } from 'crypto';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { allowedOrigins, isOriginAllowed } from './config/corsOrigins';
+import { MedicalInsuranceModel } from './modules/medical-insurance/MedicalInsurance';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -130,6 +133,35 @@ async function bootstrap() {
     }),
   );
 
+  // Serve uploaded files
+  app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
+
+  // OCD-493: Cloud Run's local disk is ephemeral - a file multer wrote to
+  // uploads/ on one instance is gone once that instance recycles (scale to
+  // zero, a redeploy, or the request simply landing on a different
+  // instance), which is what caused "Cannot GET /uploads/documents/..." for
+  // claim documents submitted on previous days. express.static calls
+  // next() on a miss, so this runs only when the on-disk copy is gone, and
+  // serves the durable Postgres copy saved at upload time instead (see
+  // MedicalInsuranceModel.persistDocumentBlob/getDocumentBlob).
+  const serveMedicalClaimDocumentFallback = async (
+    req: import('express').Request,
+    res: import('express').Response,
+    next: import('express').NextFunction,
+  ) => {
+    try {
+      const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
+      const blob = filename ? await MedicalInsuranceModel.getDocumentBlob(filename) : null;
+      if (!blob) return next();
+      res.setHeader('Content-Type', blob.mimeType);
+      res.send(blob.data);
+    } catch (error) {
+      next(error);
+    }
+  };
+  app.use('/uploads/documents/:filename', serveMedicalClaimDocumentFallback);
+  app.use('/uploads/others/:filename', serveMedicalClaimDocumentFallback);
+
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(
     new ValidationPipe({
@@ -242,157 +274,118 @@ async function bootstrap() {
       logger.error({ err: balanceError }, 'Failed to check/initialize employee leave balances on startup');
     }
 
-    // 3. Assign default permissions to existing employee accounts if they don't already have them
+    // 3. Assign default role permissions to existing employee accounts if
+    // they don't already have them (OCD-445 / OCD-457). Every role with a
+    // configured default in tbl_role_permissions (admin-editable via the
+    // "Role Defaults" screen / PUT /permissions/roles/:role) is backfilled
+    // here on every boot, not just EMPLOYEE - this used to be the only role
+    // handled, which is why HR/Finance/Consultant accounts saw an
+    // empty/partial side nav. Missing rows are inserted; rows that already
+    // exist at 'read' are upgraded to 'write' when the role's default calls
+    // for 'write'. Existing grants are never downgraded/removed here (an
+    // admin may have hand-tuned them via the Permissions UI) - the one
+    // exception (HR Executive losing profile_change_requests) is handled
+    // explicitly in step 4 below.
     try {
-      logger.info('Checking default permissions for existing employees...');
+      logger.info('Checking default role permissions for existing employees...');
+      const roleDefaultsByRole = await getAllRoleDefaultPermissions();
+      const roleEntries = Object.entries(roleDefaultsByRole) as [string, PermissionAssignment[]][];
+      const rolesWithDefaults = roleEntries.map(([role]) => role);
+
       // tbl_user_permissions is keyed by the business employee_id (varchar),
-      // not the numeric tbl_employee.id.
+      // not the numeric tbl_employee.id. `role` is a Postgres enum column, so
+      // it's cast to text before comparing against the plain string array
+      // parameter (enum = ANY(text[]) has no operator).
       const employeesRes = await pool.query(
-        "SELECT employee_id FROM tbl_employee WHERE role = 'employee' AND employee_id IS NOT NULL",
+        'SELECT employee_id, role::text AS role FROM tbl_employee WHERE role::text = ANY($1) AND employee_id IS NOT NULL',
+        [rolesWithDefaults],
       );
-      const employeeIds = (employeesRes.rows || []).map((row: any) => row.employee_id);
-      const defaultPermissions = [
-        'dashboard',
-        'leaves',
-        'salaries',
-        'facilities',
-        'medical_claims',
-        'reports',
-        'work_logs',
-        'communications',
-        'forms',
-        'document_vault',
-      ];
+      const employeeIdsByRole = new Map<string, string[]>();
+      const allEmployeeIds: string[] = [];
+      for (const row of employeesRes.rows as any[]) {
+        allEmployeeIds.push(row.employee_id);
+        const list = employeeIdsByRole.get(row.role) ?? [];
+        list.push(row.employee_id);
+        employeeIdsByRole.set(row.role, list);
+      }
 
-      // One round trip for every existing (employee, permission) pair, instead
-      // of one SELECT per employee-x-permission combination below.
+      // One round trip for every existing (employee, permission) pair,
+      // instead of one SELECT per employee-x-permission combination below.
       const existingRes = await pool.query(
-        'SELECT employee_id, permission_key FROM tbl_user_permissions WHERE employee_id = ANY($1)',
-        [employeeIds],
-      );
-      const existing = new Set((existingRes.rows || []).map((r: any) => `${r.employee_id}:${r.permission_key}`));
-
-      const missingEmployeeIds: string[] = [];
-      const missingKeys: string[] = [];
-      for (const empId of employeeIds) {
-        for (const permission of defaultPermissions) {
-          if (existing.has(`${empId}:${permission}`)) continue;
-          missingEmployeeIds.push(empId);
-          missingKeys.push(permission);
-        }
-      }
-
-      // Single bulk insert regardless of how many rows are missing.
-      await pool.query(
-        `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
-         SELECT e, k, 'read'::access_level
-         FROM unnest($1::varchar[], $2::varchar[]) AS x(e, k)`,
-        [missingEmployeeIds, missingKeys],
-      );
-
-      if (missingEmployeeIds.length > 0) {
-        logger.info(`Assigned ${missingEmployeeIds.length} missing default permissions to employees in Postgres.`);
-      } else {
-        logger.info('All employee permissions are up to date in Postgres.');
-      }
-    } catch (syncError: any) {
-      logger.error({ err: syncError }, 'Failed to check/assign default employee permissions on startup');
-    }
-
-    // 4. Grant HR managers/executives write access to Profile Change Requests
-    try {
-      logger.info('Checking profile_change_requests permission for HR users...');
-      const hrRes = await pool.query(
-        "SELECT employee_id FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive') AND employee_id IS NOT NULL",
-      );
-      const hrIds = (hrRes.rows || []).map((row: any) => row.employee_id);
-
-      // One round trip for every HR user's existing grant, instead of one
-      // SELECT per HR user below.
-      const existingRes = await pool.query(
-        "SELECT employee_id, access_level FROM tbl_user_permissions WHERE employee_id = ANY($1) AND permission_key = 'profile_change_requests'",
-        [hrIds],
-      );
-      const accessLevelByEmployee = new Map((existingRes.rows || []).map((r: any) => [r.employee_id, r.access_level]));
-
-      const toInsert = hrIds.filter((id: string) => !accessLevelByEmployee.has(id));
-      const toUpgrade = hrIds.filter((id: string) => accessLevelByEmployee.get(id) === 'read');
-
-      await pool.query(
-        `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
-         SELECT e, 'profile_change_requests', 'write'::access_level
-         FROM unnest($1::varchar[]) AS x(e)`,
-        [toInsert],
-      );
-      await pool.query(
-        "UPDATE tbl_user_permissions SET access_level = 'write' WHERE employee_id = ANY($1) AND permission_key = 'profile_change_requests'",
-        [toUpgrade],
-      );
-
-      const hrAssignedCount = toInsert.length + toUpgrade.length;
-      if (hrAssignedCount > 0) {
-        logger.info(`Granted/updated profile_change_requests (write) for ${hrAssignedCount} HR users.`);
-      } else {
-        logger.info('All HR users already have profile_change_requests (write).');
-      }
-    } catch (hrPermError: any) {
-      logger.error({ err: hrPermError }, 'Failed to check/assign HR profile_change_requests permission on startup');
-    }
-
-    // 5. Grant HR managers/executives write access to Communications, Events
-    // and Forms, and HR managers write access to Work Logs.
-    try {
-      logger.info('Checking HR modules permissions for HR users...');
-      const hrRes = await pool.query(
-        "SELECT employee_id, role FROM tbl_employee WHERE role IN ('hr_manager', 'hr_executive') AND employee_id IS NOT NULL",
-      );
-      const grants: { employeeId: string; key: string }[] = [];
-      for (const row of hrRes.rows as any[]) {
-        for (const key of ['communications', 'events', 'forms']) {
-          grants.push({ employeeId: row.employee_id, key });
-        }
-        if (row.role === 'hr_manager') {
-          grants.push({ employeeId: row.employee_id, key: 'work_logs' });
-        }
-      }
-      const hrIds = [...new Set(grants.map((g) => g.employeeId))];
-      const grantKeys = [...new Set(grants.map((g) => g.key))];
-
-      // One round trip for every existing grant among these HR users and
-      // module keys, instead of one SELECT per (employee, key) pair below.
-      const existingRes = await pool.query(
-        'SELECT employee_id, permission_key, access_level FROM tbl_user_permissions WHERE employee_id = ANY($1) AND permission_key = ANY($2)',
-        [hrIds, grantKeys],
+        'SELECT employee_id, permission_key, access_level FROM tbl_user_permissions WHERE employee_id = ANY($1)',
+        [allEmployeeIds],
       );
       const accessLevelByPair = new Map(
         (existingRes.rows || []).map((r: any) => [`${r.employee_id}:${r.permission_key}`, r.access_level]),
       );
 
-      const toInsert = grants.filter((g) => !accessLevelByPair.has(`${g.employeeId}:${g.key}`));
-      const toUpgrade = grants.filter((g) => accessLevelByPair.get(`${g.employeeId}:${g.key}`) === 'read');
+      const toInsertEmployeeIds: string[] = [];
+      const toInsertKeys: string[] = [];
+      const toInsertLevels: string[] = [];
+      const toUpgradeEmployeeIds: string[] = [];
+      const toUpgradeKeys: string[] = [];
 
+      for (const [role, grants] of roleEntries) {
+        for (const empId of employeeIdsByRole.get(role) ?? []) {
+          for (const grant of grants) {
+            const current = accessLevelByPair.get(`${empId}:${grant.key}`);
+            if (current === undefined) {
+              toInsertEmployeeIds.push(empId);
+              toInsertKeys.push(grant.key);
+              toInsertLevels.push(grant.accessLevel);
+            } else if (current === 'read' && grant.accessLevel === 'write') {
+              toUpgradeEmployeeIds.push(empId);
+              toUpgradeKeys.push(grant.key);
+            }
+          }
+        }
+      }
+
+      // Single bulk insert/update regardless of how many rows are missing.
       await pool.query(
         `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level)
-         SELECT e, k, 'write'::access_level
-         FROM unnest($1::varchar[], $2::varchar[]) AS x(e, k)`,
-        [toInsert.map((g) => g.employeeId), toInsert.map((g) => g.key)],
+         SELECT e, k, l::access_level
+         FROM unnest($1::varchar[], $2::varchar[], $3::varchar[]) AS x(e, k, l)`,
+        [toInsertEmployeeIds, toInsertKeys, toInsertLevels],
       );
       await pool.query(
         `UPDATE tbl_user_permissions t
          SET access_level = 'write'
          FROM unnest($1::varchar[], $2::varchar[]) AS g(employee_id, permission_key)
          WHERE t.employee_id = g.employee_id AND t.permission_key = g.permission_key`,
-        [toUpgrade.map((g) => g.employeeId), toUpgrade.map((g) => g.key)],
+        [toUpgradeEmployeeIds, toUpgradeKeys],
       );
 
-      const hrModuleGrantCount = toInsert.length + toUpgrade.length;
-      if (hrModuleGrantCount > 0) {
-        logger.info(`Granted/updated HR modules permissions for ${hrModuleGrantCount} assignments.`);
+      const grantCount = toInsertEmployeeIds.length + toUpgradeEmployeeIds.length;
+      if (grantCount > 0) {
+        logger.info(`Granted/updated ${grantCount} default role permission assignment(s).`);
       } else {
-        logger.info('All HR users already have HR modules permissions.');
+        logger.info('All employees already have their default role permissions.');
       }
-    } catch (hrModuleError: any) {
-      logger.error({ err: hrModuleError }, 'Failed to check/assign HR modules permissions on startup');
+    } catch (syncError: any) {
+      logger.error({ err: syncError }, 'Failed to check/assign default role permissions on startup');
+    }
+
+    // 4. OCD-473: Profile Approvals (profile_change_requests) is restricted
+    // to Administrator/HR Manager only. Earlier versions of this bootstrap
+    // (and step 3 above, before this fix) granted it to HR Executive too -
+    // revoke any leftover grant so already-provisioned HR Executive accounts
+    // lose both the Profile Approvals menu and decision capability, not just
+    // new accounts.
+    try {
+      logger.info('Revoking profile_change_requests from HR Executive users (OCD-473)...');
+      const result = await pool.query(
+        `DELETE FROM tbl_user_permissions
+         WHERE permission_key = 'profile_change_requests'
+           AND employee_id IN (
+             SELECT employee_id FROM tbl_employee WHERE role = 'hr_executive' AND employee_id IS NOT NULL
+           )`,
+      );
+      if (result.rowCount) {
+        logger.info(`Revoked profile_change_requests from ${result.rowCount} HR Executive user(s).`);
+      }
+    } catch (revokeError: any) {
+      logger.error({ err: revokeError }, 'Failed to revoke profile_change_requests from HR Executive users on startup');
     }
   } catch (error) {
     logger.error({ err: error, db: env.DB_NAME, schema: env.DB_SCHEMA }, 'Database connection check failed on startup');

@@ -12,14 +12,16 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileFieldsInterceptor } from '@nestjs/platform-express';
-import { RolesGuard } from '../../common/guards/roles.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { PermissionGuard } from '../../common/guards/permission.guard';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { PERMISSIONS } from '../../common/constants/permissions';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
-import { JwtPayload, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { JwtPayload, MedicalClaimStatus, MedicalClaimType } from '../../types';
 import { MedicalInsuranceService, MedicalDocumentFiles } from './medical-insurance.service';
 import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
 import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
 import { MEDICAL_DOCUMENT_FIELDS, medicalDocumentsMulterOptions } from './medical-insurance.upload';
 
 // Dual-mounted to match the old Express app.ts, which serves this router at
@@ -33,13 +35,19 @@ export class MedicalInsuranceController {
     return this.medicalInsuranceService.getLimits();
   }
 
+  @Get('opd-balance')
+  getOpdBalance(@CurrentEmployee() employee: JwtPayload, @Query('quarter') quarter?: string) {
+    return this.medicalInsuranceService.getOpdBalance(employee, quarter);
+  }
+
   @Get()
   getClaims(
     @CurrentEmployee() employee: JwtPayload,
     @Query('status') status?: MedicalClaimStatus,
     @Query('type') type?: MedicalClaimType,
+    @Query('mine') mine?: string,
   ) {
-    return this.medicalInsuranceService.getClaims(employee, status, type);
+    return this.medicalInsuranceService.getClaims(employee, status, type, mine === 'true');
   }
 
   @Get(':id')
@@ -60,8 +68,8 @@ export class MedicalInsuranceController {
   }
 
   @Put(':id/decisions')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.MEDICAL_CLAIMS, 'write')
   decideClaim(
     @CurrentEmployee() employee: JwtPayload,
     @Param('id') idParam: string,
@@ -70,6 +78,26 @@ export class MedicalInsuranceController {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid claim id');
     return this.medicalInsuranceService.decideClaim(employee, id, dto);
+  }
+
+  @Put(':id/payments')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.MEDICAL_CLAIMS, 'write')
+  recordPayment(
+    @CurrentEmployee() employee: JwtPayload,
+    @Param('id') idParam: string,
+    @Body() dto: RecordMedicalClaimPaymentDto,
+  ) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.recordPayment(employee, id, dto);
+  }
+
+  @Put(':id/cancel')
+  cancelClaim(@CurrentEmployee() employee: JwtPayload, @Param('id') idParam: string) {
+    const id = parseInt(idParam, 10);
+    if (isNaN(id)) throw new BadRequestException('Invalid claim id');
+    return this.medicalInsuranceService.cancelClaim(employee, id);
   }
 
   @Post(':id/resubmissions')

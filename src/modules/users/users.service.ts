@@ -13,6 +13,11 @@ import { env } from '../../config/env';
 import { sendWelcomeCredentialsEmail, sendPasswordResetCredentialsEmail } from '../../config/email';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import {
+  seedDefaultPermissionsForNewUser,
+  replaceUserPermissionsWithRoleDefaults,
+} from '../permissions/rolePermissions.model';
+import { ArchiveService } from '../archive/archive.service';
 
 const SELF_ONLY_ROLES = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 const VALID_ROLES: string[] = Object.values(UserRole);
@@ -25,6 +30,8 @@ const buildLoginUrl = (): string | undefined =>
 
 @Injectable()
 export class UsersService {
+  constructor(private readonly archiveService: ArchiveService) {}
+
   async getAll(search?: string) {
     const [kcUsers, employees] = await Promise.all([
       keycloakAdminService.listUsers({ search }),
@@ -50,6 +57,36 @@ export class UsersService {
         employee,
       };
     });
+  }
+
+  /**
+   * OCD-436: lets the Create Employee form flag a duplicate email as soon as
+   * the user leaves the Email field on Step 1, instead of only at final
+   * submission (UsersService.create's own findByEmail check above stays in
+   * place as a safety net, e.g. against a race with another HR user).
+   */
+  async checkEmailAvailability(email: string): Promise<{ exists: boolean }> {
+    if (!email) return { exists: false };
+    const existing = await EmployeeModel.findByEmail(email);
+    return { exists: !!existing };
+  }
+
+  // OCD-444: same on-blur pattern as checkEmailAvailability above, so the
+  // Create Employee / Employee Profile wizards (StepStatutory.tsx /
+  // StepRemittance.tsx) can flag a duplicate NIC or bank account number
+  // inline instead of only at final submission. `excludeEmployeeId` lets the
+  // self-service profile wizard check a value against everyone else without
+  // flagging the employee's own already-saved value.
+  async checkNicAvailability(nationalId: string, excludeEmployeeId?: string): Promise<{ exists: boolean }> {
+    if (!nationalId?.trim()) return { exists: false };
+    const existing = await EmployeePiiModel.findByNationalId(nationalId, excludeEmployeeId);
+    return { exists: !!existing };
+  }
+
+  async checkBankAccountAvailability(accountNumber: string, excludeEmployeeId?: string): Promise<{ exists: boolean }> {
+    if (!accountNumber?.trim()) return { exists: false };
+    const existing = await EmployeeModel.findByAccountNumber(accountNumber, excludeEmployeeId);
+    return { exists: !!existing };
   }
 
   async getById(userId: number, requester: JwtPayload) {
@@ -120,19 +157,42 @@ export class UsersService {
       }
     }
 
+    // OCD-444: reject duplicate NIC numbers and bank account details before
+    // the employee row (and its profile) are ever written - checked here,
+    // ahead of EmployeeModel.create below, rather than inside
+    // employeeProfileCreationService.applyToNewEmployee, which only runs
+    // after that row already exists and would need a compensating rollback.
+    if (profileInput?.statutory?.nationalId) {
+      const existingNic = await EmployeePiiModel.findByNationalId(profileInput.statutory.nationalId);
+      if (existingNic) {
+        throw new ConflictException('An employee profile with this NIC number already exists.');
+      }
+    }
+    if (dto.account_number) {
+      const existingAccount = await EmployeeModel.findByAccountNumber(dto.account_number);
+      if (existingAccount) {
+        throw new ConflictException('This bank account number is already associated with another employee profile.');
+      }
+    }
+
     const userRole = dto.role || UserRole.EMPLOYEE;
 
     const user = await EmployeeModel.create({
       employee_id: employeeId,
       email: dto.email,
+      personal_email: dto.personal_email || null,
       first_name: dto.first_name,
       last_name: dto.last_name,
+      title: dto.title || null,
       role: userRole,
       employee_category: dto.employee_category,
       department: dto.department,
       position: dto.position,
       work_location: dto.work_location || null,
       hire_date: dto.hire_date ? new Date(dto.hire_date) : undefined,
+      undergraduate_degree_completion_date: dto.undergraduate_degree_completion_date
+        ? new Date(dto.undergraduate_degree_completion_date)
+        : null,
       manager_id: dto.manager_id ? parseInt(String(dto.manager_id)) : undefined,
       hourly_rate: dto.role === UserRole.CONSULTANT && dto.hourly_rate != null ? parseFloat(String(dto.hourly_rate)) : null,
       bank_name: dto.bank_name || null,
@@ -174,25 +234,12 @@ export class UsersService {
       }
     }
 
-    if (userRole === UserRole.EMPLOYEE) {
-      const defaultPermissions = [
-        'dashboard',
-        'leaves',
-        'salaries',
-        'facilities',
-        'medical_claims',
-        'reports',
-        'work_logs',
-        'communications',
-        'forms',
-        'document_vault',
-      ];
-      for (const permission of defaultPermissions) {
-        await pool.query(
-          `INSERT INTO tbl_user_permissions (employee_id, permission_key, access_level) VALUES ($1, $2, $3)`,
-          [user.employeeId, permission, 'read'],
-        );
-      }
+    // OCD-445 / OCD-457: every role with a configured default (see the
+    // "Role Defaults" admin screen / tbl_role_permissions) gets its default
+    // tbl_user_permissions rows here so the sidebar/API access it's meant to
+    // have works immediately, not just for EMPLOYEE.
+    if (user.employeeId) {
+      await seedDefaultPermissionsForNewUser(user.employeeId, userRole);
     }
 
     // Auto-provision the Keycloak account so HR doesn't need a separate manual
@@ -233,17 +280,43 @@ export class UsersService {
     if (dto.position !== undefined) updates.position = dto.position;
     if (dto.manager_id !== undefined) updates.managerId = dto.manager_id ? parseInt(String(dto.manager_id)) : null;
 
+    // OCD-476: HR Manager, HR Executive and Super Admin get edit access to
+    // the organizational/employment fields (work location, employee type,
+    // hire date, account email) in addition to the fields above - gated
+    // explicitly so this doesn't also loosen what other roles (e.g. Finance,
+    // or an employee editing themselves) can set via this same endpoint.
+    const canEditOrgFields =
+      isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    if (canEditOrgFields) {
+      if (dto.work_location !== undefined) updates.workLocation = dto.work_location;
+      if (dto.employee_category !== undefined) updates.employeeCategory = dto.employee_category;
+      if (dto.hire_date !== undefined) updates.hireDate = dto.hire_date ? new Date(dto.hire_date) : null;
+      if (dto.email !== undefined) updates.email = dto.email;
+    }
+
     const canUpdateRole =
       isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    let roleChanged = false;
     if (canUpdateRole && dto.role) {
       if (dto.role === UserRole.SUPER_ADMIN && !isSuperAdmin(requester)) {
         throw new ForbiddenException('Only a Super Admin can promote a user to Super Admin.');
       }
+      const existingUser = await EmployeeModel.findById(userId);
+      roleChanged = !!existingUser && existingUser.role !== dto.role;
       updates.role = dto.role;
     }
 
     const user = await EmployeeModel.update(userId, updates);
     if (!user) throw new NotFoundException('User not found');
+
+    // A role change replaces the user's permissions with exactly the new
+    // role's current defaults (see replaceUserPermissionsWithRoleDefaults) -
+    // access always matches the role being moved to, not a mix of old and
+    // new grants.
+    if (roleChanged && user.employeeId) {
+      await replaceUserPermissionsWithRoleDefaults(user.employeeId, updates.role);
+    }
+
     return user;
   }
 
@@ -253,6 +326,14 @@ export class UsersService {
    * (deactivated instead) so everything keyed off its employeeId - leave,
    * salary, medical claims, attendance, facility bookings, permissions, etc.,
    * most of which cascade-delete on the employee row via FK - stays intact.
+   *
+   * OCD-453: before any of that happens, a full-profile snapshot (employee +
+   * PII + nominees/dependents/emergency contacts/welfare/education/work
+   * history, as they exist right now) is written to the Archive along with
+   * the deletion timestamp and who performed it, so the data that's about to
+   * be hard-deleted (the PII row) or become unreachable (everything else,
+   * once this employee drops out of EmployeeModel.getAll()) stays available
+   * to Administrators/HR Manager via GET /archives.
    */
   async delete(userId: number, requester: JwtPayload) {
     const canDelete = isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER;
@@ -264,8 +345,11 @@ export class UsersService {
     }
 
     const user = await EmployeeModel.findById(userId);
+    if (!user) throw new NotFoundException('User not found');
 
-    if (user?.keycloakSub) {
+    await this.archiveService.archiveEmployeeDeletion(user, { userId: requester.userId });
+
+    if (user.keycloakSub) {
       try {
         await keycloakAdminService.deleteUser(user.keycloakSub);
       } catch (kcError: any) {
@@ -273,11 +357,27 @@ export class UsersService {
       }
     }
 
-    if (user?.employeeId) {
+    if (user.employeeId) {
       await EmployeePiiModel.delete(user.employeeId);
     }
 
     await EmployeeModel.update(userId, { status: EmployeeStatus.INACTIVE, keycloakSub: null, deletedAt: new Date() });
+  }
+
+  /**
+   * OCD-454: self-service profile picture upload from "My Profile" - any
+   * authenticated employee may set their own picture; there's no HR/admin
+   * gate here since it's purely cosmetic and scoped to the caller's own
+   * record (userId always comes from the JWT, never a route param).
+   */
+  async updateProfilePicture(userId: number, file: Express.Multer.File, requester: JwtPayload) {
+    if (SELF_ONLY_ROLES.includes(requester.role) && requester.userId !== userId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    const profilePictureUrl = `/uploads/profile-pictures/${file.filename}`;
+    const user = await EmployeeModel.update(userId, { profilePictureUrl });
+    if (!user) throw new NotFoundException('User not found');
+    return user;
   }
 
   async resetPassword(userId: number, requester: JwtPayload) {
@@ -357,6 +457,12 @@ export class UsersService {
       throw new BadRequestException('Failed to update role');
     }
 
+    // Same "full replace" resync as UsersService.update - access always
+    // matches the role being moved to, not a mix of old and new grants.
+    if (previousRole !== role && updated.employeeId) {
+      await replaceUserPermissionsWithRoleDefaults(updated.employeeId, role);
+    }
+
     logger.info(
       { actorId: requester.userId, targetUserId: userId, previousRole, newRole: role },
       'Super Admin changed user role',
@@ -374,10 +480,13 @@ export class UsersService {
    * handled elsewhere in this service).
    */
   async updateStatus(userId: number, status: EmployeeStatus, requester: JwtPayload) {
-    const canManageStatus =
-      isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    // OCD-490: Account Status (Active/Inactive/On Hold) changes are
+    // restricted to Administrator (super_admin) only - HR Manager and HR
+    // Executive no longer qualify, even though they can manage other user
+    // fields.
+    const canManageStatus = isSuperAdmin(requester);
     if (!canManageStatus) {
-      throw new ForbiddenException('Only HR or Super Admin can change employee status');
+      throw new ForbiddenException('Only a Super Admin can change employee status');
     }
     if (requester.userId === userId) {
       throw new BadRequestException('Cannot change your own account status');
