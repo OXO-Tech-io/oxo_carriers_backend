@@ -16,6 +16,7 @@ import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
 import { randomUUID } from 'crypto';
+import path from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { allowedOrigins, isOriginAllowed } from './config/corsOrigins';
