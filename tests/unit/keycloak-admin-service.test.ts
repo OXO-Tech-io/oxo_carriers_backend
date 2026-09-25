@@ -179,20 +179,30 @@ describe("keycloakAdminService", () => {
   });
 
   describe("updatePassword", () => {
-    it("throws an AppError on failure", async () => {
+    // OCD-447: password policy is enforced by the Keycloak realm, not locally.
+    it("surfaces a keycloak 400 (policy violation) as a 400 AppError", async () => {
       const keycloakAdminService = await freshService();
       fetchMock.mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(jsonResponse({}, false, 400));
+      await expect(keycloakAdminService.updatePassword("kc-1", "newpass")).rejects.toMatchObject({
+        statusCode: 400,
+      });
+      // No local validation: the password is forwarded to Keycloak (token + reset-password).
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(fetchMock.mock.calls[1][0] as string).toContain("/users/kc-1/reset-password");
+    });
+
+    it("throws a 502 AppError for other keycloak failures", async () => {
+      const keycloakAdminService = await freshService();
+      fetchMock.mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(jsonResponse({}, false, 500));
       await expect(keycloakAdminService.updatePassword("kc-1", "NewPass1!")).rejects.toMatchObject({
         statusCode: 502,
       });
     });
 
-    it("throws a 400 AppError without calling Keycloak when the password fails the policy", async () => {
+    it("succeeds when keycloak accepts the new password", async () => {
       const keycloakAdminService = await freshService();
-      await expect(keycloakAdminService.updatePassword("kc-1", "newpass")).rejects.toMatchObject({
-        statusCode: 400,
-      });
-      expect(fetchMock).not.toHaveBeenCalled();
+      fetchMock.mockResolvedValueOnce(tokenResponse()).mockResolvedValueOnce(jsonResponse({}, true, 204));
+      await expect(keycloakAdminService.updatePassword("kc-1", "NewPass1!")).resolves.toBeUndefined();
     });
   });
 });
