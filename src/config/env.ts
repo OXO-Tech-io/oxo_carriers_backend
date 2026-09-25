@@ -121,6 +121,14 @@ const Schema = z.object({
   // ─── Uploads ────────────────────────────────────────────────────────────
   /** Comma-separated multer field names routed to uploads/documents instead of uploads/others (communications attachments). */
   COMMUNICATIONS_DOCUMENT_FIELDS: z.string().min(1),
+
+  // ─── Storage (Google Cloud Storage) ────────────────────────────────────
+  /** Private GCS bucket for HR/payroll documents (e.g. salary slip PDFs). When unset, such documents are generated on demand and never persisted to disk or a bucket. */
+  GCS_BUCKET_NAME: optionalString,
+  /** GCP project ID for the Storage client. Optional - falls back to Application Default Credentials' project (e.g. Cloud Run's attached service account). */
+  GCS_PROJECT_ID: optionalString,
+  /** Path to a service-account JSON key file for Storage auth. Optional - omit to use Application Default Credentials. */
+  GCS_KEY_FILE: optionalString,
 });
 
 export type Env = z.infer<typeof Schema>;

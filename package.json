@@ -48,6 +48,7 @@
   "type": "commonjs",
   "dependencies": {
     "@emailjs/nodejs": "^5.0.2",
+    "@google-cloud/storage": "^7.22.0",
     "@heroicons/react": "^2.2.0",
     "@nestjs/common": "^11.1.28",
     "@nestjs/config": "^4.0.4",

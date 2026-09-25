@@ -109,6 +109,19 @@ export function hashEmail(email: string): string {
 }
 
 /**
+ * Deterministic, keyed, non-reversible hash for correlating a sensitive
+ * identifier (e.g. employeeId) across log lines without ever writing the
+ * identifier itself to logs. Keyed with the PII encryption key so it can't be
+ * reverse-engineered by brute-forcing common IDs the way an unkeyed hash could.
+ * Truncated to 16 hex chars - this is for log correlation, not for lookups or
+ * uniqueness, so full collision resistance isn't required.
+ */
+export function hashIdentifier(value: string | number): string {
+  const key = getPiiKeyBuffer();
+  return crypto.createHmac('sha256', key).update(String(value)).digest('hex').slice(0, 16);
+}
+
+/**
  * Decrypts a colon-separated AES-256-CBC cipher text string using the PII encryption key.
  * Returns the decrypted plaintext as a string.
  */

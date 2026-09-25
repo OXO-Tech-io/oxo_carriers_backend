@@ -1,7 +1,7 @@
 import pool from '../../config/database';
 import { MonthlySalary, SalaryComponent, EmployeeSalaryStructure, EmployeeSalaryStructureWithComponent, SalaryStatus, ComponentType } from '../../types';
 import { logger as baseLogger } from '../../lib/logger';
-import { decryptSalary, encryptSalary } from '../../utils/encryption';
+import { decryptSalary, encryptSalary, hashIdentifier } from '../../utils/encryption';
 import { EmployeeModel } from '../../employees/Employee';
 
 const log = baseLogger.child({ module: 'salary-model' });
@@ -279,7 +279,7 @@ export class SalaryModel {
         await this.generateSalary(employeeId, monthYear, generatedBy);
         count++;
       } catch (error) {
-        log.error({ err: error, employeeId }, 'Failed to generate salary');
+        log.error({ err: error, employeeIdHash: hashIdentifier(employeeId) }, 'Failed to generate salary');
       }
     }
     return count;
@@ -367,18 +367,10 @@ export class SalaryModel {
     const localSalaryValue = Number(excelData.localSalary) || 0;
     const oxoInternationalSalaryValue = Number(excelData.oxoInternationalSalary) || 0;
 
-    // Insert monthly salary
-    log.debug(
-      {
-        employeeId,
-        localSalaryValue,
-        oxoInternationalSalaryValue,
-        fullSalary,
-        rawLocal: excelData.localSalary,
-        rawOxo: excelData.oxoInternationalSalary,
-      },
-      'Inserting salary',
-    );
+    // Insert monthly salary. Metadata only - never log salary amounts or
+    // deduction totals; employeeId is hashed so log lines can still be
+    // correlated back to a single employee without exposing the identifier.
+    log.debug({ employeeIdHash: hashIdentifier(employeeId) }, 'Inserting salary record from Excel import');
 
     const upsertResult = await pool.query(
       `INSERT INTO tbl_monthly_salaries (employee_id, month_year, basic_salary, local_salary, oxo_international_salary, total_earnings, total_deductions, net_salary, status, generated_by)
@@ -408,41 +400,26 @@ export class SalaryModel {
 
     // Verify the insert immediately after
     const verifyResult = await pool.query(
-      'SELECT id, local_salary, oxo_international_salary, basic_salary FROM tbl_monthly_salaries WHERE employee_id = $1 AND month_year = $2',
+      'SELECT id, oxo_international_salary FROM tbl_monthly_salaries WHERE employee_id = $1 AND month_year = $2',
       [employeeId, monthYear]
     );
     const verifyRows = verifyResult.rows as any[];
     if (verifyRows.length > 0) {
       const saved = verifyRows[0];
-      const decryptedLocal = decryptSalary(saved.local_salary);
       const decryptedOxo = decryptSalary(saved.oxo_international_salary);
-      const decryptedBasic = decryptSalary(saved.basic_salary);
 
-      log.debug(
-        {
-          id: saved.id,
-          localSalary: decryptedLocal,
-          oxoInternationalSalary: decryptedOxo,
-          basicSalary: decryptedBasic,
-          expectedLocal: localSalaryValue,
-          expectedOxo: oxoInternationalSalaryValue,
-        },
-        'Verified salary record',
-      );
+      log.debug({ id: saved.id, employeeIdHash: hashIdentifier(employeeId) }, 'Verified salary record persisted');
 
       if (Number(decryptedOxo) !== oxoInternationalSalaryValue) {
         log.error(
-          {
-            expected: oxoInternationalSalaryValue,
-            actual: decryptedOxo,
-          },
+          { id: saved.id, employeeIdHash: hashIdentifier(employeeId) },
           'MISMATCH: OXO International Salary not saved correctly',
         );
       } else {
         log.debug('OXO International Salary saved correctly');
       }
     } else {
-      log.error({ employeeId }, 'Failed to verify salary record');
+      log.error({ employeeIdHash: hashIdentifier(employeeId) }, 'Failed to verify salary record');
     }
 
     let salaryId = (upsertResult.rows[0] as any)?.id;
@@ -498,9 +475,9 @@ export class SalaryModel {
         'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
         [salaryId, localSalaryId, encryptSalary(excelData.localSalary), 'earning']
       );
-      log.debug({ amount: excelData.localSalary, salaryId }, 'Inserted Local Salary slip detail');
+      log.debug({ salaryId }, 'Inserted Local Salary slip detail');
     } else {
-      log.warn({ localSalaryId, amount: excelData.localSalary }, 'Local Salary not inserted');
+      log.warn({ localSalaryId }, 'Local Salary not inserted');
     }
 
     // Insert OXO International Salary (ALWAYS insert if amount > 0, even if component doesn't exist we create it above)
@@ -510,12 +487,12 @@ export class SalaryModel {
           'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, oxoSalaryId, encryptSalary(excelData.oxoInternationalSalary), 'earning']
         );
-        log.debug({ amount: excelData.oxoInternationalSalary, salaryId }, 'Inserted OXO International Salary slip detail');
+        log.debug({ salaryId }, 'Inserted OXO International Salary slip detail');
       } else {
-        log.error({ salaryId, amount: excelData.oxoInternationalSalary }, 'OXO International Salary component ID is null');
+        log.error({ salaryId }, 'OXO International Salary component ID is null');
       }
     } else {
-      log.warn({ amount: excelData.oxoInternationalSalary }, 'OXO International Salary not inserted (amount <= 0)');
+      log.warn('OXO International Salary not inserted (amount <= 0)');
     }
 
     // Insert Full Salary as calculated (Local + OXO) - optional, for display purposes
@@ -555,7 +532,7 @@ export class SalaryModel {
           'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, allowancesId, encryptSalary(excelData.allowances), 'earning']
         );
-        log.debug({ amount: excelData.allowances, salaryId }, 'Inserted Allowances slip detail');
+        log.debug({ salaryId }, 'Inserted Allowances slip detail');
       }
     }
 
@@ -580,7 +557,7 @@ export class SalaryModel {
           'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
           [salaryId, deductionsId, encryptSalary(excelData.salaryAdvanceDeductions), 'deduction']
         );
-        log.debug({ amount: excelData.salaryAdvanceDeductions, salaryId }, 'Inserted Salary Advance/Deductions slip detail');
+        log.debug({ salaryId }, 'Inserted Salary Advance/Deductions slip detail');
       }
     }
 
