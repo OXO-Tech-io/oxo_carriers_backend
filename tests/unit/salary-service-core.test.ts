@@ -35,17 +35,24 @@ vi.mock("fs", () => ({
   writeFileSync: vi.fn(),
   unlinkSync: vi.fn(),
 }));
+vi.mock("../../src/lib/storage/gcsStorage", () => ({
+  isSecureBucketConfigured: vi.fn(),
+  uploadPrivateObject: vi.fn(),
+}));
 
 import { SalaryModel } from "../../src/modules/salary/Salary";
 import { EmployeeModel } from "../../src/employees/Employee";
 import { generateSalarySlipPDF } from "../../src/utils/pdfGenerator";
 import { sendPayslipAvailableEmail } from "../../src/config/email";
+import { isSecureBucketConfigured, uploadPrivateObject } from "../../src/lib/storage/gcsStorage";
 import { SalaryService } from "../../src/modules/salary/salary.service";
 
 const sm = SalaryModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const generatePdfMock = generateSalarySlipPDF as unknown as ReturnType<typeof vi.fn>;
 const sendPayslipMock = sendPayslipAvailableEmail as unknown as ReturnType<typeof vi.fn>;
+const isSecureBucketConfiguredMock = isSecureBucketConfigured as unknown as ReturnType<typeof vi.fn>;
+const uploadPrivateObjectMock = uploadPrivateObject as unknown as ReturnType<typeof vi.fn>;
 
 const employeeUser = { userId: 5, employeeId: "EMP5", role: UserRole.EMPLOYEE } as any;
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
@@ -182,14 +189,37 @@ describe("SalaryService", () => {
       await expect(service.generateSalarySlipPdf(1, hr)).rejects.toThrow(BadRequestException);
     });
 
-    it("returns the pdf buffer and persists pdf_url when not already saved", async () => {
+    it("uploads to the secure bucket and persists the object key when a bucket is configured", async () => {
       sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5", pdf_url: null });
       sm.getSlipDetails.mockResolvedValue({});
       em.findByEmployeeId.mockResolvedValue({ employeeId: "EMP5", firstName: "A", lastName: "B" });
       generatePdfMock.mockResolvedValue(Buffer.from("pdf-data"));
+      isSecureBucketConfiguredMock.mockReturnValue(true);
+      uploadPrivateObjectMock.mockResolvedValue(undefined);
+
       const result = await service.generateSalarySlipPdf(1, hr);
+
       expect(result).toEqual(Buffer.from("pdf-data"));
-      expect(sm.updatePdfUrl).toHaveBeenCalledWith(1, expect.stringContaining("/uploads/salary-slips/"));
+      expect(uploadPrivateObjectMock).toHaveBeenCalledWith(
+        expect.stringContaining("salary-slips/"),
+        Buffer.from("pdf-data"),
+        "application/pdf",
+      );
+      expect(sm.updatePdfUrl).toHaveBeenCalledWith(1, expect.stringContaining("salary-slips/"));
+    });
+
+    it("never writes to local disk and skips persistence entirely when no secure bucket is configured", async () => {
+      sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5", pdf_url: null });
+      sm.getSlipDetails.mockResolvedValue({});
+      em.findByEmployeeId.mockResolvedValue({ employeeId: "EMP5", firstName: "A", lastName: "B" });
+      generatePdfMock.mockResolvedValue(Buffer.from("pdf-data"));
+      isSecureBucketConfiguredMock.mockReturnValue(false);
+
+      const result = await service.generateSalarySlipPdf(1, hr);
+
+      expect(result).toEqual(Buffer.from("pdf-data"));
+      expect(uploadPrivateObjectMock).not.toHaveBeenCalled();
+      expect(sm.updatePdfUrl).not.toHaveBeenCalled();
     });
 
     it("skips re-saving when pdf_url already exists", async () => {
@@ -197,7 +227,9 @@ describe("SalaryService", () => {
       sm.getSlipDetails.mockResolvedValue({});
       em.findByEmployeeId.mockResolvedValue({ employeeId: "EMP5", firstName: "A", lastName: "B" });
       generatePdfMock.mockResolvedValue(Buffer.from("pdf-data"));
+      isSecureBucketConfiguredMock.mockReturnValue(true);
       await service.generateSalarySlipPdf(1, hr);
+      expect(uploadPrivateObjectMock).not.toHaveBeenCalled();
       expect(sm.updatePdfUrl).not.toHaveBeenCalled();
     });
   });

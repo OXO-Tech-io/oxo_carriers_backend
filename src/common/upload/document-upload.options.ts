@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 import multer from 'multer';
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 
@@ -9,9 +10,16 @@ import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/m
 // (consultant submissions, leaves, vouchers, medical insurance, work logs,
 // forms, employee notes). Mirrors src/middleware/upload.ts, which is still
 // used by the old Express stack and must not be edited.
+//
+// Directories are created owner-only (mode is a no-op on Windows but takes
+// effect on the Linux hosts this runs on in production) since these uploads
+// are only ever meant to be reached through an authenticated controller, not
+// browsed directly on disk.
+const RESTRICTED_DIR_MODE = 0o700;
+
 const uploadsDir = path.join(process.cwd(), 'uploads');
 if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+  fs.mkdirSync(uploadsDir, { recursive: true, mode: RESTRICTED_DIR_MODE });
 }
 
 const DOCUMENT_FIELDS = ['document', 'supportive_document', 'relevant_document', 'log_sheet', 'invoice'];
@@ -36,14 +44,17 @@ const storage = multer.diskStorage({
     const subDir = DOCUMENT_FIELDS.includes(file.fieldname) ? 'documents' : 'others';
     const dir = path.join(uploadsDir, subDir);
     if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
+      fs.mkdirSync(dir, { recursive: true, mode: RESTRICTED_DIR_MODE });
     }
     cb(null, dir);
   },
+  // Random, non-guessable name - the original filename and any
+  // timestamp/sequence-derived name are discarded (only the extension is
+  // kept) so stored files can't be enumerated or predicted from field name
+  // and upload time.
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
-    cb(null, file.fieldname + '-' + uniqueSuffix + ext);
+    cb(null, `${crypto.randomUUID()}${ext}`);
   },
 });
 

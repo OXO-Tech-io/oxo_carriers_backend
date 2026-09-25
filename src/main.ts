@@ -12,7 +12,6 @@ import { PermissionAssignment } from './common/constants/permissions';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { NestExpressApplication } from '@nestjs/platform-express';
-import path from 'path';
 import cors from 'cors';
 import helmet from 'helmet';
 import pinoHttp from 'pino-http';
@@ -35,7 +34,10 @@ async function bootstrap() {
     bufferLogs: true,
   });
 
-  // All API routes are versioned under /api/v1; uploads are served separately below.
+  // All API routes, including authenticated file downloads (FilesController,
+  // SalaryController's payslip endpoint), are versioned under /api/v1. There
+  // is intentionally no static asset mount - uploaded files (including HR/
+  // payroll documents) are only ever reachable through a guarded controller.
   app.setGlobalPrefix('api/v1');
 
   logger.info(

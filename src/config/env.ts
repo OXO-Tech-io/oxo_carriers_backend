@@ -125,6 +125,13 @@ const Schema = z.object({
   // ─── Medical Insurance ──────────────────────────────────────────────────
   /** OCD-489: months of service an employee must complete before they're eligible to submit a claim. */
   MEDICAL_INSURANCE_MIN_SERVICE_MONTHS: z.coerce.number().int().nonnegative().optional().default(6),
+  // ─── Storage (Google Cloud Storage) ────────────────────────────────────
+  /** Private GCS bucket for HR/payroll documents (e.g. salary slip PDFs). When unset, such documents are generated on demand and never persisted to disk or a bucket. */
+  GCS_BUCKET_NAME: optionalString,
+  /** GCP project ID for the Storage client. Optional - falls back to Application Default Credentials' project (e.g. Cloud Run's attached service account). */
+  GCS_PROJECT_ID: optionalString,
+  /** Path to a service-account JSON key file for Storage auth. Optional - omit to use Application Default Credentials. */
+  GCS_KEY_FILE: optionalString,
 });
 
 export type Env = z.infer<typeof Schema>;

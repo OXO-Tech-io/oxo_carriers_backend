@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import ExcelJS from 'exceljs';
 import fs from 'fs';
-import path from 'path';
+import { randomUUID } from 'crypto';
 import { SalaryModel } from './Salary';
 import { EmployeeModel } from '../../employees/Employee';
 import { JwtPayload, SalaryStatus, UserRole } from '../../types';
@@ -10,6 +10,7 @@ import { generateSalarySlipPDF as generatePDF } from '../../utils/pdfGenerator';
 import { env } from '../../config/env';
 import { logger } from '../../lib/logger';
 import { sendPayslipAvailableEmail } from '../../config/email';
+import { isSecureBucketConfigured, uploadPrivateObject } from '../../lib/storage/gcsStorage';
 import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { UpdateSalaryStatusDto } from './dto/update-salary-status.dto';
@@ -149,17 +150,18 @@ export class SalaryService {
       throw new BadRequestException('Failed to generate PDF');
     }
 
-    if (!salary.pdf_url) {
-      const pdfDir = path.join(process.cwd(), 'uploads', 'salary-slips');
+    // Persisted only to a private bucket, never to local disk - salary PDFs
+    // are payroll-sensitive and this app has no public static mount to serve
+    // them from anyway. `pdf_url` stores the bucket object key, not a URL;
+    // this endpoint always streams a freshly generated buffer regardless, so
+    // skipping persistence when no bucket is configured is safe.
+    if (!salary.pdf_url && isSecureBucketConfigured()) {
       try {
-        if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-        const pdfFilename = `salary-slip-${salary.id}-${Date.now()}.pdf`;
-        const pdfPath = path.join(pdfDir, pdfFilename);
-        fs.writeFileSync(pdfPath, pdfBuffer);
-        const pdfUrl = `/uploads/salary-slips/${pdfFilename}`;
-        await SalaryModel.updatePdfUrl(id, pdfUrl);
+        const objectKey = `salary-slips/salary-slip-${salary.id}-${randomUUID()}.pdf`;
+        await uploadPrivateObject(objectKey, pdfBuffer, 'application/pdf');
+        await SalaryModel.updatePdfUrl(id, objectKey);
       } catch (saveError: any) {
-        logger.error({ err: saveError }, 'Failed to save PDF file');
+        logger.error({ err: saveError }, 'Failed to save PDF to secure storage');
         // Continue to send the buffer even if saving fails.
       }
     }
