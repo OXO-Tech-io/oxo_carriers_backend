@@ -10,6 +10,8 @@ export const documentService = {
     description: string | null,
     targetType: DocumentTargetType,
     individualEmployeeIds: number[],
+    version: string,
+    isMandatoryViewing: boolean,
     createdBy: number,
     files: AttachmentFileInput[],
   ) {
@@ -17,7 +19,7 @@ export const documentService = {
       throw new BadRequestError('At least one employee is required when targeting specific employees');
     }
 
-    const document = await DocumentModel.create({ title, description, targetType, createdBy });
+    const document = await DocumentModel.create({ title, description, targetType, version, isMandatoryViewing, createdBy });
 
     if (targetType === 'individual') {
       const recipientEmployees = await EmployeeModel.findByIds(individualEmployeeIds);

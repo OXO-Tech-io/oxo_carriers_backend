@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import multer from 'multer';
+import { BadRequestException } from '@nestjs/common';
 import type { MulterOptions } from '@nestjs/platform-express/multer/interfaces/multer-options.interface';
 import { env } from '../../config/env';
 
@@ -47,11 +48,22 @@ const storage = multer.diskStorage({
   },
 });
 
+// OCD-516: a plain `Error` passed to multer's callback isn't an `HttpException`,
+// so @nestjs/platform-express's FilesInterceptor (multer/multer.utils.ts
+// transformException) passes it straight through unchanged, and it then falls
+// through every branch of AllExceptionsFilter except the generic 500 one -
+// surfacing as an opaque "Internal server error" instead of a clean
+// validation error. A BadRequestException *is* an HttpException, so
+// transformException leaves it alone and AllExceptionsFilter's `instanceof
+// HttpException` branch formats it as a proper 400 with this message.
 const fileFilter: MulterOptions['fileFilter'] = (req, file, cb) => {
   if (ALLOWED_MIME_TYPES.includes(file.mimetype)) {
     cb(null, true);
   } else {
-    cb(new Error('Invalid file type. Only images, PDFs, Excel, CSV, and documents are allowed.'), false);
+    cb(
+      new BadRequestException('Unsupported file type. Please upload a JPG, PNG, Word, PDF, or spreadsheet file.'),
+      false,
+    );
   }
 };
 

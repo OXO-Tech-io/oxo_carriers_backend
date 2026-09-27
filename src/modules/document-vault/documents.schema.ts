@@ -1,4 +1,4 @@
-import { pgTable, serial, integer, varchar, text, timestamp, uniqueIndex } from 'drizzle-orm/pg-core';
+import { pgTable, serial, integer, varchar, text, timestamp, boolean, uniqueIndex } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
 import { employee as users } from '../../employees/employee.schema';
 
@@ -11,6 +11,14 @@ export const documents = pgTable('tbl_documents', {
     title: varchar('title', { length: 255 }).notNull(),
     description: text('description'),
     targetType: varchar('target_type', { length: 20 }).notNull(), // 'individual' | 'all'
+    // OCD-500: required on create (Zod enforces non-empty in
+    // document.validator.ts) - NOT NULL with a DEFAULT so it backfills every
+    // pre-existing row as "1.0" without a data migration.
+    version: varchar('version', { length: 50 }).notNull().default('1.0'),
+    // OCD-500: when true, the frontend requires the employee to open/view the
+    // document before it can be dismissed. Defaults to false so every
+    // existing document keeps its current (non-mandatory) behavior.
+    isMandatoryViewing: boolean('is_mandatory_viewing').notNull().default(false),
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),

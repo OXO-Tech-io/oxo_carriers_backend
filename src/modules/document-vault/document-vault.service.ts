@@ -22,6 +22,8 @@ export class DocumentVaultService {
       input.description ?? null,
       input.targetType,
       input.individualEmployeeIds,
+      input.version,
+      input.isMandatoryViewing,
       userId,
       files,
     );

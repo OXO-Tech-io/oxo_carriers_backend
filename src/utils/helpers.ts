@@ -1,3 +1,14 @@
+// The organisation's operating timezone (matches work-log-deadline.service.ts's default) - used so
+// exported/report timestamp values (Forms' Excel export, Communications' report) match what the
+// app itself displays (both driven by the same wall clock), rather than the export server
+// process's own OS timezone/locale.
+export const EXPORT_TIMEZONE = 'Asia/Colombo';
+
+export const formatExportTimestamp = (date: Date | string | null | undefined): string => {
+  if (!date) return '';
+  return new Date(date).toLocaleString('en-GB', { timeZone: EXPORT_TIMEZONE });
+};
+
 export const calculateDaysBetween = (startDate: Date, endDate: Date): number => {
   const start = new Date(startDate);
   const end = new Date(endDate);

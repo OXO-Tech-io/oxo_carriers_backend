@@ -24,9 +24,15 @@ describe("DocumentVaultService (thin wrapper)", () => {
 
   it("create parses the body with the zod schema and forwards fields positionally", async () => {
     ds.create.mockResolvedValue({ id: 1 });
-    const result = await service.create(9, { title: "Contract", targetType: "all" }, []);
-    expect(ds.create).toHaveBeenCalledWith("Contract", null, "all", [], 9, []);
+    const result = await service.create(9, { title: "Contract", targetType: "all", version: "1.0" }, []);
+    expect(ds.create).toHaveBeenCalledWith("Contract", null, "all", [], "1.0", false, 9, []);
     expect(result).toEqual({ id: 1 });
+  });
+
+  it("create forwards a truthy isMandatoryViewing", async () => {
+    ds.create.mockResolvedValue({ id: 2 });
+    await service.create(9, { title: "Contract", targetType: "all", version: "1.0", isMandatoryViewing: true }, []);
+    expect(ds.create).toHaveBeenCalledWith("Contract", null, "all", [], "1.0", true, 9, []);
   });
 
   it("create propagates a ZodError for an invalid body", async () => {

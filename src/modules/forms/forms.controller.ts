@@ -61,9 +61,20 @@ export class FormsController {
     return { success: true, message: 'Form created', data: form };
   }
 
+  // Full form content (all questions, including layout/branching) is sensitive enough to gate:
+  // HR/SuperAdmin (the builder) can always read it, but any other employee - the recipient fill
+  // page's own audience - must actually be a distribution recipient of THIS form, or requesting it
+  // by guessing/incrementing the id would leak draft/undistributed forms.
   @Get(':id')
-  async getById(@Param('id') idParam: string) {
+  async getById(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = this.parseId(idParam);
+    const canManage =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.FORMS, 'write')));
+    if (!canManage) {
+      const isDistributed = await this.formsService.isDistributedTo(id, employee.userId);
+      if (!isDistributed) throw new ForbiddenException('This form was not assigned to you');
+    }
     const data = await this.formsService.getFormWithGraph(id);
     return { success: true, message: 'Form fetched', data };
   }
@@ -129,6 +140,17 @@ export class FormsController {
     const id = this.parseId(idParam);
     const result = await this.formsService.distribute(id, body);
     return { success: true, message: 'Form distributed', data: result };
+  }
+
+  // Numeric employee ids already distributed this form - lets the Distribute picker exclude/mark
+  // recipients who'd otherwise appear selectable again with no indication they already have it.
+  @Get(':id/distributions')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.FORMS, 'write')
+  async listDistributions(@Param('id') idParam: string) {
+    const id = this.parseId(idParam);
+    const userIds = await this.formsService.listDistributedUserIds(id);
+    return { success: true, message: 'Distributions fetched', data: userIds };
   }
 
   @Get(':id/my-responses')

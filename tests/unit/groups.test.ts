@@ -15,12 +15,20 @@ vi.mock("../../src/modules/groups/Group", () => ({
   },
 }));
 
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: {
+    getAll: vi.fn(),
+  },
+}));
+
 import { GroupModel } from "../../src/modules/groups/Group";
+import { EmployeeModel } from "../../src/employees/Employee";
 import { groupService } from "../../src/modules/groups/group.service";
 import { GroupsService } from "../../src/modules/groups/groups.service";
 import { GroupsController } from "../../src/modules/groups/groups.controller";
 
 const gm = GroupModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
 describe("groupService (core)", () => {
   beforeEach(() => {
@@ -121,6 +129,45 @@ describe("groupService (core)", () => {
     gm.getMemberUserIds.mockResolvedValue([1, 2]);
     expect(await groupService.resolveMemberUserIds([1])).toEqual([1, 2]);
   });
+
+  describe("availableMembers (OCD-520)", () => {
+    it("throws a 404 AppError for a missing group", async () => {
+      gm.findById.mockResolvedValue(null);
+      await expect(groupService.availableMembers(1)).rejects.toMatchObject({ statusCode: 404 });
+    });
+
+    it("excludes employees already in the group", async () => {
+      gm.findById.mockResolvedValue({ id: 1, name: "Eng" });
+      gm.getMemberUserIds.mockResolvedValue([2]);
+      em.getAll.mockResolvedValue([
+        { id: 1, firstName: "A" },
+        { id: 2, firstName: "B" },
+        { id: 3, firstName: "C" },
+      ]);
+
+      const result = await groupService.availableMembers(1);
+      expect(gm.getMemberUserIds).toHaveBeenCalledWith([1]);
+      expect(result.map((e) => e.id)).toEqual([1, 3]);
+    });
+
+    it("forwards an optional search term to EmployeeModel.getAll", async () => {
+      gm.findById.mockResolvedValue({ id: 1, name: "Eng" });
+      gm.getMemberUserIds.mockResolvedValue([]);
+      em.getAll.mockResolvedValue([]);
+
+      await groupService.availableMembers(1, "john");
+      expect(em.getAll).toHaveBeenCalledWith({ search: "john" });
+    });
+
+    it("returns everyone when the group has no members yet", async () => {
+      gm.findById.mockResolvedValue({ id: 1, name: "Eng" });
+      gm.getMemberUserIds.mockResolvedValue([]);
+      em.getAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+
+      const result = await groupService.availableMembers(1);
+      expect(result).toEqual([{ id: 1 }, { id: 2 }]);
+    });
+  });
 });
 
 describe("GroupsService (thin wrapper) + GroupsController", () => {
@@ -148,6 +195,14 @@ describe("GroupsService (thin wrapper) + GroupsController", () => {
     const controller = new GroupsController(service as any);
     const result = await controller.remove(1);
     expect(result).toEqual({ success: true, message: "Group deleted", data: {} });
+  });
+
+  it("GroupsController.availableMembers wraps the service result", async () => {
+    const service = { availableMembers: vi.fn().mockResolvedValue([{ id: 3 }]) };
+    const controller = new GroupsController(service as any);
+    const result = await controller.availableMembers(1, "jan");
+    expect(service.availableMembers).toHaveBeenCalledWith(1, "jan");
+    expect(result).toEqual({ success: true, message: "Available members fetched", data: [{ id: 3 }] });
   });
 
   it("GroupsController.addMembers delegates with the current employee's userId", async () => {

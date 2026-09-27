@@ -26,7 +26,12 @@ vi.mock("../../src/modules/communications/CommunicationRecipient", () => ({
   },
 }));
 vi.mock("../../src/common/models/Attachment", () => ({
-  AttachmentModel: { createMany: vi.fn(), deleteByEntity: vi.fn() },
+  AttachmentModel: {
+    createMany: vi.fn(),
+    deleteByEntity: vi.fn(),
+    findByEntity: vi.fn(),
+    findByEntityMany: vi.fn(),
+  },
 }));
 vi.mock("../../src/employees/Employee", () => ({
   EmployeeModel: {
@@ -54,6 +59,7 @@ import { AttachmentModel } from "../../src/common/models/Attachment";
 import { EmployeeModel } from "../../src/employees/Employee";
 import { groupService } from "../../src/modules/groups/group.service";
 import { communicationService } from "../../src/modules/communications/communication.service";
+import { formatExportTimestamp } from "../../src/utils/helpers";
 
 const cm = CommunicationModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const crm = CommunicationRecipientModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
@@ -66,6 +72,10 @@ const flush = () => new Promise((resolve) => setImmediate(resolve));
 describe("communicationService (core)", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default to no attachments so existing listAll/listMine assertions below
+    // (which don't care about attachments) don't have to opt in individually;
+    // the OCD-525 tests further down override this per-case.
+    am.findByEntityMany.mockResolvedValue([]);
   });
 
   describe("create", () => {
@@ -125,6 +135,56 @@ describe("communicationService (core)", () => {
       expect(result.pendingCount).toBe(1);
       expect(result.recipients[2].name).toBe("EMP3"); // falls back to employeeId when no employee match
     });
+
+    it("attaches each communication's own attachments, grouped by entityId (OCD-525)", async () => {
+      cm.listAll.mockResolvedValue([{ id: 1 }, { id: 2 }]);
+      crm.listByCommunicationId.mockResolvedValue([]);
+      em.findByEmployeeIds.mockResolvedValue(new Map());
+      am.findByEntityMany.mockResolvedValue([
+        { id: 10, entityType: "communication", entityId: 1, fileUrl: "/uploads/others/a.pdf", fileName: "a.pdf", mimeType: "application/pdf", fileSize: 100 },
+        { id: 11, entityType: "communication", entityId: 2, fileUrl: "/uploads/others/b.png", fileName: "b.png", mimeType: "image/png", fileSize: 200 },
+        { id: 12, entityType: "communication", entityId: 1, fileUrl: "/uploads/others/c.docx", fileName: "c.docx", mimeType: "application/msword", fileSize: 300 },
+      ]);
+
+      const [first, second] = await communicationService.listAll();
+      expect(am.findByEntityMany).toHaveBeenCalledWith("communication", [1, 2]);
+      expect(first.attachments).toEqual([
+        { fileUrl: "/uploads/others/a.pdf", fileName: "a.pdf", mimeType: "application/pdf", fileSize: 100 },
+        { fileUrl: "/uploads/others/c.docx", fileName: "c.docx", mimeType: "application/msword", fileSize: 300 },
+      ]);
+      expect(second.attachments).toEqual([
+        { fileUrl: "/uploads/others/b.png", fileName: "b.png", mimeType: "image/png", fileSize: 200 },
+      ]);
+    });
+
+    it("returns an empty attachments array for a communication with none", async () => {
+      cm.listAll.mockResolvedValue([{ id: 5 }]);
+      crm.listByCommunicationId.mockResolvedValue([]);
+      em.findByEmployeeIds.mockResolvedValue(new Map());
+      am.findByEntityMany.mockResolvedValue([]);
+
+      const [result] = await communicationService.listAll();
+      expect(result.attachments).toEqual([]);
+    });
+  });
+
+  describe("listMine", () => {
+    it("attaches each recipient row's communication attachments, grouped by communicationId (OCD-525)", async () => {
+      crm.listForUser.mockResolvedValue([
+        { id: 100, communicationId: 1, title: "T1" },
+        { id: 101, communicationId: 2, title: "T2" },
+      ]);
+      am.findByEntityMany.mockResolvedValue([
+        { id: 10, entityType: "communication", entityId: 1, fileUrl: "/uploads/others/a.pdf", fileName: "a.pdf", mimeType: "application/pdf", fileSize: 100 },
+      ]);
+
+      const [first, second] = await communicationService.listMine("EMP1");
+      expect(am.findByEntityMany).toHaveBeenCalledWith("communication", [1, 2]);
+      expect(first.attachments).toEqual([
+        { fileUrl: "/uploads/others/a.pdf", fileName: "a.pdf", mimeType: "application/pdf", fileSize: 100 },
+      ]);
+      expect(second.attachments).toEqual([]);
+    });
   });
 
   describe("delete", () => {
@@ -175,5 +235,60 @@ describe("communicationService (core)", () => {
       const buffer = await communicationService.generateReport();
       expect(Buffer.isBuffer(buffer) || buffer instanceof Uint8Array).toBe(true);
     });
+
+    it("formats Email Sent At / Responded At as DD/MM/YYYY, HH:mm:ss in the org timezone, not en-US M/D/YYYY (OCD-572)", async () => {
+      // 25th of the month makes a month/day mix-up impossible to miss (there
+      // is no month 25) - this would previously have rendered as the en-US
+      // default locale's "3/25/2026, ...".
+      crm.getReportRows.mockResolvedValue([
+        {
+          title: "T",
+          recipientName: "A",
+          recipientLastName: "B",
+          recipientEmail: "a@x.com",
+          emailSentAt: "2026-03-25T10:15:30.000Z",
+          respondedAt: "2026-03-25T12:15:30.000Z",
+        },
+      ]);
+      const buffer = await communicationService.generateReport();
+
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as any);
+      const worksheet = workbook.getWorksheet("Communications Report")!;
+      const dataRow = worksheet.getRow(2);
+      // Column order matches worksheet.columns above: Title(1), Recipient(2),
+      // Email Sent At(3), Responded At(4), Response Lead Time(5).
+      expect(dataRow.getCell(3).value).toBe("25/03/2026, 15:45:30");
+      expect(dataRow.getCell(4).value).toBe("25/03/2026, 17:45:30");
+      // Lead time is derived from the raw (correct) timestamps regardless of display format.
+      expect(dataRow.getCell(5).value).toBe("2.00 hours");
+    });
+
+    it("falls back to 'Not sent' / 'No response' when timestamps are missing", async () => {
+      crm.getReportRows.mockResolvedValue([
+        { title: "T", recipientName: "A", recipientLastName: "B", recipientEmail: "a@x.com", emailSentAt: null, respondedAt: null },
+      ]);
+      const buffer = await communicationService.generateReport();
+
+      const ExcelJS = (await import("exceljs")).default;
+      const workbook = new ExcelJS.Workbook();
+      await workbook.xlsx.load(buffer as any);
+      const dataRow = workbook.getWorksheet("Communications Report")!.getRow(2);
+      expect(dataRow.getCell(3).value).toBe("Not sent");
+      expect(dataRow.getCell(4).value).toBe("No response");
+      expect(dataRow.getCell(5).value).toBe("-");
+    });
+  });
+});
+
+describe("formatExportTimestamp (OCD-572)", () => {
+  it("formats a UTC timestamp as DD/MM/YYYY, HH:mm:ss in the org (Asia/Colombo) timezone", () => {
+    expect(formatExportTimestamp("2026-03-25T10:15:30.000Z")).toBe("25/03/2026, 15:45:30");
+  });
+
+  it("returns an empty string for null/undefined", () => {
+    expect(formatExportTimestamp(null)).toBe("");
+    expect(formatExportTimestamp(undefined)).toBe("");
   });
 });

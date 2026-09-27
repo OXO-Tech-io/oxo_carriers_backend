@@ -21,6 +21,7 @@ import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { allowedOrigins, isOriginAllowed } from './config/corsOrigins';
 import { MedicalInsuranceModel } from './modules/medical-insurance/MedicalInsurance';
+import { FileBlobModel } from './common/models/FileBlob';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -143,16 +144,24 @@ async function bootstrap() {
   // instance), which is what caused "Cannot GET /uploads/documents/..." for
   // claim documents submitted on previous days. express.static calls
   // next() on a miss, so this runs only when the on-disk copy is gone, and
-  // serves the durable Postgres copy saved at upload time instead (see
+  // serves a durable Postgres copy saved at upload time instead (see
   // MedicalInsuranceModel.persistDocumentBlob/getDocumentBlob).
-  const serveMedicalClaimDocumentFallback = async (
+  //
+  // OCD-498/OCD-569: the exact same ephemeral-disk failure also affected
+  // Document Vault attachments and Notice images, which persist their
+  // durable copy in the generalized FileBlobModel table instead (see
+  // FileBlobModel.persist, wired from AttachmentModel.create and
+  // NoticesService) - checked here as a second fallback source.
+  const serveDurableUploadFallback = async (
     req: import('express').Request,
     res: import('express').Response,
     next: import('express').NextFunction,
   ) => {
     try {
       const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
-      const blob = filename ? await MedicalInsuranceModel.getDocumentBlob(filename) : null;
+      const blob = filename
+        ? (await MedicalInsuranceModel.getDocumentBlob(filename)) ?? (await FileBlobModel.get(filename))
+        : null;
       if (!blob) return next();
       res.setHeader('Content-Type', blob.mimeType);
       res.send(blob.data);
@@ -160,8 +169,8 @@ async function bootstrap() {
       next(error);
     }
   };
-  app.use('/uploads/documents/:filename', serveMedicalClaimDocumentFallback);
-  app.use('/uploads/others/:filename', serveMedicalClaimDocumentFallback);
+  app.use('/uploads/documents/:filename', serveDurableUploadFallback);
+  app.use('/uploads/others/:filename', serveDurableUploadFallback);
 
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(

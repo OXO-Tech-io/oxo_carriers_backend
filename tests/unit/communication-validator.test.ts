@@ -23,13 +23,20 @@ describe("communication.validator", () => {
     });
 
     it("accepts recipient ids as a JSON-encoded string (multipart form-data)", () => {
+      // Deadline is computed relative to "now" (rather than hardcoded) so this
+      // test - whose purpose is the multipart string->array/boolean/date
+      // coercion, not deadline validation - keeps passing regardless of when
+      // it's run; see the OCD-515 describe block below for deadline-specific
+      // past/today/future coverage.
+      const futureDeadline = new Date();
+      futureDeadline.setDate(futureDeadline.getDate() + 30);
       const result = createCommunicationSchema.safeParse({
         title: "Policy update",
         body: "Body text",
         recipientUserIds: "[1,2]",
         recipientGroupIds: "[]",
         requiresAcknowledgement: "true",
-        deadlineAt: "2026-08-01",
+        deadlineAt: futureDeadline.toISOString().slice(0, 10),
       });
       expect(result.success).toBe(true);
       if (result.success) {
@@ -87,6 +94,62 @@ describe("communication.validator", () => {
       if (result.success) {
         expect(result.data.deadlineAt).toBeNull();
       }
+    });
+
+    describe("acknowledgement deadline (OCD-515)", () => {
+      const isoDaysFromNow = (days: number): string => {
+        const d = new Date();
+        d.setDate(d.getDate() + days);
+        return d.toISOString().slice(0, 10);
+      };
+
+      it("rejects a past deadline when acknowledgement is required", () => {
+        const result = createCommunicationSchema.safeParse({
+          title: "Title",
+          body: "Body",
+          recipientUserIds: [1],
+          requiresAcknowledgement: true,
+          deadlineAt: isoDaysFromNow(-1),
+        });
+        expect(result.success).toBe(false);
+        if (!result.success) {
+          expect(result.error.issues[0].path).toEqual(["deadlineAt"]);
+          expect(result.error.issues[0].message).toBe("Acknowledgement deadline cannot be in the past.");
+        }
+      });
+
+      it("accepts today's date when acknowledgement is required", () => {
+        const result = createCommunicationSchema.safeParse({
+          title: "Title",
+          body: "Body",
+          recipientUserIds: [1],
+          requiresAcknowledgement: true,
+          deadlineAt: isoDaysFromNow(0),
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it("accepts a future date when acknowledgement is required", () => {
+        const result = createCommunicationSchema.safeParse({
+          title: "Title",
+          body: "Body",
+          recipientUserIds: [1],
+          requiresAcknowledgement: true,
+          deadlineAt: isoDaysFromNow(7),
+        });
+        expect(result.success).toBe(true);
+      });
+
+      it("does not reject a past date when acknowledgement is not required", () => {
+        const result = createCommunicationSchema.safeParse({
+          title: "Title",
+          body: "Body",
+          recipientUserIds: [1],
+          requiresAcknowledgement: false,
+          deadlineAt: isoDaysFromNow(-30),
+        });
+        expect(result.success).toBe(true);
+      });
     });
   });
 

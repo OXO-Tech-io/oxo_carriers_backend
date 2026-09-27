@@ -1,6 +1,8 @@
 import { db } from '../../db';
 import { attachments, type Attachment as DrizzleAttachment } from '../../db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
+import { FileBlobModel } from './FileBlob';
+import { logger } from '../../lib/logger';
 
 export type AttachmentFileInput = Express.Multer.File;
 
@@ -31,6 +33,9 @@ export class AttachmentModel {
       })
       .returning();
     if (!inserted) throw new Error('Failed to create attachment');
+    await FileBlobModel.persist(file).catch((err: unknown) =>
+      logger.error({ err, filename: file.filename }, 'Failed to persist attachment file to the database')
+    );
     return inserted;
   }
 
@@ -42,6 +47,26 @@ export class AttachmentModel {
   ): Promise<DrizzleAttachment[]> {
     if (!files.length) return [];
     return Promise.all(files.map((file) => this.create(entityType, entityId, file, uploadedBy)));
+  }
+
+  /** Copies an existing attachment's metadata onto a new entity (same stored file, new DB row) -
+   * used when a re-submitted form response carries a file question's attachment forward onto its
+   * new answer row without requiring the file to be re-uploaded. */
+  static async copyToEntity(entityType: string, entityId: number, source: DrizzleAttachment): Promise<DrizzleAttachment> {
+    const [inserted] = await db
+      .insert(attachments)
+      .values({
+        entityType,
+        entityId,
+        fileUrl: source.fileUrl,
+        fileName: source.fileName,
+        mimeType: source.mimeType,
+        fileSize: source.fileSize,
+        uploadedBy: source.uploadedBy ?? null,
+      })
+      .returning();
+    if (!inserted) throw new Error('Failed to copy attachment');
+    return inserted;
   }
 
   static async findByEntity(entityType: string, entityId: number): Promise<DrizzleAttachment[]> {

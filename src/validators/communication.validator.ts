@@ -37,7 +37,26 @@ export const createCommunicationSchema = z
   .refine((data) => data.recipientUserIds.length > 0 || data.recipientGroupIds.length > 0, {
     message: 'At least one recipient or group is required',
     path: ['recipientUserIds'],
-  });
+  })
+  // OCD-515: an acknowledgement deadline only makes sense if it hasn't already
+  // passed. Compared date-only (both truncated to local midnight) so a
+  // deadline of "today" is always accepted regardless of what time of day the
+  // request happens to be submitted - only a date strictly before today is
+  // rejected.
+  .refine(
+    (data) => {
+      if (!data.requiresAcknowledgement || !data.deadlineAt) return true;
+      const startOfToday = new Date();
+      startOfToday.setHours(0, 0, 0, 0);
+      const deadlineDay = new Date(data.deadlineAt);
+      deadlineDay.setHours(0, 0, 0, 0);
+      return deadlineDay.getTime() >= startOfToday.getTime();
+    },
+    {
+      message: 'Acknowledgement deadline cannot be in the past.',
+      path: ['deadlineAt'],
+    },
+  );
 export type CreateCommunicationInput = z.infer<typeof createCommunicationSchema>;
 
 export const respondCommunicationSchema = z.object({
