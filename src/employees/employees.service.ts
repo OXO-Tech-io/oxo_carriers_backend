@@ -26,6 +26,10 @@ export class EmployeesService {
     return EmployeeModel.linkKeycloakSub(userId, sub);
   }
 
+  setActiveSessionId(userId: number, sessionId: string) {
+    return EmployeeModel.setActiveSessionId(userId, sessionId);
+  }
+
   findOrCreateFromKeycloak(claims: {
     sub: string;
     email: string;

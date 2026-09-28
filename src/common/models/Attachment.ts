@@ -2,6 +2,7 @@ import { db } from '../../db';
 import { attachments, type Attachment as DrizzleAttachment } from '../../db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
 import { FileBlobModel } from './FileBlob';
+import { cleanupStoredFile } from '../upload/cleanup-stored-file';
 import { logger } from '../../lib/logger';
 
 export type AttachmentFileInput = Express.Multer.File;
@@ -84,10 +85,40 @@ export class AttachmentModel {
   }
 
   static async deleteById(id: number): Promise<void> {
+    const [attachment] = await db.select().from(attachments).where(eq(attachments.id, id));
     await db.delete(attachments).where(eq(attachments.id, id));
+    if (attachment) await this.cleanupIfUnreferenced([attachment.fileUrl]);
   }
 
   static async deleteByEntity(entityType: string, entityId: number): Promise<void> {
+    const rows = await db.query.attachments.findMany({
+      where: and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)),
+    });
     await db.delete(attachments).where(and(eq(attachments.entityType, entityType), eq(attachments.entityId, entityId)));
+    await this.cleanupIfUnreferenced(rows.map((r) => r.fileUrl));
+  }
+
+  /**
+   * Physically deletes a file's blob/disk copy, but only once no attachment
+   * row still points at its fileUrl any more. copyToEntity() deliberately
+   * lets several rows share one physical file (e.g. a form re-submission
+   * carrying an unchanged upload forward onto its new answer row), so
+   * deleting one row that shares a fileUrl must not destroy the file out
+   * from under the others - callers that delete-then-recreate a shared
+   * fileUrl (see form.service.ts's submit()) must create the new row before
+   * deleting the old one, so this check sees it and skips cleanup.
+   */
+  private static async cleanupIfUnreferenced(fileUrls: string[]): Promise<void> {
+    const uniqueUrls = [...new Set(fileUrls)];
+    await Promise.all(
+      uniqueUrls.map(async (fileUrl) => {
+        const [stillUsed] = await db
+          .select({ id: attachments.id })
+          .from(attachments)
+          .where(eq(attachments.fileUrl, fileUrl))
+          .limit(1);
+        if (!stillUsed) await cleanupStoredFile(fileUrl);
+      }),
+    );
   }
 }

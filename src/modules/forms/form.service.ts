@@ -444,9 +444,6 @@ export const formService = {
     const response = await FormResponseModel.findOrCreate(formId, userId);
 
     const oldAnswers = await FormResponseModel.listAnswersByResponseId(response.id);
-    for (const old of oldAnswers) {
-      await AttachmentModel.deleteByEntity('form_response_answer', old.id);
-    }
 
     const answersToSave = answersInput
       .filter((a) => questionById.get(a.questionId)?.type !== 'file_upload')
@@ -486,6 +483,16 @@ export const formService = {
       for (const att of existingFiles) {
         await AttachmentModel.copyToEntity('form_response_answer', answer.id, att);
       }
+    }
+
+    // Deletes the *old* answers' attachment rows only after any carried-forward
+    // file has already been re-attached to its new answer row above (via
+    // copyToEntity) - AttachmentModel.deleteByEntity now only physically
+    // deletes a file's blob/disk copy once no attachment row references it
+    // any more, so deleting these first would race that copy and could
+    // destroy a file that's meant to survive on the new row.
+    for (const old of oldAnswers) {
+      await AttachmentModel.deleteByEntity('form_response_answer', old.id);
     }
 
     if (final) {

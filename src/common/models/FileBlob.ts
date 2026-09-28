@@ -48,4 +48,9 @@ export class FileBlobModel {
     if (!row) return null;
     return { mimeType: row.mime_type, data: row.data };
   }
+
+  static async deleteByFilename(filename: string): Promise<void> {
+    await this.ensureTable();
+    await pool.query(`DELETE FROM tbl_file_blobs WHERE filename = $1`, [filename]);
+  }
 }

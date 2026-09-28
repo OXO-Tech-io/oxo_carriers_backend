@@ -38,6 +38,11 @@ export interface KeycloakClaims extends JWTPayload {
   name?: string;
   realm_access?: { roles?: string[] };
   resource_access?: Record<string, { roles?: string[] }>;
+  /** Keycloak session id - constant for a browser session across token
+   * refreshes, and different for every fresh login. Used for OCD-455
+   * single-session enforcement; treated as optional since older/custom
+   * client configs may omit it. */
+  sid?: string;
 }
 
 export interface VerifyResult {

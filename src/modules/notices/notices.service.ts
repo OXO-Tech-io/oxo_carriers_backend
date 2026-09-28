@@ -5,6 +5,7 @@ import { Notice, notices } from './notices.schema';
 import { CreateNoticeDto } from './dto/create-notice.dto';
 import { UpdateNoticeDto } from './dto/update-notice.dto';
 import { FileBlobModel } from '../../common/models/FileBlob';
+import { cleanupStoredFile } from '../../common/upload/cleanup-stored-file';
 import { logger } from '../../lib/logger';
 
 /** OCD-569: best-effort durable copy of the uploaded image - see FileBlobModel. */
@@ -76,14 +77,17 @@ export class NoticesService {
   }
 
   async update(id: number, dto: UpdateNoticeDto, updatedBy: number, image?: Express.Multer.File) {
-    // The schedule window can only be validated against the *merged* result
-    // (a PATCH may touch just one of startAt/endAt, leaving the other at its
-    // current DB value) - so only fetch the existing row when one of them is
-    // actually being changed, keeping every other update() call a single
-    // round trip like before.
+    // Fetched unconditionally: the schedule window can only be validated
+    // against the *merged* result (a PATCH may touch just one of
+    // startAt/endAt, leaving the other at its current DB value), and the
+    // previous imageUrl is needed below to clean it up when it's being
+    // replaced or removed - each notice owns its image outright (no
+    // copyToEntity-style sharing like tbl_attachments), so it's always safe
+    // to delete as soon as this row stops pointing at it.
+    const [existing] = await db.select().from(notices).where(eq(notices.id, id));
+    if (!existing) throw new NotFoundException('Notice not found');
+
     if (dto.startAt !== undefined || dto.endAt !== undefined) {
-      const [existing] = await db.select().from(notices).where(eq(notices.id, id));
-      if (!existing) throw new NotFoundException('Notice not found');
       const mergedStartAt = dto.startAt !== undefined ? new Date(dto.startAt) : existing.startAt;
       const mergedEndAt = dto.endAt !== undefined ? new Date(dto.endAt) : existing.endAt;
       this.assertValidWindow(mergedStartAt, mergedEndAt);
@@ -106,11 +110,13 @@ export class NoticesService {
       .returning();
     if (!notice) throw new NotFoundException('Notice not found');
     persistImage(image);
+    if ((image || dto.removeImage) && existing.imageUrl) void cleanupStoredFile(existing.imageUrl);
     return notice;
   }
 
   async remove(id: number) {
     const [deleted] = await db.delete(notices).where(eq(notices.id, id)).returning();
     if (!deleted) throw new NotFoundException('Notice not found');
+    if (deleted.imageUrl) void cleanupStoredFile(deleted.imageUrl);
   }
 }
