@@ -373,6 +373,8 @@ export interface JwtPayload {
   email: string;
   role: UserRole;
   sub?: string;
+  /** Keycloak's `sid` (session id) claim - see OCD-455 single-session enforcement. */
+  sid?: string;
 }
 
 import { Request } from "express";

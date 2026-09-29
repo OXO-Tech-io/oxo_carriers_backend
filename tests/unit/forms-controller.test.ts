@@ -16,6 +16,8 @@ const createServiceMock = () => ({
   list: vi.fn(),
   create: vi.fn(),
   getFormWithGraph: vi.fn(),
+  isDistributedTo: vi.fn(),
+  listDistributedUserIds: vi.fn(),
   update: vi.fn(),
   delete: vi.fn(),
   duplicate: vi.fn(),
@@ -76,8 +78,41 @@ describe("FormsController", () => {
     });
   });
 
-  it("getById rejects a non-numeric id", async () => {
-    await expect(controller.getById("abc")).rejects.toThrow(BadRequestException);
+  describe("getById", () => {
+    it("rejects a non-numeric id", async () => {
+      await expect(controller.getById("abc", employee)).rejects.toThrow(BadRequestException);
+    });
+
+    it("allows a super admin without checking distribution", async () => {
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      const result = await controller.getById("1", { ...employee, role: UserRole.SUPER_ADMIN });
+      expect(service.isDistributedTo).not.toHaveBeenCalled();
+      expect(result.data).toEqual({ form: { id: 1 } });
+    });
+
+    it("allows HR (permission check) without checking distribution", async () => {
+      hasPermissionMock.mockResolvedValue(true);
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      await controller.getById("1", hr);
+      expect(hasPermissionMock).toHaveBeenCalledWith("HR1", "forms", "write");
+      expect(service.isDistributedTo).not.toHaveBeenCalled();
+    });
+
+    it("allows a non-privileged employee who is a distribution recipient", async () => {
+      hasPermissionMock.mockResolvedValue(false);
+      service.isDistributedTo.mockResolvedValue(true);
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      const result = await controller.getById("1", employee);
+      expect(service.isDistributedTo).toHaveBeenCalledWith(1, employee.userId);
+      expect(result.data).toEqual({ form: { id: 1 } });
+    });
+
+    it("rejects a non-privileged employee who was never distributed the form", async () => {
+      hasPermissionMock.mockResolvedValue(false);
+      service.isDistributedTo.mockResolvedValue(false);
+      await expect(controller.getById("1", employee)).rejects.toThrow(ForbiddenException);
+      expect(service.getFormWithGraph).not.toHaveBeenCalled();
+    });
   });
 
   it("create forwards the current employee's userId", async () => {

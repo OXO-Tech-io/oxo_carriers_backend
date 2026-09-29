@@ -12,6 +12,16 @@ export const notices = pgTable('tbl_notices', {
     message: text('message').notNull(),
     imageUrl: varchar('image_url', { length: 500 }),
     isActive: boolean('is_active').default(true).notNull(),
+    // OCD-565: scheduling window - a notice only actually displays (see
+    // NoticesService.listActive()) once `isActive` is true AND the current
+    // time falls between startAt and endAt. Both stay nullable at the DB
+    // level so this never breaks existing rows: startAt defaults to now()
+    // so pre-existing notices keep displaying immediately after the
+    // migration runs (see src/scripts/addNoticeScheduleFields.ts), while the
+    // DTO requires it for NEW notices going forward. A null endAt means the
+    // notice never expires.
+    startAt: timestamp('start_at').defaultNow(),
+    endAt: timestamp('end_at'),
     createdBy: integer('created_by').references(() => users.id, { onDelete: 'set null' }),
     updatedBy: integer('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at').defaultNow(),

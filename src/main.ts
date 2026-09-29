@@ -20,7 +20,8 @@ import path from 'path';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
 import { allowedOrigins, isOriginAllowed } from './config/corsOrigins';
-import { MedicalInsuranceModel } from './modules/medical-insurance/MedicalInsurance';
+import { createDurableUploadFallback } from './common/upload/serve-durable-upload-fallback';
+import { FILE_CATEGORIES } from './common/constants/fileCategories';
 
 if (ENV_LOADED_FROM) {
   logger.info({ envFile: ENV_LOADED_FROM }, 'Loaded environment from file');
@@ -137,31 +138,8 @@ async function bootstrap() {
   // Serve uploaded files
   app.useStaticAssets(path.join(process.cwd(), 'uploads'), { prefix: '/uploads' });
 
-  // OCD-493: Cloud Run's local disk is ephemeral - a file multer wrote to
-  // uploads/ on one instance is gone once that instance recycles (scale to
-  // zero, a redeploy, or the request simply landing on a different
-  // instance), which is what caused "Cannot GET /uploads/documents/..." for
-  // claim documents submitted on previous days. express.static calls
-  // next() on a miss, so this runs only when the on-disk copy is gone, and
-  // serves the durable Postgres copy saved at upload time instead (see
-  // MedicalInsuranceModel.persistDocumentBlob/getDocumentBlob).
-  const serveMedicalClaimDocumentFallback = async (
-    req: import('express').Request,
-    res: import('express').Response,
-    next: import('express').NextFunction,
-  ) => {
-    try {
-      const filename = Array.isArray(req.params.filename) ? req.params.filename[0] : req.params.filename;
-      const blob = filename ? await MedicalInsuranceModel.getDocumentBlob(filename) : null;
-      if (!blob) return next();
-      res.setHeader('Content-Type', blob.mimeType);
-      res.send(blob.data);
-    } catch (error) {
-      next(error);
-    }
-  };
-  app.use('/uploads/documents/:filename', serveMedicalClaimDocumentFallback);
-  app.use('/uploads/others/:filename', serveMedicalClaimDocumentFallback);
+  app.use('/uploads/documents/:filename', createDurableUploadFallback(FILE_CATEGORIES.DOCUMENTS));
+  app.use('/uploads/others/:filename', createDurableUploadFallback(FILE_CATEGORIES.OTHERS));
 
   app.useGlobalFilters(new AllExceptionsFilter());
   app.useGlobalPipes(

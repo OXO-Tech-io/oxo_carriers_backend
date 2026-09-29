@@ -2,7 +2,7 @@ import { BadRequestException, Controller, ForbiddenException, Get, NotFoundExcep
 import type { Response } from 'express';
 import fs from 'fs';
 import path from 'path';
-import { FILE_CATEGORIES, RESTRICTED_FILE_CATEGORY } from '../constants/fileCategories';
+import { CONTENT_TYPES, FILE_CATEGORIES, RESTRICTED_FILE_CATEGORY, UPLOADS_ROOT } from '../constants/fileCategories';
 
 // Replaces the old public `app.useStaticAssets('/uploads')` mount. Every
 // route in this controller sits behind the global JwtAuthGuard (no
@@ -10,26 +10,12 @@ import { FILE_CATEGORIES, RESTRICTED_FILE_CATEGORY } from '../constants/fileCate
 // now required; per-file ownership is still whatever it was under the old
 // static mount (none, beyond the module that produced the file already
 // having gated who could obtain its URL).
-const UPLOADS_ROOT = path.join(process.cwd(), 'uploads');
 
 const ALLOWED_CATEGORIES: Set<string> = new Set(Object.values(FILE_CATEGORIES));
 
 // No path separators or traversal sequences - filenames in this tree are
 // always either a multer-generated random name or a crypto.randomUUID().
 const SAFE_FILENAME = /^[A-Za-z0-9_.-]+$/;
-
-const CONTENT_TYPES: Record<string, string> = {
-  '.pdf': 'application/pdf',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.png': 'image/png',
-  '.gif': 'image/gif',
-  '.doc': 'application/msword',
-  '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  '.xls': 'application/vnd.ms-excel',
-  '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  '.csv': 'text/csv',
-};
 
 @Controller('files')
 export class FilesController {

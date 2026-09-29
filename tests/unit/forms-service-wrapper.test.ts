@@ -83,7 +83,16 @@ describe("FormsService (thin wrapper)", () => {
   });
 
   it("distribute unwraps userIds/groupIds/closeAt", async () => {
+    // Omitting closeAt entirely resolves to undefined (leave the form's existing deadline alone),
+    // not null (which would explicitly clear it) - see form.validator.ts#distributeFormSchema.
     await service.distribute(1, { userIds: [1] });
+    expect(fs.distribute).toHaveBeenCalledWith(1, [1], [], undefined);
+
+    const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await service.distribute(1, { userIds: [1], closeAt: futureDate });
+    expect(fs.distribute).toHaveBeenCalledWith(1, [1], [], new Date(futureDate));
+
+    await service.distribute(1, { userIds: [1], closeAt: null });
     expect(fs.distribute).toHaveBeenCalledWith(1, [1], [], null);
   });
 

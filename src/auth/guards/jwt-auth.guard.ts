@@ -6,6 +6,7 @@ import { EmployeesService } from '../../employees/employees.service';
 import { EmployeeStatus, UserRole } from '../../types';
 import { logger as baseLogger } from '../../lib/logger';
 import { IS_PUBLIC_KEY } from '../../common/decorators/public.decorator';
+import { SKIP_SESSION_CHECK_KEY } from '../../common/decorators/skip-session-check.decorator';
 
 const ROLE_PRIORITY: UserRole[] = [
   UserRole.SUPER_ADMIN,
@@ -114,6 +115,27 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
+    const skipSessionCheck = this.reflector.getAllAndOverride<boolean>(SKIP_SESSION_CHECK_KEY, [
+      context.getHandler(),
+      context.getClass(),
+    ]);
+    if (
+      !skipSessionCheck &&
+      claims.sid &&
+      employee.activeSessionId &&
+      employee.activeSessionId !== claims.sid
+    ) {
+      log.warn(
+        { keycloakSub: claims.sub, email: claims.email, userId: employee.id },
+        'Rejected request from a session superseded by a newer login (OCD-455)',
+      );
+      throw new UnauthorizedException({
+        message:
+          'This account has been logged in from another browser. Your current session has been terminated.',
+        code: 'SESSION_TERMINATED',
+      });
+    }
+
     log.info(
       {
         keycloakSub: claims.sub,
@@ -135,6 +157,7 @@ export class JwtAuthGuard implements CanActivate {
       email: employee.email,
       role: employee.role as UserRole,
       sub: claims.sub,
+      sid: claims.sid,
     };
 
     return true;

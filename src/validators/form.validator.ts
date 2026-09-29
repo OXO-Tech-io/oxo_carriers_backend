@@ -23,10 +23,24 @@ const booleanField = (defaultValue: boolean) =>
     .optional()
     .transform((v) => (v === undefined ? defaultValue : v === true || v === 'true'));
 
+const requireFutureDate = (d: Date | null | undefined) => d == null || d.getTime() > Date.now();
+const FUTURE_DATE_MESSAGE = 'Deadline must be a date and time in the future';
+
+// Absent key -> null (no prior deadline to preserve, e.g. form creation).
 const nullableDateField = z
   .union([z.string(), z.null()])
   .optional()
-  .transform((v) => (v ? new Date(v) : null));
+  .transform((v) => (v ? new Date(v) : null))
+  .refine(requireFutureDate, { message: FUTURE_DATE_MESSAGE });
+
+// Absent key -> undefined (caller didn't touch it, so the existing deadline is left alone -
+// see form.service.ts#distribute, which only writes closeAt when it's !== undefined).
+// Present as null/'' -> null (explicit clear). Present as a string -> parsed Date (explicit set).
+const optionalNullableFutureDateField = z
+  .union([z.string(), z.null()])
+  .optional()
+  .transform((v) => (v === undefined ? undefined : v ? new Date(v) : null))
+  .refine(requireFutureDate, { message: FUTURE_DATE_MESSAGE });
 
 export const createFormSchema = z.object({
   title: z.string().min(1, 'Title is required').max(255),
@@ -130,7 +144,7 @@ export type UpdateLogicRuleInput = z.infer<typeof updateLogicRuleSchema>;
 export const updateSettingsSchema = z.object({
   thankYouMessage: z.string().max(2000).nullable().optional(),
   acceptResponses: z.boolean().optional(),
-  closeAt: z.union([z.string(), z.null()]).optional().transform((v) => (v === undefined ? undefined : v ? new Date(v) : null)),
+  closeAt: optionalNullableFutureDateField,
   responseLimit: z.number().int().positive().nullable().optional(),
   allowEditAfterSubmit: z.boolean().optional(),
   notifyOwnerOnResponse: z.boolean().optional(),
@@ -150,7 +164,7 @@ export const distributeFormSchema = z
   .object({
     userIds: z.array(z.coerce.number().int().positive()).optional().default([]),
     groupIds: z.array(z.coerce.number().int().positive()).optional().default([]),
-    closeAt: nullableDateField,
+    closeAt: optionalNullableFutureDateField,
   })
   .refine((data) => data.userIds.length > 0 || data.groupIds.length > 0, {
     message: 'At least one employee or group is required',

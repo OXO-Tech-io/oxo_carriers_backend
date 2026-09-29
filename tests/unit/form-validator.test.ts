@@ -15,13 +15,19 @@ describe("form.validator", () => {
     });
 
     it("converts a string closeAt to a Date and null stays null", () => {
-      const withDate = createFormSchema.safeParse({ title: "F", closeAt: "2026-08-01" });
+      const futureDate = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+      const withDate = createFormSchema.safeParse({ title: "F", closeAt: futureDate });
       expect(withDate.success).toBe(true);
       if (withDate.success) expect(withDate.data.closeAt).toBeInstanceOf(Date);
 
       const withNull = createFormSchema.safeParse({ title: "F", closeAt: null });
       expect(withNull.success).toBe(true);
       if (withNull.success) expect(withNull.data.closeAt).toBeNull();
+    });
+
+    it("rejects a closeAt in the past", () => {
+      const pastDate = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      expect(createFormSchema.safeParse({ title: "F", closeAt: pastDate }).success).toBe(false);
     });
 
     it("rejects an empty title", () => {

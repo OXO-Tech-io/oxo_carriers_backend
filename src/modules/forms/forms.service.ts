@@ -48,6 +48,14 @@ export class FormsService {
     return formService.getFormWithGraph(formId);
   }
 
+  async isDistributedTo(formId: number, userId: number) {
+    return formService.isDistributedTo(formId, userId);
+  }
+
+  async listDistributedUserIds(formId: number) {
+    return formService.listDistributedUserIds(formId);
+  }
+
   async delete(formId: number) {
     return formService.delete(formId);
   }

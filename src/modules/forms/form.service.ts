@@ -12,13 +12,26 @@ import { EmployeeModel } from '../../employees/Employee';
 import { groupService } from '../groups/group.service';
 import { notificationService } from '../notifications/notification.service';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../utils/AppError';
+import { formatExportTimestamp } from '../../utils/helpers';
 import { isQuestionVisible } from './formLogic';
-import type { Form as DrizzleForm, FormSettingsRow, FormResponseAnswer as DrizzleFormResponseAnswer } from '../../db/schema';
+import type {
+  Form as DrizzleForm,
+  FormSettingsRow,
+  FormResponseAnswer as DrizzleFormResponseAnswer,
+  FormQuestion as DrizzleFormQuestion,
+  Attachment as DrizzleAttachment,
+} from '../../db/schema';
 import type { CreateFormInput } from '../../validators/form.validator';
 
-const AVERAGE_TYPES = new Set(['number', 'linear_scale', 'rating']);
+const NUMBER_TYPE = 'number';
+const AVERAGE_TYPES = new Set([NUMBER_TYPE, 'linear_scale', 'rating']);
 const DISTRIBUTION_TYPES = new Set(['multiple_choice', 'checkboxes', 'dropdown', 'yes_no', 'multiple_choice_grid', 'checkbox_grid']);
 const NON_ANSWERABLE_TYPES = new Set(['section_header', 'rich_text']);
+const GRID_TYPES = new Set(['multiple_choice_grid', 'checkbox_grid']);
+// Single-value choice types validated against their own options list (see
+// submitResponse below) - distinct from 'checkboxes', which is multi-select
+// and validated by min/maxSelections instead of an allowed-values check.
+const CHOICE_TYPES = new Set(['multiple_choice', 'dropdown']);
 
 // 'closed' is never stored (see forms.ts schema comment) - derived here from
 // a published form that's stopped accepting responses, either explicitly or
@@ -32,11 +45,37 @@ function deriveStatus(form: DrizzleForm, settings: FormSettingsRow | null): Driz
   return form.status;
 }
 
+// Grid answers (multiple_choice_grid/checkbox_grid) are `Record<rowValue, colValue | colValue[]>` -
+// flattened here into "Row: Col, Col" text instead of raw JSON, so valueText (used by CSV/Excel
+// export and as the display fallback) stays human-readable like every other answer type.
+function formatGridValue(value: Record<string, unknown>): string {
+  return Object.entries(value)
+    .map(([row, col]) => `${row}: ${Array.isArray(col) ? col.join(', ') : col}`)
+    .join('; ');
+}
+
 function stringifyAnswerValue(value: unknown): string | null {
   if (value == null) return null;
   if (Array.isArray(value)) return value.join(', ');
-  if (typeof value === 'object') return JSON.stringify(value);
+  if (typeof value === 'object') return formatGridValue(value as Record<string, unknown>);
   return String(value);
+}
+
+// Attaches uploaded-file metadata to each file_upload answer so callers (the recipient's own
+// submitted-response view, and the admin Responses viewer) can render a name + link instead of the
+// bare '-' the answer's null value/valueText would otherwise show.
+async function withAttachments(
+  answers: DrizzleFormResponseAnswer[],
+  questions: DrizzleFormQuestion[],
+): Promise<(DrizzleFormResponseAnswer & { attachments: DrizzleAttachment[] })[]> {
+  const questionTypeById = new Map(questions.map((q) => [q.id, q.type]));
+  const fileAnswers = answers.filter((a) => questionTypeById.get(a.questionId) === 'file_upload');
+  if (!fileAnswers.length) return answers.map((a) => ({ ...a, attachments: [] }));
+  const attachmentLists = await Promise.all(
+    fileAnswers.map((a) => AttachmentModel.findByEntity('form_response_answer', a.id)),
+  );
+  const attachmentsByAnswerId = new Map(fileAnswers.map((a, i) => [a.id, attachmentLists[i] as DrizzleAttachment[]]));
+  return answers.map((a) => ({ ...a, attachments: attachmentsByAnswerId.get(a.id) ?? [] }));
 }
 
 function isAnswerEmpty(value: unknown): boolean {
@@ -258,16 +297,29 @@ export const formService = {
           submitted: response?.status === 'submitted',
           acceptResponses: settings?.acceptResponses ?? true,
           closeAt: settings?.closeAt ?? null,
+          allowEditAfterSubmit: settings?.allowEditAfterSubmit ?? false,
         };
       }),
     );
     return results.filter((r): r is NonNullable<typeof r> => r !== null);
   },
 
+  async isDistributedTo(formId: number, userId: number) {
+    return FormDistributionModel.isDistributedTo(formId, userId);
+  },
+
+  async listDistributedUserIds(formId: number): Promise<number[]> {
+    const distributions = await FormDistributionModel.listByFormId(formId);
+    const employeeMap = await EmployeeModel.findByEmployeeIds(distributions.map((d) => d.employeeId));
+    return [...employeeMap.values()].map((e) => e.id);
+  },
+
   async getMyResponse(formId: number, userId: number) {
     const response = await FormResponseModel.findByFormAndUser(formId, userId);
     const settings = await FormSettingsModel.findByFormId(formId);
-    const answers = response ? await FormResponseModel.listAnswersByResponseId(response.id) : [];
+    const rawAnswers = response ? await FormResponseModel.listAnswersByResponseId(response.id) : [];
+    const questions = rawAnswers.length ? await FormQuestionModel.listByFormId(formId) : [];
+    const answers = await withAttachments(rawAnswers, questions);
     return { response, answers, allowEditAfterSubmit: settings?.allowEditAfterSubmit ?? false };
   },
 
@@ -309,36 +361,103 @@ export const formService = {
 
     const logicRules = await FormLogicRuleModel.listByFormId(formId);
 
+    // Existing answers/attachments must be inspected BEFORE they're wiped by replaceAnswers below,
+    // both to let a file question with no new upload in this submission (allowEditAfterSubmit,
+    // re-saving a response without re-selecting the file) count as "already answered" for
+    // required-ness, and so its attachment can be carried over onto the new answer row afterwards.
+    // `existing` was already fetched above for the allowEditAfterSubmit check.
+    const oldAnswersForCarry = existing ? await FormResponseModel.listAnswersByResponseId(existing.id) : [];
+    const carriedAttachmentsByQuestion = new Map<number, DrizzleAttachment[]>();
+    for (const old of oldAnswersForCarry) {
+      if (fileQuestionIds.has(old.questionId)) continue; // being replaced by a new upload below
+      if (questionById.get(old.questionId)?.type !== 'file_upload') continue;
+      const existingFiles = await AttachmentModel.findByEntity('form_response_answer', old.id);
+      if (existingFiles.length) carriedAttachmentsByQuestion.set(old.questionId, existingFiles);
+    }
+    for (const id of carriedAttachmentsByQuestion.keys()) {
+      if (!(id in valuesByQuestion)) valuesByQuestion[id] = true; // presence marker, same as fileQuestionIds
+    }
+
     if (final) {
       for (const q of questions) {
-        if (NON_ANSWERABLE_TYPES.has(q.type) || !q.required) continue;
-        if (!isQuestionVisible(q.id, logicRules, valuesByQuestion)) continue;
-        const empty = q.type === 'file_upload' ? !fileQuestionIds.has(q.id) : isAnswerEmpty(valuesByQuestion[q.id]);
-        if (empty) throw new BadRequestError(`"${q.title || 'Untitled question'}" is required`);
-      }
+        if (NON_ANSWERABLE_TYPES.has(q.type)) continue;
+        const value = valuesByQuestion[q.id];
+        const empty =
+          q.type === 'file_upload'
+            ? !(fileQuestionIds.has(q.id) || carriedAttachmentsByQuestion.has(q.id))
+            : isAnswerEmpty(value);
+        // Required-ness only applies while the question is visible - a hidden question can't force
+        // the user to answer it. But a *submitted* value must still be validated against its type's
+        // constraints even when hidden, since a value can be stale (belonging to a since-hidden
+        // question) or tampered; silently accepting it would persist invalid/out-of-range data.
+        const visible = isQuestionVisible(q.id, logicRules, valuesByQuestion);
+        if (q.required && visible && empty) throw new BadRequestError(`"${q.title || 'Untitled question'}" is required`);
+        if (empty) continue;
 
-      for (const a of answersInput) {
-        const q = questionById.get(a.questionId);
-        if (!q || (q.type !== 'multiple_choice' && q.type !== 'dropdown') || isAnswerEmpty(a.value)) continue;
-        const allowOther = !!(q.config as { allowOther?: boolean } | null)?.allowOther;
-        const allowedValues = new Set(q.options.map((o) => o.value));
-        if (!allowedValues.has(String(a.value)) && !allowOther) {
-          throw new BadRequestError(`Invalid value for "${q.title}"`);
+        const config = (q.config ?? {}) as Record<string, unknown>;
+        if (CHOICE_TYPES.has(q.type)) {
+          const allowOther = !!(config as { allowOther?: boolean }).allowOther;
+          const allowedValues = new Set(q.options.map((o) => o.value));
+          if (!allowedValues.has(String(value)) && !allowOther) {
+            throw new BadRequestError(`Invalid value for "${q.title}"`);
+          }
+        } else if (q.type === NUMBER_TYPE) {
+          const num = Number(value);
+          if (Number.isNaN(num)) throw new BadRequestError(`"${q.title}" must be a number`);
+          const min = typeof config.min === 'number' ? config.min : undefined;
+          const max = typeof config.max === 'number' ? config.max : undefined;
+          if ((min !== undefined && num < min) || (max !== undefined && num > max)) {
+            throw new BadRequestError(`"${q.title}" must be between ${min ?? '-∞'} and ${max ?? '∞'}`);
+          }
+        } else if (q.type === 'short_answer' || q.type === 'paragraph') {
+          const maxLength = typeof config.maxLength === 'number' && config.maxLength > 0 ? config.maxLength : undefined;
+          if (maxLength && String(value).length > maxLength) {
+            throw new BadRequestError(`"${q.title}" exceeds the maximum length of ${maxLength} characters`);
+          }
+        } else if (q.type === 'checkboxes') {
+          const selections = Array.isArray(value) ? value : [];
+          const minSelections =
+            typeof config.minSelections === 'number' && config.minSelections > 0 ? config.minSelections : undefined;
+          const maxSelections =
+            typeof config.maxSelections === 'number' && config.maxSelections > 0 ? config.maxSelections : undefined;
+          if (minSelections && selections.length < minSelections) {
+            throw new BadRequestError(`"${q.title}" requires at least ${minSelections} selection(s)`);
+          }
+          if (maxSelections && selections.length > maxSelections) {
+            throw new BadRequestError(`"${q.title}" allows at most ${maxSelections} selection(s)`);
+          }
         }
+      }
+    }
+
+    const filesByQuestion = new Map<number, AttachmentFileInput[]>();
+    for (const file of files) {
+      const questionId = Number(file.fieldname.replace('question_', ''));
+      const list = filesByQuestion.get(questionId) ?? [];
+      list.push(file);
+      filesByQuestion.set(questionId, list);
+    }
+    for (const [questionId, questionFiles] of filesByQuestion) {
+      const question = questionById.get(questionId);
+      if (!question || question.type !== 'file_upload') continue;
+      const config = (question.config ?? {}) as { maxFiles?: number };
+      if (typeof config.maxFiles === 'number' && questionFiles.length > config.maxFiles) {
+        throw new BadRequestError(`"${question.title}" allows at most ${config.maxFiles} file(s)`);
       }
     }
 
     const response = await FormResponseModel.findOrCreate(formId, userId);
 
     const oldAnswers = await FormResponseModel.listAnswersByResponseId(response.id);
-    for (const old of oldAnswers) {
-      await AttachmentModel.deleteByEntity('form_response_answer', old.id);
-    }
 
     const answersToSave = answersInput
       .filter((a) => questionById.get(a.questionId)?.type !== 'file_upload')
       .map((a) => ({ questionId: a.questionId, value: a.value ?? null, valueText: stringifyAnswerValue(a.value) }));
     for (const questionId of fileQuestionIds) {
+      answersToSave.push({ questionId, value: null, valueText: null });
+    }
+    for (const questionId of carriedAttachmentsByQuestion.keys()) {
+      if (fileQuestionIds.has(questionId)) continue;
       answersToSave.push({ questionId, value: null, valueText: null });
     }
 
@@ -363,6 +482,24 @@ export const formService = {
       if (answer) await AttachmentModel.create('form_response_answer', answer.id, file, userId);
     }
 
+    for (const [questionId, existingFiles] of carriedAttachmentsByQuestion) {
+      const answer = savedAnswers.find((a) => a.questionId === questionId);
+      if (!answer) continue;
+      for (const att of existingFiles) {
+        await AttachmentModel.copyToEntity('form_response_answer', answer.id, att);
+      }
+    }
+
+    // Deletes the *old* answers' attachment rows only after any carried-forward
+    // file has already been re-attached to its new answer row above (via
+    // copyToEntity) - AttachmentModel.deleteByEntity now only physically
+    // deletes a file's blob/disk copy once no attachment row references it
+    // any more, so deleting these first would race that copy and could
+    // destroy a file that's meant to survive on the new row.
+    for (const old of oldAnswers) {
+      await AttachmentModel.deleteByEntity('form_response_answer', old.id);
+    }
+
     if (final) {
       const startedAt = existing?.startedAt ?? response.startedAt;
       const completionMs = startedAt ? Date.now() - new Date(startedAt).getTime() : 0;
@@ -372,8 +509,37 @@ export const formService = {
       response.status = 'submitted';
       response.submittedAt = new Date();
       response.completionMs = completionMs;
-      if (!existing || existing.status !== 'submitted') {
+      const isFirstSubmission = !existing || existing.status !== 'submitted';
+      if (isFirstSubmission) {
         await FormModel.recordResponse(formId);
+      }
+
+      const employee = await EmployeeModel.findById(userId);
+      const form = await FormModel.findById(formId);
+      if (employee?.employeeId && form) {
+        if (settings?.notifyRespondent) {
+          await notificationService.notify(
+            employee.employeeId,
+            'form',
+            'Response submitted',
+            `Your response to "${form.title}" was submitted successfully.`,
+            { formId },
+            '/my-forms',
+          );
+        }
+        if (settings?.notifyOwnerOnResponse && form.createdBy && form.createdBy !== userId) {
+          const owner = await EmployeeModel.findById(form.createdBy);
+          if (owner?.employeeId) {
+            await notificationService.notify(
+              owner.employeeId,
+              'form',
+              `New response: ${form.title}`,
+              `${employee.firstName} ${employee.lastName} submitted a response.`,
+              { formId },
+              `/admin/forms/${formId}/responses`,
+            );
+          }
+        }
       }
     }
 
@@ -381,10 +547,14 @@ export const formService = {
   },
 
   async listResponses(formId: number) {
-    const responses = await FormResponseModel.listByFormId(formId);
+    const [responses, questions] = await Promise.all([
+      FormResponseModel.listByFormId(formId),
+      FormQuestionModel.listByFormId(formId),
+    ]);
     return Promise.all(
       responses.map(async (response) => {
-        const answers = await FormResponseModel.listAnswersByResponseId(response.id);
+        const rawAnswers = await FormResponseModel.listAnswersByResponseId(response.id);
+        const answers = await withAttachments(rawAnswers, questions);
         const user = response.employeeId ? await EmployeeModel.findByEmployeeId(response.employeeId) : null;
         return { response, answers, user };
       }),
@@ -456,6 +626,9 @@ export const formService = {
     const { form, questions } = await this.getFormWithGraph(formId);
     const answerableQuestions = questions.filter((q) => !NON_ANSWERABLE_TYPES.has(q.type));
     const responses = await this.listResponses(formId);
+    // Mirrors FormResponsesClient.tsx's `isLate` so the exported Status column agrees with what
+    // the Responses page shows on screen instead of collapsing both into a bare "submitted".
+    const closeAt = form.closeAt ? new Date(form.closeAt) : null;
 
     const columns = [
       { header: 'Submitted By', key: 'submittedBy' },
@@ -465,26 +638,21 @@ export const formService = {
       ...answerableQuestions.map((q) => ({ header: q.title || 'Untitled', key: `q_${q.id}` })),
     ];
 
-    const rows = await Promise.all(
-      responses.map(async ({ response, answers, user }) => {
-        const row: Record<string, string> = {
-          submittedBy: user ? `${user.firstName} ${user.lastName}` : `Employee ${response.employeeId}`,
-          email: user?.email ?? '',
-          status: response.status,
-          submittedAt: response.submittedAt ? new Date(response.submittedAt).toLocaleString() : '',
-        };
-        for (const q of answerableQuestions) {
-          const answer = answers.find((a) => a.questionId === q.id);
-          if (q.type === 'file_upload') {
-            const attachments = answer ? await AttachmentModel.findByEntity('form_response_answer', answer.id) : [];
-            row[`q_${q.id}`] = attachments.map((a) => a.fileName).join(', ');
-          } else {
-            row[`q_${q.id}`] = answer?.valueText ?? '';
-          }
-        }
-        return row;
-      }),
-    );
+    const rows = responses.map(({ response, answers, user }) => {
+      const isLate = response.status === 'submitted' && !!closeAt && !!response.submittedAt && new Date(response.submittedAt) > closeAt;
+      const row: Record<string, string> = {
+        submittedBy: user ? `${user.firstName} ${user.lastName}` : `Employee ${response.employeeId}`,
+        email: user?.email ?? '',
+        status: response.status === 'submitted' ? (isLate ? 'Submitted (Late)' : 'Submitted') : 'In progress',
+        submittedAt: formatExportTimestamp(response.submittedAt),
+      };
+      for (const q of answerableQuestions) {
+        const answer = answers.find((a) => a.questionId === q.id);
+        row[`q_${q.id}`] =
+          q.type === 'file_upload' ? (answer?.attachments ?? []).map((a) => a.fileName).join(', ') : answer?.valueText ?? '';
+      }
+      return row;
+    });
 
     if (format === 'csv') return toCsv(columns, rows);
 

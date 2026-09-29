@@ -32,6 +32,8 @@ export class DocumentRecipientModel {
         title: documents.title,
         description: documents.description,
         targetType: documents.targetType,
+        version: documents.version,
+        isMandatoryViewing: documents.isMandatoryViewing,
         createdBy: documents.createdBy,
         createdAt: documents.createdAt,
         updatedAt: documents.updatedAt,

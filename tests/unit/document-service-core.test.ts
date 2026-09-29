@@ -50,7 +50,7 @@ describe("documentService (core)", () => {
 
   describe("create", () => {
     it("rejects an individual target with no employees", async () => {
-      await expect(documentService.create("T", null, "individual", [], 9, [])).rejects.toMatchObject({
+      await expect(documentService.create("T", null, "individual", [], "1.0", false, 9, [])).rejects.toMatchObject({
         statusCode: 400,
       });
       expect(dm.create).not.toHaveBeenCalled();
@@ -65,7 +65,7 @@ describe("documentService (core)", () => {
       ]);
       drm.createMany.mockResolvedValue([]);
 
-      const result = await documentService.create("T", "desc", "individual", [1, 2], 9, []);
+      const result = await documentService.create("T", "desc", "individual", [1, 2], "1.0", false, 9, []);
 
       expect(em.findByIds).toHaveBeenCalledWith([1, 2]);
       expect(drm.createMany).toHaveBeenCalledWith(100, ["EMP1", "EMP2"]);
@@ -74,14 +74,27 @@ describe("documentService (core)", () => {
 
     it("does not create recipient rows for an 'all' target", async () => {
       dm.create.mockResolvedValue({ id: 101 });
-      await documentService.create("T", null, "all", [], 9, []);
+      await documentService.create("T", null, "all", [], "1.0", false, 9, []);
       expect(drm.createMany).not.toHaveBeenCalled();
     });
 
     it("creates attachments when files are provided", async () => {
       dm.create.mockResolvedValue({ id: 102 });
-      await documentService.create("T", null, "all", [], 9, [{ buffer: Buffer.from("x") } as any]);
+      await documentService.create("T", null, "all", [], "1.0", false, 9, [{ buffer: Buffer.from("x") } as any]);
       expect(am.createMany).toHaveBeenCalledWith("document_vault", 102, expect.any(Array), 9);
+    });
+
+    it("persists version and isMandatoryViewing on the document row", async () => {
+      dm.create.mockResolvedValue({ id: 103 });
+      await documentService.create("T", null, "all", [], "2.3", true, 9, []);
+      expect(dm.create).toHaveBeenCalledWith({
+        title: "T",
+        description: null,
+        targetType: "all",
+        version: "2.3",
+        isMandatoryViewing: true,
+        createdBy: 9,
+      });
     });
   });
 

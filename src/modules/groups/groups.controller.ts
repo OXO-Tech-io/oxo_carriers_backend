@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
 import { PermissionGuard } from '../../common/guards/permission.guard';
 import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
@@ -55,6 +55,17 @@ export class GroupsController {
   async remove(@Param('id', ParseIntPipe) id: number) {
     await this.groupsService.remove(id);
     return { success: true, message: 'Group deleted', data: {} };
+  }
+
+  // OCD-520: employees not yet in this group, for the "Add Members" picker -
+  // current members are excluded server-side so a stale/cached client-side
+  // list can't show someone who's already a member as still addable.
+  @Get(':id/available-members')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.GROUPS, 'write')
+  async availableMembers(@Param('id', ParseIntPipe) id: number, @Query('search') search?: string) {
+    const data = await this.groupsService.availableMembers(id, search);
+    return { success: true, message: 'Available members fetched', data };
   }
 
   @Post(':id/members')

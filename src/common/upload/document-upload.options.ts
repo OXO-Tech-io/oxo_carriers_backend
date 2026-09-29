@@ -35,6 +35,11 @@ const ALLOWED_MIME_TYPES = [
   'application/vnd.ms-excel',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   'text/csv',
+  // Forms' File Upload question type already advertises "zip" as an allowed extension (see
+  // components/forms/QuestionEditor.tsx) - without these, every such upload was rejected here
+  // before form.service.ts's own per-question extension check ever ran.
+  'application/zip',
+  'application/x-zip-compressed',
 ];
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;

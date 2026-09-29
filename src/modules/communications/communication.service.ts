@@ -2,12 +2,50 @@ import ExcelJS from 'exceljs';
 import { CommunicationModel } from './Communication';
 import { CommunicationRecipientModel } from './CommunicationRecipient';
 import { AttachmentModel, type AttachmentFileInput } from '../../common/models/Attachment';
+import type { Attachment as DrizzleAttachment } from '../../db/schema';
 import { EmployeeModel } from '../../employees/Employee';
 import { groupService } from '../groups/group.service';
 import { NotFoundError, ForbiddenError } from '../../utils/AppError';
 import { sendCommunicationEmail } from '../../config/email';
 import { notificationService } from '../notifications/notification.service';
 import { logger } from '../../lib/logger';
+import { formatExportTimestamp } from '../../utils/helpers';
+
+const ENTITY_TYPE = 'communication';
+
+// OCD-572: exported timestamps must show the same wall-clock time the app
+// displays elsewhere, in DD/MM/YYYY order, rather than whatever locale/
+// timezone the export process's own OS happens to default to (previously a
+// bare `.toLocaleString()`, which renders as en-US M/D/YYYY on a typical
+// server). Shares the EXPORT_TIMEZONE/'en-GB' convention already used for
+// Forms' Excel exports (see utils/helpers.ts) so every HR export agrees on
+// one format.
+
+export type CommunicationAttachmentSummary = {
+  fileUrl: string;
+  fileName: string;
+  mimeType: string | null;
+  fileSize: number | null;
+};
+
+const toAttachmentSummary = (attachment: DrizzleAttachment): CommunicationAttachmentSummary => ({
+  fileUrl: attachment.fileUrl,
+  fileName: attachment.fileName,
+  mimeType: attachment.mimeType,
+  fileSize: attachment.fileSize,
+});
+
+/** Groups a flat attachment list (as returned by AttachmentModel.findByEntityMany) by entityId,
+ * so each communication can be given only its own attachments. */
+const groupAttachmentsByEntityId = (attachments: DrizzleAttachment[]): Map<number, DrizzleAttachment[]> => {
+  const byEntityId = new Map<number, DrizzleAttachment[]>();
+  for (const attachment of attachments) {
+    const bucket = byEntityId.get(attachment.entityId);
+    if (bucket) bucket.push(attachment);
+    else byEntityId.set(attachment.entityId, [attachment]);
+  }
+  return byEntityId;
+};
 
 export const communicationService = {
   async create(
@@ -66,6 +104,12 @@ export const communicationService = {
 
   async listAll() {
     const list = await CommunicationModel.listAll();
+    // OCD-525: attachments were created on `create` (above) but never read back
+    // here, so they never made it into the API response. Batch-fetched once
+    // for the whole list (rather than per-communication) and grouped by
+    // entityId below.
+    const attachments = await AttachmentModel.findByEntityMany(ENTITY_TYPE, list.map((c) => c.id));
+    const attachmentsByCommunicationId = groupAttachmentsByEntityId(attachments);
     return Promise.all(
       list.map(async (communication) => {
         const recipientRows = await CommunicationRecipientModel.listByCommunicationId(communication.id);
@@ -105,13 +149,22 @@ export const communicationService = {
           lateCount,
           pendingCount,
           recipients,
+          attachments: (attachmentsByCommunicationId.get(communication.id) ?? []).map(toAttachmentSummary),
         };
       }),
     );
   },
 
   async listMine(employeeId: string) {
-    return CommunicationRecipientModel.listForUser(employeeId);
+    const rows = await CommunicationRecipientModel.listForUser(employeeId);
+    // OCD-525: same fix as listAll above, keyed by each row's communicationId
+    // (the recipient row's own `id` is unrelated - it's tbl_communication_recipients.id).
+    const attachments = await AttachmentModel.findByEntityMany(ENTITY_TYPE, rows.map((r) => r.communicationId));
+    const attachmentsByCommunicationId = groupAttachmentsByEntityId(attachments);
+    return rows.map((row) => ({
+      ...row,
+      attachments: (attachmentsByCommunicationId.get(row.communicationId) ?? []).map(toAttachmentSummary),
+    }));
   },
 
   async delete(communicationId: number) {
@@ -142,13 +195,16 @@ export const communicationService = {
     worksheet.getRow(1).font = { bold: true };
 
     rows.forEach((row) => {
+      // Computed from the raw sent/responded Date values (epoch-based, timezone-agnostic) -
+      // not from the formatted display strings below - so this was never affected by the
+      // formatting bug, but is kept alongside the corrected timestamps it's derived from.
       const leadTimeMs =
         row.emailSentAt && row.respondedAt ? new Date(row.respondedAt).getTime() - new Date(row.emailSentAt).getTime() : null;
       worksheet.addRow({
         title: row.title,
         recipient: `${row.recipientName} ${row.recipientLastName} (${row.recipientEmail})`,
-        emailSentAt: row.emailSentAt ? new Date(row.emailSentAt).toLocaleString() : 'Not sent',
-        respondedAt: row.respondedAt ? new Date(row.respondedAt).toLocaleString() : 'No response',
+        emailSentAt: row.emailSentAt ? formatExportTimestamp(row.emailSentAt) : 'Not sent',
+        respondedAt: row.respondedAt ? formatExportTimestamp(row.respondedAt) : 'No response',
         leadTime: leadTimeMs !== null ? `${(leadTimeMs / (1000 * 60 * 60)).toFixed(2)} hours` : '-',
       });
     });

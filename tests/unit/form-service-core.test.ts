@@ -50,36 +50,40 @@ vi.mock("../../src/modules/forms/FormResponse", () => ({
   },
 }));
 vi.mock("../../src/common/models/Attachment", () => ({
-  AttachmentModel: { deleteByEntity: vi.fn(), create: vi.fn(), findByEntity: vi.fn() },
+  AttachmentModel: { deleteByEntity: vi.fn(), create: vi.fn(), findByEntity: vi.fn(), copyToEntity: vi.fn() },
 }));
 vi.mock("../../src/employees/Employee", () => ({
-  EmployeeModel: { findByEmployeeId: vi.fn() },
+  EmployeeModel: { findByEmployeeId: vi.fn(), findById: vi.fn(), findByEmployeeIds: vi.fn() },
 }));
 vi.mock("../../src/modules/groups/group.service", () => ({
   groupService: { resolveMemberUserIds: vi.fn() },
 }));
 vi.mock("../../src/modules/notifications/notification.service", () => ({
-  notificationService: { notifyMany: vi.fn() },
+  notificationService: { notifyMany: vi.fn(), notify: vi.fn() },
 }));
 
 import { FormModel } from "../../src/modules/forms/Form";
+import { FormSectionModel } from "../../src/modules/forms/FormSection";
 import { FormSettingsModel } from "../../src/modules/forms/FormSettings";
 import { FormDistributionModel } from "../../src/modules/forms/FormDistribution";
 import { FormResponseModel } from "../../src/modules/forms/FormResponse";
 import { FormQuestionModel } from "../../src/modules/forms/FormQuestion";
 import { FormLogicRuleModel } from "../../src/modules/forms/FormLogicRule";
 import { AttachmentModel } from "../../src/common/models/Attachment";
+import { EmployeeModel } from "../../src/employees/Employee";
 import { groupService } from "../../src/modules/groups/group.service";
 import { notificationService } from "../../src/modules/notifications/notification.service";
 import { formService } from "../../src/modules/forms/form.service";
 
 const fm = FormModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const fsecm = FormSectionModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const fsm = FormSettingsModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const fdm = FormDistributionModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const frm = FormResponseModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const fqm = FormQuestionModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const flrm = FormLogicRuleModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const am = AttachmentModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const gs = groupService as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const ns = notificationService as unknown as Record<string, ReturnType<typeof vi.fn>>;
 
@@ -297,6 +301,149 @@ describe("formService (core)", () => {
       fqm.listByFormId.mockResolvedValue([question({ required: false })]);
       await formService.submitResponse(1, 9, [{ questionId: 1, value: "hello" }], [], true);
       expect(fm.recordResponse).not.toHaveBeenCalled();
+    });
+
+    it("rejects a number answer outside the question's configured min/max", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({ id: 5, type: "number", required: false, config: { min: 18, max: 24 } }),
+      ]);
+      await expect(
+        formService.submitResponse(1, 9, [{ questionId: 5, value: 1234 }], [], true),
+      ).rejects.toMatchObject({ statusCode: 400 });
+      await expect(
+        formService.submitResponse(1, 9, [{ questionId: 5, value: -20 }], [], true),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("accepts a number answer within the configured min/max", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({ id: 5, type: "number", required: false, config: { min: 18, max: 24 } }),
+      ]);
+      const result = await formService.submitResponse(1, 9, [{ questionId: 5, value: 20 }], [], true);
+      expect(result.response.status).toBe("submitted");
+    });
+
+    it("rejects a checkboxes answer outside the configured min/max selections", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({
+          id: 6,
+          type: "checkboxes",
+          required: false,
+          options: [{ value: "a" }, { value: "b" }, { value: "c" }, { value: "d" }],
+          config: { minSelections: 2, maxSelections: 4 },
+        }),
+      ]);
+      await expect(
+        formService.submitResponse(1, 9, [{ questionId: 6, value: ["a"] }], [], true),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("rejects a short_answer value longer than the configured maxLength", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({ id: 7, type: "short_answer", required: false, config: { maxLength: 5 } }),
+      ]);
+      await expect(
+        formService.submitResponse(1, 9, [{ questionId: 7, value: "way too long" }], [], true),
+      ).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("rejects more files than the question's configured maxFiles", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({ id: 4, type: "file_upload", required: false, config: { maxFiles: 1 } }),
+      ]);
+      const files = [
+        { fieldname: "question_4", size: 10, originalname: "a.pdf" },
+        { fieldname: "question_4", size: 10, originalname: "b.pdf" },
+      ] as any;
+      await expect(formService.submitResponse(1, 9, [], files, true)).rejects.toMatchObject({ statusCode: 400 });
+    });
+
+    it("stores grid answers as readable text rather than raw JSON", async () => {
+      fqm.listByFormId.mockResolvedValue([
+        question({ id: 8, type: "multiple_choice_grid", required: false, options: [{ value: "row1", label: "Row 1" }] }),
+      ]);
+      await formService.submitResponse(1, 9, [{ questionId: 8, value: { row1: "Col A" } }], [], true);
+      expect(frm.replaceAnswers).toHaveBeenCalledWith(
+        100,
+        expect.arrayContaining([expect.objectContaining({ questionId: 8, valueText: "row1: Col A" })]),
+      );
+    });
+
+    it("notifies the respondent on final submit when notifyRespondent is enabled", async () => {
+      fsm.findByFormId.mockResolvedValue({ acceptResponses: true, allowEditAfterSubmit: false, notifyRespondent: true });
+      fqm.listByFormId.mockResolvedValue([question({ required: false })]);
+      fm.findById.mockResolvedValue({ id: 1, title: "Feedback", createdBy: 5 });
+      em.findById.mockResolvedValue({ employeeId: "EMP9", firstName: "Jane", lastName: "Doe" });
+      await formService.submitResponse(1, 9, [{ questionId: 1, value: "hello" }], [], true);
+      expect(ns.notify).toHaveBeenCalledWith(
+        "EMP9",
+        "form",
+        expect.any(String),
+        expect.any(String),
+        { formId: 1 },
+        "/my-forms",
+      );
+    });
+
+    it("notifies the form owner on final submit when notifyOwnerOnResponse is enabled and the owner isn't the submitter", async () => {
+      fsm.findByFormId.mockResolvedValue({ acceptResponses: true, allowEditAfterSubmit: false, notifyOwnerOnResponse: true });
+      fqm.listByFormId.mockResolvedValue([question({ required: false })]);
+      fm.findById.mockResolvedValue({ id: 1, title: "Feedback", createdBy: 5 });
+      em.findById.mockImplementation((id: number) =>
+        id === 9
+          ? Promise.resolve({ employeeId: "EMP9", firstName: "Jane", lastName: "Doe" })
+          : Promise.resolve({ employeeId: "EMP5", firstName: "Owner", lastName: "Person" }),
+      );
+      await formService.submitResponse(1, 9, [{ questionId: 1, value: "hello" }], [], true);
+      expect(ns.notify).toHaveBeenCalledWith(
+        "EMP5",
+        "form",
+        expect.stringContaining("Feedback"),
+        expect.any(String),
+        { formId: 1 },
+        "/admin/forms/1/responses",
+      );
+    });
+  });
+
+  describe("exportResponses", () => {
+    it("marks late submissions distinctly from on-time ones in the Status column (CSV)", async () => {
+      fm.findById.mockResolvedValue({ id: 1, title: "Feedback", status: "published" });
+      fsecm.listByFormId.mockResolvedValue([]);
+      fqm.listByFormId.mockResolvedValue([
+        { id: 1, type: "short_answer", title: "Q1", orderIndex: 0 },
+      ]);
+      flrm.listByFormId.mockResolvedValue([]);
+      const closeAt = new Date("2026-09-24T04:00:00.000Z"); // 09:30 in Asia/Colombo (UTC+5:30)
+      fsm.findByFormId.mockResolvedValue({ closeAt });
+
+      frm.listByFormId.mockResolvedValue([
+        {
+          id: 10,
+          employeeId: "EMP1",
+          status: "submitted",
+          submittedAt: new Date("2026-09-24T10:00:00.000Z"), // after the deadline -> late
+        },
+        {
+          id: 11,
+          employeeId: "EMP2",
+          status: "submitted",
+          submittedAt: new Date("2026-09-24T02:00:00.000Z"), // before the deadline -> on time
+        },
+      ]);
+      frm.listAnswersByResponseId.mockResolvedValue([]);
+      em.findByEmployeeId.mockImplementation((employeeId: string) =>
+        Promise.resolve({ firstName: "A", lastName: employeeId, email: `${employeeId}@x.com` }),
+      );
+
+      const buffer = await formService.exportResponses(1, "csv");
+      const csv = buffer.toString("utf-8");
+      const lines = csv.split("\n");
+      expect(lines[1]).toContain("Submitted (Late)");
+      expect(lines[2]).toContain("Submitted");
+      expect(lines[2]).not.toContain("(Late)");
+      // DD/MM/YYYY, HH:mm:ss in the org's operating timezone, matching what the Responses page displays.
+      expect(lines[1]).toContain("24/09/2026, 15:30:00");
     });
   });
 

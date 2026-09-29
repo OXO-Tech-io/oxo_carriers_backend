@@ -1,9 +1,12 @@
+import fs from 'fs';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
 import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
 import { logger } from '../../lib/logger';
 import { EmployeeModel } from '../../employees/Employee';
 import { env } from '../../config/env';
+import { isSecureBucketConfigured, uploadPrivateObject } from '../../lib/storage/gcsStorage';
+import { FILE_CATEGORIES } from '../../common/constants/fileCategories';
 import {
   sendMedicalClaimApprovedEmail,
   sendMedicalClaimRejectedEmail,
@@ -117,15 +120,26 @@ export class MedicalInsuranceService {
     return { success: true, message: 'Medical insurance claim submitted', claim };
   }
 
-  /** OCD-493: best-effort durable copy of every uploaded file - see MedicalInsuranceModel.persistDocumentBlob. */
+  /**
+   * OCD-493: best-effort durable copy of every uploaded file - see
+   * MedicalInsuranceModel.persistDocumentBlob. Also uploads to the GCS bucket
+   * when configured (medical claim documents always land under
+   * uploads/documents - see supportive_document_url/relevant_document_url
+   * above), in addition to (not instead of) the Postgres copy.
+   */
   private async persistUploadedDocuments(files: MedicalDocumentFiles | undefined): Promise<void> {
     const uploaded = [...(files?.supportive_document ?? []), ...(files?.relevant_document ?? [])];
     await Promise.all(
-      uploaded.map((file) =>
+      uploaded.flatMap((file) => [
         MedicalInsuranceModel.persistDocumentBlob(file).catch((err: unknown) =>
           logger.error({ err, filename: file.filename }, 'Failed to persist medical claim document to the database'),
         ),
-      ),
+        isSecureBucketConfigured()
+          ? uploadPrivateObject(`uploads/${FILE_CATEGORIES.DOCUMENTS}/${file.filename}`, fs.readFileSync(file.path), file.mimetype).catch(
+              (err: unknown) => logger.error({ err, filename: file.filename }, 'Failed to persist medical claim document to cloud storage'),
+            )
+          : Promise.resolve(),
+      ]),
     );
   }
 

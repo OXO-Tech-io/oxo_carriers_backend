@@ -8,6 +8,8 @@ export type DocumentInput = {
   title: string;
   description?: string | null;
   targetType: DocumentTargetType;
+  version: string;
+  isMandatoryViewing: boolean;
   createdBy: number;
 };
 

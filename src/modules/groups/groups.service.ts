@@ -34,6 +34,10 @@ export class GroupsService {
     return groupService.addMembers(id, dto.userIds, addedBy);
   }
 
+  availableMembers(id: number, search?: string) {
+    return groupService.availableMembers(id, search);
+  }
+
   removeMember(id: number, userId: number) {
     return groupService.removeMember(id, userId);
   }
