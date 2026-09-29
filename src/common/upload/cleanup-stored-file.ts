@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { FileBlobModel } from '../models/FileBlob';
 import { logger } from '../../lib/logger';
+import { UPLOADS_ROOT } from '../constants/fileCategories';
 
 /**
  * Removes both durable copies of a file previously stored via multer disk
@@ -15,8 +16,9 @@ import { logger } from '../../lib/logger';
  */
 export async function cleanupStoredFile(fileUrl: string): Promise<void> {
   const filename = path.basename(fileUrl);
+  const category = path.basename(path.dirname(fileUrl));
   await Promise.all([
-    fs.unlink(path.join(process.cwd(), fileUrl.replace(/^\/+/, ''))).catch((err: unknown) => {
+    fs.unlink(path.join(UPLOADS_ROOT, category, filename)).catch((err: unknown) => {
       if ((err as NodeJS.ErrnoException)?.code !== 'ENOENT') {
         logger.error({ err, filename }, 'Failed to delete on-disk upload');
       }
