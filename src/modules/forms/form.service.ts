@@ -23,7 +23,8 @@ import type {
 } from '../../db/schema';
 import type { CreateFormInput } from '../../validators/form.validator';
 
-const AVERAGE_TYPES = new Set(['number', 'linear_scale', 'rating']);
+const NUMBER_TYPE = 'number';
+const AVERAGE_TYPES = new Set([NUMBER_TYPE, 'linear_scale', 'rating']);
 const DISTRIBUTION_TYPES = new Set(['multiple_choice', 'checkboxes', 'dropdown', 'yes_no', 'multiple_choice_grid', 'checkbox_grid']);
 const NON_ANSWERABLE_TYPES = new Set(['section_header', 'rich_text']);
 const GRID_TYPES = new Set(['multiple_choice_grid', 'checkbox_grid']);
@@ -400,7 +401,7 @@ export const formService = {
           if (!allowedValues.has(String(value)) && !allowOther) {
             throw new BadRequestError(`Invalid value for "${q.title}"`);
           }
-        } else if (q.type === 'number') {
+        } else if (q.type === NUMBER_TYPE) {
           const num = Number(value);
           if (Number.isNaN(num)) throw new BadRequestError(`"${q.title}" must be a number`);
           const min = typeof config.min === 'number' ? config.min : undefined;
