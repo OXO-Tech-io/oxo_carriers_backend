@@ -1,4 +1,5 @@
 import pool from '../config/database';
+import { logger } from '../lib/logger';
 
 // Idempotent, targeted fix - NOT a schema change (no ALTER TABLE here), so it
 // deliberately doesn't follow the tableExists/columnExists ALTER TABLE
@@ -26,7 +27,7 @@ import pool from '../config/database';
 // role re-save) is a separate, explicit action for that.
 async function removeHrExecutiveCommunicationsAccess() {
   try {
-    console.log("🔧 Removing hr_executive's default communications grant...");
+    logger.info("Removing hr_executive's default communications grant...");
 
     const existing = await pool.query(
       `SELECT access_level FROM tbl_role_permissions WHERE role = $1 AND permission_key = $2`,
@@ -34,7 +35,7 @@ async function removeHrExecutiveCommunicationsAccess() {
     );
 
     if (existing.rows.length === 0) {
-      console.log('  ✓ hr_executive has no communications row in tbl_role_permissions - nothing to do');
+      logger.info('hr_executive has no communications row in tbl_role_permissions - nothing to do');
       process.exit(0);
     }
 
@@ -42,16 +43,16 @@ async function removeHrExecutiveCommunicationsAccess() {
       `DELETE FROM tbl_role_permissions WHERE role = $1 AND permission_key = $2`,
       ['hr_executive', 'communications'],
     );
-    console.log(
+    logger.info(
       (result.rowCount ?? 0) > 0
-        ? '  ✓ Removed the hr_executive communications default from tbl_role_permissions'
-        : '  ✓ No matching row found to remove (already changed concurrently) - nothing to do',
+        ? 'Removed the hr_executive communications default from tbl_role_permissions'
+        : 'No matching row found to remove (already changed concurrently) - nothing to do',
     );
 
-    console.log('✅ hr_executive no longer has a default communications grant');
+    logger.info('hr_executive no longer has a default communications grant');
     process.exit(0);
   } catch (error: any) {
-    console.error("❌ Error removing hr_executive's communications grant:", error);
+    logger.error({ err: error }, "Error removing hr_executive's communications grant");
     process.exit(1);
   }
 }

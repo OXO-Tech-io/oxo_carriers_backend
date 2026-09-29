@@ -61,7 +61,7 @@ export const employee = pgTable('tbl_employee', {
     // OCD-455: Keycloak's `sid` (session id) claim for this employee's
     // current active session. JwtAuthGuard rejects any request whose token
     // carries a different sid once this is set, enforcing a single active
-    // session per account - see POST /auth/claim-session, which is the only
+    // session per account - see POST /auth/claim-sessions, which is the only
     // place that overwrites it (on an explicit fresh login).
     activeSessionId: varchar('active_session_id', { length: 255 }),
     firstName: varchar('first_name', { length: 500 }).notNull(),

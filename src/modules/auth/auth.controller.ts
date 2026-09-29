@@ -30,7 +30,7 @@ export class AuthController {
    * displaced session can never reclaim activeSessionId just by making
    * another request.
    */
-  @Post('claim-session')
+  @Post('claim-sessions')
   @SkipSessionCheck()
   async claimSession(@CurrentEmployee() employee: JwtPayload) {
     if (employee.sid) {

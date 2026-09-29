@@ -1,9 +1,11 @@
+import fs from 'fs';
 import { db } from '../../db';
 import { attachments, type Attachment as DrizzleAttachment } from '../../db/schema';
 import { and, eq, inArray } from 'drizzle-orm';
 import { FileBlobModel } from './FileBlob';
 import { cleanupStoredFile } from '../upload/cleanup-stored-file';
 import { logger } from '../../lib/logger';
+import { isSecureBucketConfigured, uploadPrivateObject } from '../../lib/storage/gcsStorage';
 
 export type AttachmentFileInput = Express.Multer.File;
 
@@ -21,12 +23,13 @@ export class AttachmentModel {
     file: AttachmentFileInput,
     uploadedBy?: number | null
   ): Promise<DrizzleAttachment> {
+    const fileUrl = toFileUrl(file);
     const [inserted] = await db
       .insert(attachments)
       .values({
         entityType,
         entityId,
-        fileUrl: toFileUrl(file),
+        fileUrl,
         fileName: file.originalname,
         mimeType: file.mimetype,
         fileSize: file.size,
@@ -34,9 +37,16 @@ export class AttachmentModel {
       })
       .returning();
     if (!inserted) throw new Error('Failed to create attachment');
-    await FileBlobModel.persist(file).catch((err: unknown) =>
-      logger.error({ err, filename: file.filename }, 'Failed to persist attachment file to the database')
-    );
+    await Promise.all([
+      FileBlobModel.persist(file).catch((err: unknown) =>
+        logger.error({ err, filename: file.filename }, 'Failed to persist attachment file to the database')
+      ),
+      isSecureBucketConfigured()
+        ? uploadPrivateObject(fileUrl.replace(/^\/+/, ''), fs.readFileSync(file.path), file.mimetype).catch(
+            (err: unknown) => logger.error({ err, filename: file.filename }, 'Failed to persist attachment file to cloud storage'),
+          )
+        : Promise.resolve(),
+    ]);
     return inserted;
   }
 

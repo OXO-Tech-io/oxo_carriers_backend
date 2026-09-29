@@ -27,6 +27,10 @@ const AVERAGE_TYPES = new Set(['number', 'linear_scale', 'rating']);
 const DISTRIBUTION_TYPES = new Set(['multiple_choice', 'checkboxes', 'dropdown', 'yes_no', 'multiple_choice_grid', 'checkbox_grid']);
 const NON_ANSWERABLE_TYPES = new Set(['section_header', 'rich_text']);
 const GRID_TYPES = new Set(['multiple_choice_grid', 'checkbox_grid']);
+// Single-value choice types validated against their own options list (see
+// submitResponse below) - distinct from 'checkboxes', which is multi-select
+// and validated by min/maxSelections instead of an allowed-values check.
+const CHOICE_TYPES = new Set(['multiple_choice', 'dropdown']);
 
 // 'closed' is never stored (see forms.ts schema comment) - derived here from
 // a published form that's stopped accepting responses, either explicitly or
@@ -390,7 +394,7 @@ export const formService = {
         if (empty) continue;
 
         const config = (q.config ?? {}) as Record<string, unknown>;
-        if (q.type === 'multiple_choice' || q.type === 'dropdown') {
+        if (CHOICE_TYPES.has(q.type)) {
           const allowOther = !!(config as { allowOther?: boolean }).allowOther;
           const allowedValues = new Set(q.options.map((o) => o.value));
           if (!allowedValues.has(String(value)) && !allowOther) {

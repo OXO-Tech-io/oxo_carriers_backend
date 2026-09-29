@@ -169,7 +169,7 @@ describe("JwtAuthGuard", () => {
       const guard = new JwtAuthGuard(reflector as any, employeesService as any);
       await expect(guard.canActivate(context)).resolves.toBe(true);
       // The guard only ever checks - it never writes activeSessionId itself
-      // (that's POST /auth/claim-session's job), even on first sight.
+      // (that's POST /auth/claim-sessions's job), even on first sight.
       expect(employeesService.setActiveSessionId).not.toHaveBeenCalled();
     });
 

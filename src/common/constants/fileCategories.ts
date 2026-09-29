@@ -23,3 +23,21 @@ export type FileCategory = (typeof FILE_CATEGORIES)[keyof typeof FILE_CATEGORIES
 // generic pass-through - only through SalaryController's guarded,
 // ownership-checked endpoint (which streams a freshly generated buffer).
 export const RESTRICTED_FILE_CATEGORY = "salary-slips";
+
+// Extension -> Content-Type, used by FilesController's disk read and by the
+// GCS-backed durable-upload fallback (serve-durable-upload-fallback.ts) - the
+// latter infers content-type from the filename instead of an extra GCS
+// metadata round trip, matching what this map already does for disk reads.
+export const CONTENT_TYPES: Record<string, string> = {
+  ".pdf": "application/pdf",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".png": "image/png",
+  ".gif": "image/gif",
+  ".doc": "application/msword",
+  ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  ".xls": "application/vnd.ms-excel",
+  ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ".csv": "text/csv",
+  ".zip": "application/zip",
+};

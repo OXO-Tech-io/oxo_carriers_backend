@@ -115,15 +115,6 @@ export class JwtAuthGuard implements CanActivate {
       );
     }
 
-    // OCD-455: single active session per account. `sid` is constant for a
-    // browser session across token refreshes and different for every fresh
-    // login, so a mismatch here means a newer login has claimed the account
-    // elsewhere (see AuthController.claimSession, the one place that sets
-    // activeSessionId - this guard only ever checks it, never promotes, so a
-    // displaced session can't win it back just by making another request).
-    // Skipped for claim-session itself (that request IS the new session
-    // establishing itself) and gracefully skipped altogether when the token
-    // has no `sid` (older/custom Keycloak client configs may omit it).
     const skipSessionCheck = this.reflector.getAllAndOverride<boolean>(SKIP_SESSION_CHECK_KEY, [
       context.getHandler(),
       context.getClass(),

@@ -4,16 +4,24 @@ import { db } from '../../db';
 import { Notice, notices } from './notices.schema';
 import { CreateNoticeDto } from './dto/create-notice.dto';
 import { UpdateNoticeDto } from './dto/update-notice.dto';
+import fs from 'fs';
 import { FileBlobModel } from '../../common/models/FileBlob';
 import { cleanupStoredFile } from '../../common/upload/cleanup-stored-file';
 import { logger } from '../../lib/logger';
+import { isSecureBucketConfigured, uploadPrivateObject } from '../../lib/storage/gcsStorage';
+import { FILE_CATEGORIES } from '../../common/constants/fileCategories';
 
-/** OCD-569: best-effort durable copy of the uploaded image - see FileBlobModel. */
+/** OCD-569: best-effort durable copy of the uploaded image - see FileBlobModel. Notice images always land under uploads/others (see imageUrl below). */
 const persistImage = (image?: Express.Multer.File): void => {
   if (!image) return;
   void FileBlobModel.persist(image).catch((err: unknown) =>
     logger.error({ err, filename: image.filename }, 'Failed to persist notice image to the database')
   );
+  if (isSecureBucketConfigured()) {
+    void uploadPrivateObject(`uploads/${FILE_CATEGORIES.OTHERS}/${image.filename}`, fs.readFileSync(image.path), image.mimetype).catch(
+      (err: unknown) => logger.error({ err, filename: image.filename }, 'Failed to persist notice image to cloud storage'),
+    );
+  }
 };
 
 @Injectable()

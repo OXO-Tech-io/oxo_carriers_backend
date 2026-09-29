@@ -14,6 +14,26 @@ vi.mock("../../src/common/models/FileBlob", () => ({
   FileBlobModel: { persist: vi.fn() },
 }));
 
+vi.mock("fs", () => ({
+  default: {
+    existsSync: vi.fn().mockReturnValue(false),
+    mkdirSync: vi.fn(),
+    writeFileSync: vi.fn(),
+    unlinkSync: vi.fn(),
+    readFileSync: vi.fn(),
+  },
+  existsSync: vi.fn().mockReturnValue(false),
+  mkdirSync: vi.fn(),
+  writeFileSync: vi.fn(),
+  unlinkSync: vi.fn(),
+  readFileSync: vi.fn(),
+}));
+
+vi.mock("../../src/lib/storage/gcsStorage", () => ({
+  isSecureBucketConfigured: vi.fn(),
+  uploadPrivateObject: vi.fn(),
+}));
+
 // NoticesService.update/remove fire-and-forget cleanupStoredFile() for a
 // replaced/removed image. Mocked at this boundary (rather than trying to
 // stub fs.unlink + FileBlobModel.deleteByFilename, which the FileBlobModel
@@ -24,14 +44,19 @@ vi.mock("../../src/common/upload/cleanup-stored-file", () => ({
   cleanupStoredFile: vi.fn().mockResolvedValue(undefined),
 }));
 
+import fs from "fs";
 import { db } from "../../src/db";
 import { FileBlobModel } from "../../src/common/models/FileBlob";
 import { cleanupStoredFile } from "../../src/common/upload/cleanup-stored-file";
+import { isSecureBucketConfigured, uploadPrivateObject } from "../../src/lib/storage/gcsStorage";
 import { NoticesService } from "../../src/modules/notices/notices.service";
 
 const dbMock = db as unknown as Record<"select" | "insert" | "update" | "delete", ReturnType<typeof vi.fn>>;
 const persistMock = FileBlobModel.persist as unknown as ReturnType<typeof vi.fn>;
 const cleanupStoredFileMock = cleanupStoredFile as unknown as ReturnType<typeof vi.fn>;
+const readFileSyncMock = fs.readFileSync as unknown as ReturnType<typeof vi.fn>;
+const isSecureBucketConfiguredMock = isSecureBucketConfigured as unknown as ReturnType<typeof vi.fn>;
+const uploadPrivateObjectMock = uploadPrivateObject as unknown as ReturnType<typeof vi.fn>;
 
 /**
  * A drizzle query builder is "thenable" at every stage of the chain (you can
@@ -217,6 +242,26 @@ describe("NoticesService", () => {
       persistMock.mockResolvedValue(undefined);
       await service.create({ title: "T", message: "M", startAt: "2026-01-01T00:00:00.000Z" } as any, 9, image);
       expect(persistMock).toHaveBeenCalledWith(image);
+    });
+
+    it("also uploads the image to cloud storage when a bucket is configured", async () => {
+      mockInsert(baseNotice());
+      const image = { filename: "img.png", mimetype: "image/png", path: "/tmp/img.png" } as any;
+      persistMock.mockResolvedValue(undefined);
+      isSecureBucketConfiguredMock.mockReturnValue(true);
+      readFileSyncMock.mockReturnValue(Buffer.from("data"));
+      uploadPrivateObjectMock.mockResolvedValue(undefined);
+      await service.create({ title: "T", message: "M", startAt: "2026-01-01T00:00:00.000Z" } as any, 9, image);
+      expect(uploadPrivateObjectMock).toHaveBeenCalledWith("uploads/others/img.png", Buffer.from("data"), "image/png");
+    });
+
+    it("skips the cloud storage upload when no bucket is configured", async () => {
+      mockInsert(baseNotice());
+      const image = { filename: "img.png", mimetype: "image/png", path: "/tmp/img.png" } as any;
+      persistMock.mockResolvedValue(undefined);
+      isSecureBucketConfiguredMock.mockReturnValue(false);
+      await service.create({ title: "T", message: "M", startAt: "2026-01-01T00:00:00.000Z" } as any, 9, image);
+      expect(uploadPrivateObjectMock).not.toHaveBeenCalled();
     });
   });
 

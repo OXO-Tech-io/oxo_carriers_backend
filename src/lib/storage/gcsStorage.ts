@@ -44,3 +44,22 @@ export async function downloadPrivateObject(objectKey: string): Promise<Buffer> 
   const [data] = await bucket.file(objectKey).download();
   return data;
 }
+
+/** Best-effort delete - a missing object is not an error (matches the delete-by-filename semantics of the Postgres blob tables this is replacing). */
+export async function deletePrivateObject(objectKey: string): Promise<void> {
+  if (!env.GCS_BUCKET_NAME) {
+    throw new Error('GCS_BUCKET_NAME is not configured');
+  }
+  const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
+  await bucket.file(objectKey).delete({ ignoreNotFound: true });
+}
+
+/** Used by the file-blob backfill script to skip re-uploading an object a previous, interrupted run already migrated. */
+export async function privateObjectExists(objectKey: string): Promise<boolean> {
+  if (!env.GCS_BUCKET_NAME) {
+    throw new Error('GCS_BUCKET_NAME is not configured');
+  }
+  const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
+  const [exists] = await bucket.file(objectKey).exists();
+  return exists;
+}

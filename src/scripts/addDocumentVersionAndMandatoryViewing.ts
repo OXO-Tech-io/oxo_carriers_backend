@@ -1,4 +1,5 @@
 import pool from '../config/database';
+import { logger } from '../lib/logger';
 
 // Idempotent, additive-only migration script - mirrors the addWorkLogDeadline.ts
 // pattern (see that file for why this doesn't go through `drizzle-kit generate`).
@@ -19,7 +20,7 @@ async function columnExists(tableName: string, columnName: string): Promise<bool
 
 async function addDocumentVersionAndMandatoryViewing() {
   try {
-    console.log('🔧 Adding Document Vault version + mandatory viewing columns...');
+    logger.info('Adding Document Vault version + mandatory viewing columns...');
 
     for (const [column, ddl] of [
       ['version', `ALTER TABLE tbl_documents ADD COLUMN version varchar(50) NOT NULL DEFAULT '1.0'`],
@@ -30,16 +31,16 @@ async function addDocumentVersionAndMandatoryViewing() {
     ] as const) {
       if (!(await columnExists('tbl_documents', column))) {
         await pool.query(ddl);
-        console.log(`  ✓ Added tbl_documents.${column}`);
+        logger.info(`Added tbl_documents.${column}`);
       } else {
-        console.log(`  ✓ tbl_documents.${column} already exists`);
+        logger.info(`tbl_documents.${column} already exists`);
       }
     }
 
-    console.log('✅ Document Vault version + mandatory viewing schema is up to date');
+    logger.info('Document Vault version + mandatory viewing schema is up to date');
     process.exit(0);
   } catch (error: any) {
-    console.error('❌ Error adding Document Vault version + mandatory viewing columns:', error);
+    logger.error({ err: error }, 'Error adding Document Vault version + mandatory viewing columns');
     process.exit(1);
   }
 }
