@@ -144,6 +144,71 @@ describe("SalaryService.uploadBulkSalaries", () => {
     expect(result.failed).toBe(0);
   });
 
+  it("allows the Finance Manager to upload (OCD-581) but not the Finance Executive", async () => {
+    const filePath = await writeWorkbook([
+      ["id", "Name", "Local Salary", "OXO International Salary"],
+      [1, "Jane", "1000", "500"],
+    ]);
+    poolQueryMock.mockResolvedValue({ rows: [{ id: 1, employee_id: "EMP1" }] });
+    sm.createSalaryFromExcel.mockResolvedValue({ id: 1 });
+
+    const financeManager = { userId: 3, employeeId: "FIN1", role: UserRole.FINANCE_MANAGER } as any;
+    const financeExecutive = { userId: 4, employeeId: "FIN2", role: UserRole.FINANCE_EXECUTIVE } as any;
+
+    const ok = await service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, financeManager);
+    expect(ok.success).toBe(1);
+    await expect(
+      service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, financeExecutive),
+    ).rejects.toThrow(ForbiddenException);
+  });
+
+  it("rejects non-numeric salary values with row and field details (OCD-580)", async () => {
+    const filePath = await writeWorkbook([
+      ["id", "Name", "Local Salary", "OXO International Salary", "EPF 8%", "Allowances", "Salary Advance/Deductions"],
+      [1, "Jane", "abc", "500", "xyz", "100", "n/a"],
+    ]);
+    poolQueryMock.mockResolvedValue({ rows: [{ id: 1, employee_id: "EMP1" }] });
+
+    const result = await service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, hr);
+    expect(result.success).toBe(0);
+    expect(result.failed).toBe(1);
+    expect(result.errors[0]).toContain("Row 2");
+    expect(result.errors[0]).toContain('Local Salary must be a number (found "abc")');
+    expect(result.errors[0]).toContain("EPF 8% must be a number");
+    expect(result.errors[0]).toContain("Salary Advance/Deductions must be a number");
+    expect(sm.createSalaryFromExcel).not.toHaveBeenCalled();
+  });
+
+  it("rejects a row with an empty Name (OCD-580)", async () => {
+    const filePath = await writeWorkbook([
+      ["id", "Name", "Local Salary", "OXO International Salary"],
+      [1, "", "1000", "500"],
+    ]);
+    poolQueryMock.mockResolvedValue({ rows: [{ id: 1, employee_id: "EMP1" }] });
+
+    const result = await service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, hr);
+    expect(result.failed).toBe(1);
+    expect(result.errors[0]).toContain("Name is required");
+    expect(sm.createSalaryFromExcel).not.toHaveBeenCalled();
+  });
+
+  it("includes allowances in the full salary and keeps EPF separate from deductions (OCD-573)", async () => {
+    const filePath = await writeWorkbook([
+      ["id", "Name", "Local Salary", "OXO International Salary", "EPF 8%", "Allowances", "Salary Advance/Deductions"],
+      [1, "Jane", 30000, 30000, 2400, 50000, 3000],
+    ]);
+    poolQueryMock.mockResolvedValue({ rows: [{ id: 1, employee_id: "EMP1" }] });
+    sm.createSalaryFromExcel.mockResolvedValue({ id: 1 });
+
+    await service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, hr);
+    expect(sm.createSalaryFromExcel).toHaveBeenCalledWith(
+      "EMP1",
+      expect.any(Date),
+      expect.objectContaining({ fullSalary: 110000, epfDeduction: 2400, allowances: 50000, salaryAdvanceDeductions: 3000 }),
+      hr.userId,
+    );
+  });
+
   it("records a per-row failure without aborting the rest of the batch", async () => {
     const filePath = await writeWorkbook([
       ["id", "Name", "Local Salary", "OXO International Salary"],

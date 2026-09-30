@@ -7,6 +7,17 @@ import { logger } from '../../lib/logger';
 const IN_PATIENT_MAX = 300000;
 const OPD_QUARTER_MAX = 6000; // 6,000 per quarter; 24,000 per year (6000 * 4)
 
+// OCD-584: a DATE column comes back from pg as a Date at local midnight; expose
+// it as a plain YYYY-MM-DD string so no time component leaks into the API.
+function toDateOnly(value: unknown): string | null {
+  if (value == null) return null;
+  if (value instanceof Date) {
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${value.getFullYear()}-${pad(value.getMonth() + 1)}-${pad(value.getDate())}`;
+  }
+  return String(value).slice(0, 10);
+}
+
 export function getCurrentQuarter(): string {
   const d = new Date();
   const year = d.getFullYear();
@@ -162,7 +173,7 @@ export class MedicalInsuranceModel {
     paymentStatus: MedicalClaimPaymentStatus,
     extra: {
       paid_amount?: number | null;
-      payment_date?: Date | null;
+      payment_date?: string | null; // YYYY-MM-DD
       payment_reference?: string | null;
       paid_by: number;
       paid_at: Date;
@@ -252,7 +263,7 @@ export class MedicalInsuranceModel {
         resubmission_of: row.resubmission_of,
         payment_status: row.payment_status ?? MedicalClaimPaymentStatus.NOT_PAID,
         paid_amount: row.paid_amount != null ? parseFloat(row.paid_amount) : null,
-        payment_date: row.payment_date,
+        payment_date: toDateOnly(row.payment_date),
         payment_reference: row.payment_reference,
         paid_by: row.paid_by,
         paid_at: row.paid_at,

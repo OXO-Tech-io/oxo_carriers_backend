@@ -17,13 +17,21 @@ import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
 import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
 import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
 
+// OCD-583: payment processing belongs to Finance (Super Admin keeps its usual
+// blanket access); HR reviews claims but never records payments.
 const PAYMENT_PROCESSING_ROLES = new Set<UserRole>([
-  UserRole.HR_MANAGER,
-  UserRole.HR_EXECUTIVE,
   UserRole.FINANCE_MANAGER,
   UserRole.FINANCE_EXECUTIVE,
   UserRole.SUPER_ADMIN,
 ]);
+// OCD-582: Finance only ever sees Approved claims; HR and Super Admin review
+// every claim (pending/rejected included).
+const FINANCE_ROLES = new Set<UserRole>([UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE]);
+const ALL_CLAIMS_ROLES = new Set<UserRole>([UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.SUPER_ADMIN]);
+// OCD-584: a payment date is a calendar date, so 'today' is judged in the
+// company's timezone rather than the (UTC) server's.
+const PAYMENT_TIMEZONE = 'Asia/Colombo';
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})/;
 const PAYMENT_STATUS_VALUES = Object.values(MedicalClaimPaymentStatus) as string[];
 // OCD-489: employees only become eligible for the Medical Insurance benefit
 // after completing this many months of service. Configurable via
@@ -167,11 +175,17 @@ export class MedicalInsuranceService {
       }
       return this.getMyClaims(employee.employeeId, status);
     }
-    // Finance Manager/Executive need to see every claim too (OCD-494) - they
-    // process payment for approved claims across all employees, not just
-    // their own.
-    if (employee.role && PAYMENT_PROCESSING_ROLES.has(employee.role)) {
+    if (employee.role && ALL_CLAIMS_ROLES.has(employee.role)) {
       return this.getAll(status, type);
+    }
+    // Finance Manager/Executive process payment for approved claims across all
+    // employees (OCD-494) - and only those (OCD-582): a Pending/Rejected filter
+    // yields nothing rather than exposing them.
+    if (employee.role && FINANCE_ROLES.has(employee.role)) {
+      if (status && status !== MedicalClaimStatus.APPROVED) {
+        return { success: true, claims: [] };
+      }
+      return this.getAll(MedicalClaimStatus.APPROVED, type);
     }
     return this.getMyClaims(this.requireEmployeeId(employee), status);
   }
@@ -181,7 +195,12 @@ export class MedicalInsuranceService {
     if (!claim) {
       throw new NotFoundException('Claim not found');
     }
-    if (employee.role === UserRole.EMPLOYEE && claim.employee_id !== employee.employeeId) {
+    const isOwn = claim.employee_id === employee.employeeId;
+    if (employee.role === UserRole.EMPLOYEE && !isOwn) {
+      throw new ForbiddenException('Forbidden');
+    }
+    // OCD-582: Finance can open approved claims (or their own), nothing else.
+    if (employee.role && FINANCE_ROLES.has(employee.role) && !isOwn && claim.status !== MedicalClaimStatus.APPROVED) {
       throw new ForbiddenException('Forbidden');
     }
     return { success: true, claim };
@@ -239,7 +258,7 @@ export class MedicalInsuranceService {
    */
   async recordPayment(employee: JwtPayload, id: number, dto: RecordMedicalClaimPaymentDto) {
     if (!employee.role || !PAYMENT_PROCESSING_ROLES.has(employee.role)) {
-      throw new ForbiddenException('Only HR and Finance can process claim payments');
+      throw new ForbiddenException('Only Finance can process claim payments');
     }
 
     const paymentStatus = dto.payment_status;
@@ -276,11 +295,19 @@ export class MedicalInsuranceService {
       }
     }
 
-    let paymentDate: Date | null = null;
+    // OCD-584: keep only the calendar date (no time component) and refuse
+    // future dates. Passed on as 'YYYY-MM-DD' so no timezone shift can move it.
+    let paymentDate: string | null = null;
     if (dto.payment_date) {
-      paymentDate = new Date(dto.payment_date);
-      if (isNaN(paymentDate.getTime())) {
+      const match = DATE_ONLY.exec(dto.payment_date.trim());
+      const parsed = match ? new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])) : null;
+      if (!match || !parsed || parsed.getUTCMonth() !== +match[2] - 1 || parsed.getUTCDate() !== +match[3]) {
         throw new BadRequestException('Payment Date is invalid');
+      }
+      paymentDate = `${match[1]}-${match[2]}-${match[3]}`;
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: PAYMENT_TIMEZONE });
+      if (paymentDate > today) {
+        throw new BadRequestException('Payment Date cannot be in the future');
       }
     } else if (isPaidOrPartial) {
       throw new BadRequestException('Payment Date is required when marking a claim as Paid or Partly Paid');

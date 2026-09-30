@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, HttpExcepti
 import { EmployeeModel } from '../../employees/Employee';
 import { EmployeePiiModel } from '../../employees/EmployeePii';
 import pool from '../../config/database';
-import { calculateProRatedAnnualLeave } from '../../utils/leaveCalculation';
+import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
 import { keycloakAdminService } from './keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../../utils/password';
 import { employeeProfileCreationService } from './employeeProfileCreation.service';
@@ -226,6 +226,8 @@ export class UsersService {
           type.name.toLowerCase() === 'annual leave'
         ) {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+        } else if (type.name.toLowerCase() === 'casual' || type.name.toLowerCase() === 'casual leave') {
+          totalDays = calculateCasualLeaveEntitlement(hireDate, currentYear, type.max_days);
         }
         await pool.query(
           'INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year) VALUES ($1, $2, $3, 0, $4, $5)',

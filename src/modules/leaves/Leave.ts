@@ -1,6 +1,6 @@
 import pool from '../../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types';
-import { calculateProRatedAnnualLeave, calculateAccruedCasualLeave } from '../../utils/leaveCalculation';
+import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
 import { EmployeeModel } from '../../employees/Employee';
 
 function isAnnualLeaveType(name: string): boolean {
@@ -317,7 +317,7 @@ export class LeaveModel {
       return calculateProRatedAnnualLeave(hireDate, year);
     }
     if (isCasualLeaveType(leaveTypeName)) {
-      return calculateAccruedCasualLeave(hireDate, year, maxDays);
+      return calculateCasualLeaveEntitlement(hireDate, year, maxDays);
     }
     return null;
   }

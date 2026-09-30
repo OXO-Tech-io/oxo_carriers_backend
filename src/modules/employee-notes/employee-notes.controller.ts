@@ -28,8 +28,8 @@ export class EmployeeNotesController {
   constructor(private readonly employeeNotesService: EmployeeNotesService) {}
 
   // Create is open to hr_executive/hr_manager/super_admin (checked in the
-  // service itself); there is deliberately no list/view/edit route
-  // reachable by hr_executive - only hr_manager/super_admin below.
+  // service itself). Viewing is open to hr_executive too; editing stays
+  // hr_manager/super_admin only.
   @Post()
   @UseInterceptors(FilesInterceptor(ATTACHMENTS_FIELD, ATTACHMENTS_MAX_COUNT, noteAttachmentsMulterOptions))
   create(
@@ -44,7 +44,7 @@ export class EmployeeNotesController {
   // Keycloak-issued sub/id.
   @Get('employees/:employeeId')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @Roles(UserRole.HR_EXECUTIVE, UserRole.HR_MANAGER)
   listForEmployee(@Param('employeeId') employeeIdParam: string) {
     const employeeId = parseInt(employeeIdParam, 10);
     if (isNaN(employeeId)) throw new BadRequestException('Invalid employee id');
@@ -53,7 +53,7 @@ export class EmployeeNotesController {
 
   @Get(':id')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @Roles(UserRole.HR_EXECUTIVE, UserRole.HR_MANAGER)
   getById(@Param('id') idParam: string) {
     const id = parseInt(idParam, 10);
     if (isNaN(id)) throw new BadRequestException('Invalid note id');

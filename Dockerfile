@@ -23,6 +23,9 @@ WORKDIR /app
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/dist ./dist
+# Logo and seal images used by the salary slip PDF (OCD-576) - without this the
+# runtime image has no /app/public and the PDF falls back to LOGO/SEAL boxes.
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/src/db ./src/db
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 

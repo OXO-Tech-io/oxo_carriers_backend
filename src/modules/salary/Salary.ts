@@ -285,6 +285,19 @@ export class SalaryModel {
     return count;
   }
 
+  private static async getOrCreateComponent(name: string, type: 'earning' | 'deduction'): Promise<number> {
+    const existing = await pool.query('SELECT id FROM tbl_salary_components WHERE name = $1 LIMIT 1', [name]);
+    const existingId = (existing.rows as any[])[0]?.id;
+    if (existingId) return existingId;
+    const inserted = await pool.query(
+      'INSERT INTO tbl_salary_components (name, type, is_default, is_active) VALUES ($1, $2, false, true) RETURNING id',
+      [name, type],
+    );
+    const id = (inserted.rows[0] as any).id;
+    log.info({ componentId: id, name }, 'Created missing salary component');
+    return id;
+  }
+
   static async createSalaryFromExcel(
     employeeId: string,
     monthYear: Date,
@@ -301,22 +314,17 @@ export class SalaryModel {
     },
     generatedBy: number
   ): Promise<MonthlySalary> {
-    // Calculate Full Salary = Local Salary + OXO International Salary
-    const calculatedFullSalary = excelData.localSalary + excelData.oxoInternationalSalary;
-    // Use provided fullSalary if it matches calculation, otherwise use calculated value
-    const fullSalary = excelData.fullSalary > 0 && Math.abs(excelData.fullSalary - calculatedFullSalary) < 0.01
-      ? excelData.fullSalary
-      : calculatedFullSalary;
-
-    // Calculate basic salary (use Full Salary as basic)
-    const basicSalary = fullSalary;
-
     // Get allowances and salary advance/deductions (default to 0 if not provided)
     const allowances = excelData.allowances || 0;
     const salaryAdvanceDeductions = excelData.salaryAdvanceDeductions || 0;
 
-    // Calculate earnings (Full Salary + Allowances)
-    const totalEarnings = fullSalary + allowances;
+    // Basic salary = Local Salary + OXO International Salary
+    const basicSalary = excelData.localSalary + excelData.oxoInternationalSalary;
+
+    // OCD-573: Full Salary includes allowances (Local + OXO International +
+    // Allowances) and is what earnings are totalled from.
+    const fullSalary = basicSalary + allowances;
+    const totalEarnings = fullSalary;
 
     // Calculate EPF deduction (8% of Local Salary) - use provided value or calculate if not provided
     let epfDeduction = excelData.epfDeduction;
@@ -453,33 +461,14 @@ export class SalaryModel {
       }
     }
 
-    // Get or create salary components
-    const fullSalaryComponent = await pool.query(
-      "SELECT id FROM tbl_salary_components WHERE name = 'Full Salary'"
-    );
-    const localSalaryComponent = await pool.query(
-      "SELECT id FROM tbl_salary_components WHERE name = 'Local Salary'"
-    );
-    const oxoSalaryComponent = await pool.query(
-      "SELECT id FROM tbl_salary_components WHERE name = 'OXO International Salary'"
-    );
-    const epfComponent = await pool.query(
-      "SELECT id FROM tbl_salary_components WHERE name = 'Provident Fund'"
-    );
-
-    const fullSalaryId = (fullSalaryComponent.rows as any[])[0]?.id;
-    const localSalaryId = (localSalaryComponent.rows as any[])[0]?.id;
-    let oxoSalaryId = (oxoSalaryComponent.rows as any[])[0]?.id;
-    const epfId = (epfComponent.rows as any[])[0]?.id;
-
-    // Create OXO International Salary component if it doesn't exist
-    if (!oxoSalaryId) {
-      const insertResult = await pool.query(
-        "INSERT INTO tbl_salary_components (name, type, is_default, is_active) VALUES ('OXO International Salary', 'earning', false, true) RETURNING id"
-      );
-      oxoSalaryId = (insertResult.rows[0] as any).id;
-      log.info({ oxoSalaryId }, 'Created OXO International Salary component');
-    }
+    // Get or create salary components. OCD-573/577/578: Full Salary, Local
+    // Salary and Provident Fund used to be looked up only - on databases where
+    // those rows were never seeded their slip details were silently skipped,
+    // so the slip fell back to wrong/zero values. Create any that are missing.
+    const fullSalaryId = await this.getOrCreateComponent('Full Salary', 'earning');
+    const localSalaryId = await this.getOrCreateComponent('Local Salary', 'earning');
+    const oxoSalaryId = await this.getOrCreateComponent('OXO International Salary', 'earning');
+    const epfId = await this.getOrCreateComponent('Provident Fund', 'deduction');
 
     // Insert slip details for earnings
     // Insert Local Salary
@@ -508,7 +497,7 @@ export class SalaryModel {
       log.warn('OXO International Salary not inserted (amount <= 0)');
     }
 
-    // Insert Full Salary as calculated (Local + OXO) - optional, for display purposes
+    // Insert Full Salary (Local + OXO + Allowances) - shown on the salary list
     if (fullSalaryId && fullSalary > 0) {
       await pool.query(
         'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
@@ -526,52 +515,22 @@ export class SalaryModel {
 
     // Insert Allowances (if provided and > 0)
     if (excelData.allowances && excelData.allowances > 0) {
-      // Get or create Allowances component
-      const allowancesComponent = await pool.query(
-        "SELECT id FROM tbl_salary_components WHERE name = 'Allowances'"
+      const allowancesId = await this.getOrCreateComponent('Allowances', 'earning');
+      await pool.query(
+        'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
+        [salaryId, allowancesId, encryptSalary(excelData.allowances), 'earning']
       );
-      let allowancesId = (allowancesComponent.rows as any[])[0]?.id;
-
-      if (!allowancesId) {
-        const insertResult = await pool.query(
-          "INSERT INTO tbl_salary_components (name, type, is_default, is_active) VALUES ('Allowances', 'earning', false, true) RETURNING id"
-        );
-        allowancesId = (insertResult.rows[0] as any).id;
-        log.info({ allowancesId }, 'Created Allowances component');
-      }
-
-      if (allowancesId) {
-        await pool.query(
-          'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-          [salaryId, allowancesId, encryptSalary(excelData.allowances), 'earning']
-        );
-        log.debug({ salaryId }, 'Inserted Allowances slip detail');
-      }
+      log.debug({ salaryId }, 'Inserted Allowances slip detail');
     }
 
     // Insert Salary Advance/Deductions (if provided and > 0)
     if (excelData.salaryAdvanceDeductions && excelData.salaryAdvanceDeductions > 0) {
-      // Get or create Salary Advance/Deductions component
-      const deductionsComponent = await pool.query(
-        "SELECT id FROM tbl_salary_components WHERE name = 'Salary Advance/Deductions'"
+      const deductionsId = await this.getOrCreateComponent('Salary Advance/Deductions', 'deduction');
+      await pool.query(
+        'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
+        [salaryId, deductionsId, encryptSalary(excelData.salaryAdvanceDeductions), 'deduction']
       );
-      let deductionsId = (deductionsComponent.rows as any[])[0]?.id;
-
-      if (!deductionsId) {
-        const insertResult = await pool.query(
-          "INSERT INTO tbl_salary_components (name, type, is_default, is_active) VALUES ('Salary Advance/Deductions', 'deduction', false, true) RETURNING id"
-        );
-        deductionsId = (insertResult.rows[0] as any).id;
-        log.info({ deductionsId }, 'Created Salary Advance/Deductions component');
-      }
-
-      if (deductionsId) {
-        await pool.query(
-          'INSERT INTO tbl_salary_slip_details (salary_id, component_id, amount, type) VALUES ($1, $2, $3, $4)',
-          [salaryId, deductionsId, encryptSalary(excelData.salaryAdvanceDeductions), 'deduction']
-        );
-        log.debug({ salaryId }, 'Inserted Salary Advance/Deductions slip detail');
-      }
+      log.debug({ salaryId }, 'Inserted Salary Advance/Deductions slip detail');
     }
 
     const createdSalary = await this.findById(salaryId);

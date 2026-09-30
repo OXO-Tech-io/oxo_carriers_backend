@@ -5,7 +5,7 @@ import { env, ENV_LOADED_FROM } from './config/env';
 import { logger } from './lib/logger';
 import { logCloudSqlInfo } from './lib/cloudSql';
 import { pool } from './config/database';
-import { calculateProRatedAnnualLeave } from './utils/leaveCalculation';
+import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from './utils/leaveCalculation';
 import { getAllRoleDefaultPermissions } from './modules/permissions/rolePermissions.model';
 import { PermissionAssignment } from './common/constants/permissions';
 
@@ -229,6 +229,8 @@ async function bootstrap() {
             type.name.toLowerCase() === 'annual leave'
           ) {
             totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
+          } else if (type.name.toLowerCase() === 'casual' || type.name.toLowerCase() === 'casual leave') {
+            totalDays = calculateCasualLeaveEntitlement(hireDate, currentYear, type.max_days);
           }
           missingEmployeeIds.push(emp.employee_id);
           missingLeaveTypeIds.push(type.id);

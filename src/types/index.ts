@@ -321,7 +321,7 @@ export interface MedicalInsuranceClaim {
   resubmission_of?: number | null;
   payment_status: MedicalClaimPaymentStatus;
   paid_amount?: number | null;
-  payment_date?: Date | null;
+  payment_date?: string | null; // YYYY-MM-DD (OCD-584)
   payment_reference?: string | null;
   paid_by?: number | null;
   paid_at?: Date | null;

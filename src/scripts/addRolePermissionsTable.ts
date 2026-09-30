@@ -72,7 +72,7 @@ const SEED_GRANTS: Grant[] = [
   { role: 'finance_manager', key: 'dashboard', accessLevel: 'read' },
   { role: 'finance_manager', key: 'users', accessLevel: 'read' },
   { role: 'finance_manager', key: 'leaves', accessLevel: 'read' },
-  { role: 'finance_manager', key: 'salaries', accessLevel: 'read' },
+  { role: 'finance_manager', key: 'salaries', accessLevel: 'write' },
   { role: 'finance_manager', key: 'facilities', accessLevel: 'read' },
   { role: 'finance_manager', key: 'medical_claims', accessLevel: 'write' },
   { role: 'finance_manager', key: 'communications', accessLevel: 'read' },
