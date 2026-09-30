@@ -2,16 +2,8 @@ import pool from '../../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types';
 import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
 import { EmployeeModel } from '../../employees/Employee';
+import { isAnnualLeaveType, isCasualLeaveType } from '../../common/constants/leaveTypes';
 
-function isAnnualLeaveType(name: string): boolean {
-  const n = name.toLowerCase();
-  return n === 'annual' || n === 'annual/paid leave' || n === 'annual leave';
-}
-
-function isCasualLeaveType(name: string): boolean {
-  const n = name.toLowerCase();
-  return n === 'casual' || n === 'casual leave';
-}
 
 /** first_name/last_name/email are encrypted on tbl_employee - the join can
  * still filter/select non-PII columns (e.g. department), but must not select

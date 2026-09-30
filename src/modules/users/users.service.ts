@@ -3,6 +3,7 @@ import { EmployeeModel } from '../../employees/Employee';
 import { EmployeePiiModel } from '../../employees/EmployeePii';
 import pool from '../../config/database';
 import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
+import { isAnnualLeaveType, isCasualLeaveType } from '../../common/constants/leaveTypes';
 import { keycloakAdminService } from './keycloakAdmin.service';
 import { generateSecureTemporaryPassword } from '../../utils/password';
 import { employeeProfileCreationService } from './employeeProfileCreation.service';
@@ -220,13 +221,9 @@ export class UsersService {
 
       for (const type of types) {
         let totalDays = type.max_days;
-        if (
-          type.name.toLowerCase() === 'annual' ||
-          type.name.toLowerCase() === 'annual/paid leave' ||
-          type.name.toLowerCase() === 'annual leave'
-        ) {
+        if (isAnnualLeaveType(type.name)) {
           totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
-        } else if (type.name.toLowerCase() === 'casual' || type.name.toLowerCase() === 'casual leave') {
+        } else if (isCasualLeaveType(type.name)) {
           totalDays = calculateCasualLeaveEntitlement(hireDate, currentYear, type.max_days);
         }
         await pool.query(

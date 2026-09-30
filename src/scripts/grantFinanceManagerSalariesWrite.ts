@@ -1,4 +1,5 @@
 import pool from '../config/database';
+import { logger } from '../lib/logger';
 
 // Idempotent, targeted fix - row *content* only, no ALTER TABLE (same shape as
 // removeHrExecutiveDocumentVaultWrite.ts).
@@ -15,7 +16,7 @@ import pool from '../config/database';
 // grants).
 async function grantFinanceManagerSalariesWrite() {
   try {
-    console.log("🔧 Setting finance_manager's default salaries grant to write...");
+    logger.info("Setting finance_manager's default salaries grant to write...");
 
     const result = await pool.query(
       `INSERT INTO tbl_role_permissions (role, permission_key, access_level)
@@ -25,14 +26,14 @@ async function grantFinanceManagerSalariesWrite() {
        WHERE tbl_role_permissions.access_level <> 'write'`,
     );
 
-    console.log(
+    logger.info(
       (result.rowCount ?? 0) > 0
-        ? "  ✓ finance_manager's salaries grant is now 'write'"
-        : "  ✓ finance_manager's salaries grant was already 'write' - nothing to do",
+        ? "finance_manager's salaries grant is now 'write'"
+        : "finance_manager's salaries grant was already 'write' - nothing to do",
     );
     process.exit(0);
   } catch (error: any) {
-    console.error("❌ Error updating finance_manager's salaries grant:", error);
+    logger.error({ err: error }, "Error updating finance_manager's salaries grant");
     process.exit(1);
   }
 }

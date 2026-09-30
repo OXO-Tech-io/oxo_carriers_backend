@@ -8,6 +8,7 @@ import { pool } from './config/database';
 import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from './utils/leaveCalculation';
 import { getAllRoleDefaultPermissions } from './modules/permissions/rolePermissions.model';
 import { PermissionAssignment } from './common/constants/permissions';
+import { isAnnualLeaveType, isCasualLeaveType } from './common/constants/leaveTypes';
 
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
@@ -223,13 +224,9 @@ async function bootstrap() {
           if (existing.has(`${emp.employee_id}:${type.id}`)) continue;
           const hireDate = emp.hire_date ? new Date(emp.hire_date) : new Date();
           let totalDays = type.max_days;
-          if (
-            type.name.toLowerCase() === 'annual' ||
-            type.name.toLowerCase() === 'annual/paid leave' ||
-            type.name.toLowerCase() === 'annual leave'
-          ) {
+          if (isAnnualLeaveType(type.name)) {
             totalDays = calculateProRatedAnnualLeave(hireDate, currentYear);
-          } else if (type.name.toLowerCase() === 'casual' || type.name.toLowerCase() === 'casual leave') {
+          } else if (isCasualLeaveType(type.name)) {
             totalDays = calculateCasualLeaveEntitlement(hireDate, currentYear, type.max_days);
           }
           missingEmployeeIds.push(emp.employee_id);
