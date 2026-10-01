@@ -33,6 +33,9 @@ interface SalaryData {
     first_name: string;
     last_name: string;
     position?: string;
+    bank_name?: string;
+    bank_branch?: string;
+    account_number?: string;
   };
 }
 
@@ -101,8 +104,15 @@ const drawTableCell = (
   const fontFamily = 'Times-Roman';
   const fontName = bold ? 'Times-Bold' : 'Times-Roman';
   
-  // Add text
+  // Add text. Shrink the font until the label fits on one line - a wrapped
+  // second line would spill into the next row (OCD-579).
   doc.font(fontName).fontSize(fontSize);
+  const availableWidth = width - padding * 2;
+  let fittedSize = fontSize;
+  while (fittedSize > 7 && doc.widthOfString(text || '') > availableWidth) {
+    fittedSize -= 0.5;
+    doc.fontSize(fittedSize);
+  }
   
   if (align === 'center') {
     doc.text(text || '', x + padding, y + ptToPDF(4), {
@@ -161,7 +171,11 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
       const localSalary = Number(details.find(d => d.component_name === 'Local Salary')?.amount || salary.local_salary || 0);
       const oxoInternationalSalary = Number(details.find(d => d.component_name === 'OXO International Salary')?.amount || salary.oxo_international_salary || 0);
       const epfDeduction = Number(details.find(d => d.component_name === 'Provident Fund' && d.type === 'deduction')?.amount || 0);
-      const allowances = Number(details.find(d => d.component_name === 'Allowances' && d.type === 'earning')?.amount || 0);
+      // Older slips have no Allowances detail row; recover it from the header totals.
+      const allowances = Number(
+        details.find(d => d.component_name === 'Allowances' && d.type === 'earning')?.amount ||
+          Math.max(Number(salary.total_earnings || 0) - Number(salary.basic_salary || 0), 0),
+      );
       const salaryAdvanceDeductions = Number(details.find(d => d.component_name === 'Salary Advance/Deductions' && d.type === 'deduction')?.amount || 0);
       
       // Calculate derived values (ensure all are valid numbers)
@@ -299,11 +313,11 @@ export const generateSalarySlipPDF = async (data: SalaryData): Promise<Buffer> =
                marginLeft + ptToPDF(5.4), yPos + ptToPDF(30));
 
       // Right column content
-      doc.text('Bank :', 
+      doc.text(`Bank : ${user.bank_name || ''}`,
                marginLeft + empTableCol1Width + ptToPDF(5.4), yPos + ptToPDF(4));
-      doc.text('Branch :', 
+      doc.text(`Branch : ${user.bank_branch || ''}`,
                marginLeft + empTableCol1Width + ptToPDF(5.4), yPos + ptToPDF(17));
-      doc.text('Account No :', 
+      doc.text(`Account No : ${user.account_number || ''}`,
                marginLeft + empTableCol1Width + ptToPDF(5.4), yPos + ptToPDF(30));
 
       yPos += empRowHeight + ptToPDF(8);

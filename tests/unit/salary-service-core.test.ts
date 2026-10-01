@@ -56,6 +56,7 @@ const uploadPrivateObjectMock = uploadPrivateObject as unknown as ReturnType<typ
 
 const employeeUser = { userId: 5, employeeId: "EMP5", role: UserRole.EMPLOYEE } as any;
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
+const finance = { userId: 3, employeeId: "FIN1", role: UserRole.FINANCE_MANAGER } as any;
 const flush = () => new Promise((resolve) => setImmediate(resolve));
 
 describe("SalaryService", () => {
@@ -151,6 +152,28 @@ describe("SalaryService", () => {
     });
   });
 
+  describe("getSalaries scoping (OCD-574)", () => {
+    it("returns only the caller's own slips for HR without a cross-employee filter", async () => {
+      sm.findByEmployeeId.mockResolvedValue([{ id: 1 }]);
+      await service.getSalaries(hr, { year: "2026" });
+      expect(sm.findByEmployeeId).toHaveBeenCalledWith("HR1", { year: 2026, month: undefined });
+      expect(sm.getAll).not.toHaveBeenCalled();
+    });
+
+    it("lets HR widen with scope=all", async () => {
+      sm.getAll.mockResolvedValue([]);
+      await service.getSalaries(hr, { scope: "all" });
+      expect(sm.getAll).toHaveBeenCalled();
+    });
+
+    it("ignores userId/scope=all for Finance Manager and returns their own slips", async () => {
+      sm.findByEmployeeId.mockResolvedValue([]);
+      await service.getSalaries(finance, { userId: "9", scope: "all" });
+      expect(sm.getAll).not.toHaveBeenCalled();
+      expect(sm.findByEmployeeId).toHaveBeenCalledWith("FIN1", { year: undefined, month: undefined });
+    });
+  });
+
   describe("getSalaryById", () => {
     it("throws NotFoundException when missing", async () => {
       sm.findById.mockResolvedValue(null);
@@ -162,11 +185,53 @@ describe("SalaryService", () => {
       await expect(service.getSalaryById(1, employeeUser)).rejects.toThrow(ForbiddenException);
     });
 
-    it("returns salary + details for a valid request", async () => {
+    it("returns salary + details + the slip owner's employee block for a valid request", async () => {
       sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5" });
       sm.getSlipDetails.mockResolvedValue({ items: [] });
+      em.findByEmployeeId.mockResolvedValue({
+        employeeId: "EMP5",
+        firstName: "A",
+        lastName: "B",
+        position: "Dev",
+        bankName: "BOC",
+        bankBranch: "Colombo",
+        accountNumber: "123",
+      });
       const result = await service.getSalaryById(1, employeeUser);
-      expect(result).toEqual({ salary: { id: 1, employee_id: "EMP5" }, details: { items: [] } });
+      expect(result).toEqual({
+        salary: { id: 1, employee_id: "EMP5" },
+        details: { items: [] },
+        employee: {
+          employee_id: "EMP5",
+          first_name: "A",
+          last_name: "B",
+          position: "Dev",
+          bank_name: "BOC",
+          bank_branch: "Colombo",
+          account_number: "123",
+        },
+      });
+    });
+
+    it("returns the slip owner's details, not the caller's, when HR opens another employee's slip (OCD-574)", async () => {
+      sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5" });
+      sm.getSlipDetails.mockResolvedValue([]);
+      em.findByEmployeeId.mockResolvedValue({ employeeId: "EMP5", firstName: "Owner", lastName: "X" });
+      const result = await service.getSalaryById(1, hr);
+      expect(em.findByEmployeeId).toHaveBeenCalledWith("EMP5");
+      expect(result.employee.first_name).toBe("Owner");
+    });
+
+    it("forbids Finance Manager from opening another employee's slip (OCD-574)", async () => {
+      sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5" });
+      await expect(service.getSalaryById(1, finance)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("lets Finance Manager open their own slip", async () => {
+      sm.findById.mockResolvedValue({ id: 1, employee_id: "FIN1" });
+      sm.getSlipDetails.mockResolvedValue([]);
+      em.findByEmployeeId.mockResolvedValue({ employeeId: "FIN1", firstName: "F", lastName: "M" });
+      await expect(service.getSalaryById(1, finance)).resolves.toBeDefined();
     });
   });
 
@@ -220,6 +285,26 @@ describe("SalaryService", () => {
       expect(result).toEqual(Buffer.from("pdf-data"));
       expect(uploadPrivateObjectMock).not.toHaveBeenCalled();
       expect(sm.updatePdfUrl).not.toHaveBeenCalled();
+    });
+
+    it("passes the slip owner's bank details to the PDF generator (OCD-575)", async () => {
+      sm.findById.mockResolvedValue({ id: 1, employee_id: "EMP5", pdf_url: "/x.pdf" });
+      sm.getSlipDetails.mockResolvedValue([]);
+      em.findByEmployeeId.mockResolvedValue({
+        employeeId: "EMP5",
+        firstName: "A",
+        lastName: "B",
+        bankName: "BOC",
+        bankBranch: "Colombo",
+        accountNumber: "123",
+      });
+      generatePdfMock.mockResolvedValue(Buffer.from("pdf"));
+      await service.generateSalarySlipPdf(1, hr);
+      expect(generatePdfMock).toHaveBeenCalledWith(
+        expect.objectContaining({
+          user: expect.objectContaining({ bank_name: "BOC", bank_branch: "Colombo", account_number: "123" }),
+        }),
+      );
     });
 
     it("skips re-saving when pdf_url already exists", async () => {

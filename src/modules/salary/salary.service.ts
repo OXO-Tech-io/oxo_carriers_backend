@@ -15,6 +15,14 @@ import { UpdateSalaryStructureDto } from './dto/update-salary-structure.dto';
 import { GenerateSalaryDto } from './dto/generate-salary.dto';
 import { UpdateSalaryStatusDto } from './dto/update-salary-status.dto';
 
+// OCD-574: roles allowed to open salary slips that belong to other employees.
+// Everyone else (Finance included) only ever sees their own slips.
+const PAYROLL_ADMIN_ROLES: UserRole[] = [UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
+// OCD-581: Finance Manager runs the salary bulk upload alongside HR.
+const BULK_UPLOAD_ROLES: UserRole[] = [...PAYROLL_ADMIN_ROLES, UserRole.FINANCE_MANAGER];
+
+const isPayrollAdmin = (role: UserRole) => PAYROLL_ADMIN_ROLES.includes(role);
+
 @Injectable()
 export class SalaryService {
   getComponents() {
@@ -27,6 +35,29 @@ export class SalaryService {
       throw new BadRequestException('This user has no employee ID assigned yet');
     }
     return employee.employeeId;
+  }
+
+  // OCD-574: a slip is readable by its owner or a payroll admin only.
+  private assertCanAccessSalary(salary: { employee_id: string }, requester: JwtPayload) {
+    if (salary.employee_id !== requester.employeeId && !isPayrollAdmin(requester.role)) {
+      throw new ForbiddenException('Forbidden');
+    }
+  }
+
+  // OCD-574 / OCD-575: header details for the slip owner (never the logged-in
+  // user), including the bank block.
+  private async getSlipEmployee(employeeId: string) {
+    const employee = await EmployeeModel.findByEmployeeId(employeeId);
+    if (!employee) throw new NotFoundException('User not found');
+    return {
+      employee_id: employee.employeeId ?? undefined,
+      first_name: employee.firstName,
+      last_name: employee.lastName,
+      position: employee.position ?? undefined,
+      bank_name: employee.bankName ?? undefined,
+      bank_branch: employee.bankBranch ?? undefined,
+      account_number: employee.accountNumber ?? undefined,
+    };
   }
 
   async getEmployeeSalaryStructure(userId: number, requester: JwtPayload) {
@@ -94,9 +125,13 @@ export class SalaryService {
 
   async getSalaries(
     requester: JwtPayload,
-    filters: { userId?: string; department?: string; year?: string; month?: string; status?: string },
+    filters: { userId?: string; department?: string; year?: string; month?: string; status?: string; scope?: string },
   ) {
-    if (requester.role === UserRole.EMPLOYEE) {
+    // OCD-574: the Salary page shows the caller's own slips. Only payroll
+    // admins can widen that (userId/department filter or scope=all, used by
+    // Reports); for everyone else those filters are ignored.
+    const wantsOthers = !!(filters.userId || filters.department || filters.scope === 'all');
+    if (!wantsOthers || !isPayrollAdmin(requester.role)) {
       if (!requester.employeeId) {
         throw new BadRequestException('Your account has no employee ID assigned yet');
       }
@@ -118,29 +153,19 @@ export class SalaryService {
   async getSalaryById(id: number, requester: JwtPayload) {
     const salary = await SalaryModel.findById(id);
     if (!salary) throw new NotFoundException('Salary not found');
-    if (requester.role === UserRole.EMPLOYEE && salary.employee_id !== requester.employeeId) {
-      throw new ForbiddenException('Forbidden');
-    }
+    this.assertCanAccessSalary(salary, requester);
     const details = await SalaryModel.getSlipDetails(id);
-    return { salary, details };
+    const employee = await this.getSlipEmployee(salary.employee_id);
+    return { salary, details, employee };
   }
 
   async generateSalarySlipPdf(id: number, requester: JwtPayload): Promise<Buffer> {
     const salary = await SalaryModel.findById(id);
     if (!salary) throw new NotFoundException('Salary not found');
-    if (requester.role === UserRole.EMPLOYEE && salary.employee_id !== requester.employeeId) {
-      throw new ForbiddenException('Forbidden');
-    }
+    this.assertCanAccessSalary(salary, requester);
 
     const details = await SalaryModel.getSlipDetails(id);
-    const employee = await EmployeeModel.findByEmployeeId(salary.employee_id);
-    if (!employee) throw new NotFoundException('User not found');
-    const user = {
-      employee_id: employee.employeeId ?? undefined,
-      first_name: employee.firstName,
-      last_name: employee.lastName,
-      position: employee.position ?? undefined,
-    };
+    const user = await this.getSlipEmployee(salary.employee_id);
 
     let pdfBuffer: Buffer;
     try {
@@ -252,12 +277,8 @@ export class SalaryService {
     dto: BulkUploadSalaryDtoLike,
     requester: JwtPayload,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
-    if (
-      requester.role !== UserRole.HR_MANAGER &&
-      requester.role !== UserRole.HR_EXECUTIVE &&
-      requester.role !== UserRole.SUPER_ADMIN
-    ) {
-      throw new ForbiddenException('Only HR Manager and HR Executive can upload bulk salaries');
+    if (!BULK_UPLOAD_ROLES.includes(requester.role)) {
+      throw new ForbiddenException('Only HR and Finance Manager can upload bulk salaries');
     }
     if (!dto.month || !dto.year) {
       throw new BadRequestException('Month and year are required');
@@ -410,6 +431,43 @@ export class SalaryService {
           continue;
         }
 
+        // OCD-580: validate the row before touching the DB - every failing
+        // field is reported with its row and column so the sheet can be fixed.
+        const fieldErrors: string[] = [];
+
+        if (nameCol > 0 && !cellText(row.getCell(nameCol))) {
+          fieldErrors.push('Name is required');
+        }
+
+        const readAmount = (col: number, label: string, required: boolean): number => {
+          if (col === 0) return 0;
+          const raw = cellText(row.getCell(col));
+          if (!raw) {
+            if (required) fieldErrors.push(`${label} is required`);
+            return 0;
+          }
+          const cleaned = raw.replace(/[,\s$₹€£]|LKR/gi, '');
+          if (!/^-?\d+(\.\d+)?$/.test(cleaned)) {
+            fieldErrors.push(`${label} must be a number (found "${raw}")`);
+            return 0;
+          }
+          const amount = parseFloat(cleaned);
+          if (amount < 0) fieldErrors.push(`${label} cannot be negative`);
+          return amount;
+        };
+
+        const localSalary = readAmount(localSalaryCol, 'Local Salary', true);
+        const oxoSalary = readAmount(oxoSalaryCol, 'OXO International Salary', true);
+        const epfDeduction = readAmount(epfCol, 'EPF 8%', false);
+        const allowances = readAmount(allowancesCol, 'Allowances', false);
+        const salaryAdvanceDeductions = readAmount(deductionsCol, 'Salary Advance/Deductions', false);
+
+        if (fieldErrors.length > 0) {
+          results.failed++;
+          results.errors.push(`Row ${rowNum}: ${fieldErrors.join('; ')}`);
+          continue;
+        }
+
         let userId: number | null = null;
         const parsedId = parseInt(idValue);
 
@@ -438,20 +496,8 @@ export class SalaryService {
         }
         const employeeId: string = usersFound[0].employee_id;
 
-        const parseNumericValue = (cell: any): number => {
-          if (!cell) return 0;
-          const value = cell.value;
-          if (typeof value === 'number') return value;
-          if (typeof value === 'string') {
-            const cleaned = value.replace(/[,\s$₹€£]/g, '').trim();
-            return parseFloat(cleaned) || 0;
-          }
-          return 0;
-        };
-
-        const localSalary = parseNumericValue(row.getCell(localSalaryCol));
-        const oxoSalary = parseNumericValue(row.getCell(oxoSalaryCol));
-        const fullSalary = localSalary + oxoSalary;
+        // Full Salary = Local + OXO International + Allowances (OCD-573).
+        const fullSalary = localSalary + oxoSalary + allowances;
 
         let workedDays = 0,
           availableDates = 0,
@@ -474,13 +520,9 @@ export class SalaryService {
               workedDays = parseFloat(parts[0].replace(/[^\d.]/g, '')) || 0;
             }
           } else {
-            workedDays = parseNumericValue(workingDaysCell);
+            workedDays = parseFloat(workingDaysValue.replace(/[^\d.]/g, '')) || 0;
           }
         }
-
-        const epfDeduction = epfCol > 0 ? parseNumericValue(row.getCell(epfCol)) : 0;
-        const allowances = allowancesCol > 0 ? parseNumericValue(row.getCell(allowancesCol)) : 0;
-        const salaryAdvanceDeductions = deductionsCol > 0 ? parseNumericValue(row.getCell(deductionsCol)) : 0;
 
         await SalaryModel.createSalaryFromExcel(
           employeeId,
@@ -515,6 +557,19 @@ export class SalaryService {
 
     return results;
   }
+}
+
+// Text of an Excel cell, unwrapping formula results / rich text; '' when empty.
+function cellText(cell: ExcelJS.Cell): string {
+  const value = cell?.value as any;
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'object') {
+    if (value instanceof Date) return value.toISOString();
+    if ('result' in value) return String(value.result ?? '').trim();
+    if ('richText' in value) return value.richText.map((t: any) => t.text).join('').trim();
+    if ('text' in value) return String(value.text ?? '').trim();
+  }
+  return String(value).trim();
 }
 
 interface BulkUploadSalaryDtoLike {

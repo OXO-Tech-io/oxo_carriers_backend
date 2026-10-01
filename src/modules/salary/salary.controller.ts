@@ -103,15 +103,16 @@ export class SalaryController {
     @Query('year') year?: string,
     @Query('month') month?: string,
     @Query('status') status?: string,
+    @Query('scope') scope?: string,
   ) {
-    const salaries = await this.salaryService.getSalaries(employee, { userId, department, year, month, status });
+    const salaries = await this.salaryService.getSalaries(employee, { userId, department, year, month, status, scope });
     return { success: true, salaries };
   }
 
   @Get(':id')
   async getSalaryById(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {
-    const { salary, details } = await this.salaryService.getSalaryById(id, employee);
-    return { success: true, salary, details };
+    const { salary, details, employee: slipEmployee } = await this.salaryService.getSalaryById(id, employee);
+    return { success: true, salary, details, employee: slipEmployee };
   }
 
   @Get(':id/pdf')

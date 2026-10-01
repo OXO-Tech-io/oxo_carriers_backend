@@ -141,11 +141,25 @@ describe("MedicalInsuranceService", () => {
       expect(result.claims).toEqual([{ id: 2 }]);
     });
 
-    it("routes Finance to getAll (OCD-494)", async () => {
+    it("routes Finance to approved claims only (OCD-494, OCD-582)", async () => {
       model.getAll.mockResolvedValue([{ id: 1 }]);
       const result = await service.getClaims(finance);
-      expect(model.getAll).toHaveBeenCalled();
+      expect(model.getAll).toHaveBeenCalledWith({ status: MedicalClaimStatus.APPROVED, type: undefined });
       expect(result.claims).toEqual([{ id: 1 }]);
+    });
+
+    it("returns nothing when Finance asks for pending or rejected claims (OCD-582)", async () => {
+      const pending = await service.getClaims(finance, MedicalClaimStatus.PENDING);
+      const rejected = await service.getClaims(finance, MedicalClaimStatus.REJECTED);
+      expect(pending.claims).toEqual([]);
+      expect(rejected.claims).toEqual([]);
+      expect(model.getAll).not.toHaveBeenCalled();
+    });
+
+    it("still lets HR filter by any status", async () => {
+      model.getAll.mockResolvedValue([]);
+      await service.getClaims(hr, MedicalClaimStatus.PENDING);
+      expect(model.getAll).toHaveBeenCalledWith({ status: MedicalClaimStatus.PENDING, type: undefined });
     });
 
     it("forces the caller's own claims when mine=true, even for HR/Super Admin (OCD-488)", async () => {
@@ -172,6 +186,20 @@ describe("MedicalInsuranceService", () => {
     it("forbids an employee viewing another's claim", async () => {
       model.findById.mockResolvedValue({ id: 1, employee_id: "OTHER" });
       await expect(service.getClaimById(employee, 1)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("forbids Finance from opening a pending or rejected claim of another employee (OCD-582)", async () => {
+      model.findById.mockResolvedValue({ id: 1, employee_id: "OTHER", status: MedicalClaimStatus.PENDING });
+      await expect(service.getClaimById(finance, 1)).rejects.toThrow(ForbiddenException);
+      model.findById.mockResolvedValue({ id: 1, employee_id: "OTHER", status: MedicalClaimStatus.REJECTED });
+      await expect(service.getClaimById(finance, 1)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("lets Finance open an approved claim, or their own claim in any status", async () => {
+      model.findById.mockResolvedValue({ id: 1, employee_id: "OTHER", status: MedicalClaimStatus.APPROVED });
+      await expect(service.getClaimById(finance, 1)).resolves.toBeDefined();
+      model.findById.mockResolvedValue({ id: 2, employee_id: "FIN1", status: MedicalClaimStatus.PENDING });
+      await expect(service.getClaimById(finance, 2)).resolves.toBeDefined();
     });
 
     it("allows HR to view any claim", async () => {
@@ -223,42 +251,75 @@ describe("MedicalInsuranceService", () => {
       ...overrides,
     });
 
-    it("forbids roles outside HR/Finance/SuperAdmin", async () => {
+    it("forbids roles outside Finance/SuperAdmin", async () => {
       await expect(service.recordPayment(employee, 1, dto())).rejects.toThrow(ForbiddenException);
     });
 
+    it("forbids HR Manager and HR Executive from recording payments (OCD-583)", async () => {
+      const hrExecutive = { userId: 8, employeeId: "HR2", role: UserRole.HR_EXECUTIVE } as any;
+      await expect(service.recordPayment(hr, 1, dto())).rejects.toThrow(ForbiddenException);
+      await expect(service.recordPayment(hrExecutive, 1, dto())).rejects.toThrow(ForbiddenException);
+      expect(model.recordPayment).not.toHaveBeenCalled();
+    });
+
+    it("rejects a future payment date (OCD-584)", async () => {
+      model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
+      await expect(
+        service.recordPayment(finance, 1, dto({ payment_date: "2999-01-01" })),
+      ).rejects.toThrow("Payment Date cannot be in the future");
+      expect(model.recordPayment).not.toHaveBeenCalled();
+    });
+
+    it("rejects a malformed or impossible payment date (OCD-584)", async () => {
+      model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
+      await expect(service.recordPayment(finance, 1, dto({ payment_date: "not-a-date" }))).rejects.toThrow(BadRequestException);
+      await expect(service.recordPayment(finance, 1, dto({ payment_date: "2026-02-31" }))).rejects.toThrow(BadRequestException);
+    });
+
+    it("accepts today and stores the date without a time component (OCD-584)", async () => {
+      model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
+      model.recordPayment.mockResolvedValue({ id: 1 });
+      const today = new Date().toLocaleDateString("en-CA", { timeZone: "Asia/Colombo" });
+      await service.recordPayment(finance, 1, dto({ payment_date: today + "T00:00:00.000Z" }));
+      expect(model.recordPayment).toHaveBeenCalledWith(
+        1,
+        MedicalClaimPaymentStatus.PAID,
+        expect.objectContaining({ payment_date: today }),
+      );
+    });
+
     it("rejects an invalid payment_status", async () => {
-      await expect(service.recordPayment(hr, 1, dto({ payment_status: "cash" }))).rejects.toThrow(
+      await expect(service.recordPayment(finance, 1, dto({ payment_status: "cash" }))).rejects.toThrow(
         BadRequestException,
       );
     });
 
     it("throws NotFoundException for a missing claim", async () => {
       model.findById.mockResolvedValue(null);
-      await expect(service.recordPayment(hr, 1, dto())).rejects.toThrow(NotFoundException);
+      await expect(service.recordPayment(finance, 1, dto())).rejects.toThrow(NotFoundException);
     });
 
     it("rejects claims that are not approved", async () => {
       model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.PENDING, amount: 100 });
-      await expect(service.recordPayment(hr, 1, dto())).rejects.toThrow(BadRequestException);
+      await expect(service.recordPayment(finance, 1, dto())).rejects.toThrow(BadRequestException);
     });
 
     it("requires an amount when marking Paid", async () => {
       model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
       await expect(
-        service.recordPayment(hr, 1, dto({ paid_amount: undefined })),
+        service.recordPayment(finance, 1, dto({ paid_amount: undefined })),
       ).rejects.toThrow(BadRequestException);
     });
 
     it("rejects an amount above the approved claim amount", async () => {
       model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
-      await expect(service.recordPayment(hr, 1, dto({ paid_amount: "500" }))).rejects.toThrow(BadRequestException);
+      await expect(service.recordPayment(finance, 1, dto({ paid_amount: "500" }))).rejects.toThrow(BadRequestException);
     });
 
     it("requires a payment date when marking Paid", async () => {
       model.findById.mockResolvedValue({ id: 1, status: MedicalClaimStatus.APPROVED, amount: 100 });
       await expect(
-        service.recordPayment(hr, 1, dto({ payment_date: undefined })),
+        service.recordPayment(finance, 1, dto({ payment_date: undefined })),
       ).rejects.toThrow(BadRequestException);
     });
 

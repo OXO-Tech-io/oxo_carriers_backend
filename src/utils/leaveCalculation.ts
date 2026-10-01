@@ -79,6 +79,20 @@ export function calculateAccruedCasualLeave(
 }
 
 /**
+ * Casual Leave entitlement for a whole calendar year: the accrual measured at
+ * the end of that year (0.5 days per completed month of service, capped at
+ * `maxDays`). E.g. hired 30 Sep 2026 -> 1.5 for 2026, then the full `maxDays`
+ * from 2027.
+ */
+export function calculateCasualLeaveEntitlement(
+  hireDate: Date,
+  year: number,
+  maxDays: number
+): number {
+  return calculateAccruedCasualLeave(hireDate, year, maxDays, new Date(year, 11, 31));
+}
+
+/**
  * Check if a user is in their first year of employment
  */
 export function isFirstYear(hireDate: Date, year: number): boolean {
