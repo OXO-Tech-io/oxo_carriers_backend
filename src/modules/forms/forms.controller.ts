@@ -156,6 +156,10 @@ export class FormsController {
   @Get(':id/my-responses')
   async getMyResponse(@Param('id') idParam: string, @CurrentEmployee() employee: JwtPayload) {
     const id = this.parseId(idParam);
+    // Same recipient-only rule as the submit endpoint - no HR bypass here, this is the fill page's data.
+    if (!(await this.formsService.isDistributedTo(id, employee.userId))) {
+      throw new ForbiddenException('This form was not assigned to you');
+    }
     const data = await this.formsService.getMyResponse(id, employee.userId);
     return { success: true, message: 'Response fetched', data };
   }
@@ -298,11 +302,22 @@ export class FormsController {
     return { success: true, message: 'Logic rule deleted' };
   }
 
+  // Read access to settings/theme (deadline, header image) is shared with the form's recipients -
+  // the fill page needs them - so these two GETs allow HR (forms write) OR a distribution recipient.
+  private async requireManageOrRecipient(formId: number, employee: JwtPayload): Promise<void> {
+    const canManage =
+      employee.role === UserRole.SUPER_ADMIN ||
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.FORMS, 'write')));
+    if (canManage) return;
+    if (!(await this.formsService.isDistributedTo(formId, employee.userId))) {
+      throw new ForbiddenException('This form was not assigned to you');
+    }
+  }
+
   @Get(':formId/settings')
-  @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.FORMS, 'write')
-  async getSettings(@Param('formId') formIdParam: string) {
+  async getSettings(@Param('formId') formIdParam: string, @CurrentEmployee() employee: JwtPayload) {
     const formId = this.parseId(formIdParam);
+    await this.requireManageOrRecipient(formId, employee);
     const settings = await this.formsService.getSettings(formId);
     return { success: true, message: 'Settings fetched', data: settings };
   }
@@ -317,10 +332,9 @@ export class FormsController {
   }
 
   @Get(':formId/themes')
-  @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.FORMS, 'write')
-  async getTheme(@Param('formId') formIdParam: string) {
+  async getTheme(@Param('formId') formIdParam: string, @CurrentEmployee() employee: JwtPayload) {
     const formId = this.parseId(formIdParam);
+    await this.requireManageOrRecipient(formId, employee);
     const theme = await this.formsService.getTheme(formId);
     return { success: true, message: 'Theme fetched', data: theme };
   }

@@ -74,7 +74,7 @@ describe("CommunicationsController", () => {
       hasPermissionMock.mockResolvedValue(true);
       service.listMine.mockResolvedValue([{ id: 2 }]);
       const result = await controller.list("EMP2", { employeeId: "EMPHR", role: UserRole.HR_MANAGER } as any);
-      expect(hasPermissionMock).toHaveBeenCalledWith("EMPHR", "communications", "write");
+      expect(hasPermissionMock).toHaveBeenCalledWith("EMPHR", "communications_management", "write");
       expect(service.listMine).toHaveBeenCalledWith("EMP2");
       expect(result.data).toEqual([{ id: 2 }]);
     });

@@ -66,7 +66,7 @@ const SEED_GRANTS: Grant[] = [
   { role: 'hr_executive', key: 'groups', accessLevel: 'write' },
   { role: 'hr_executive', key: 'notices', accessLevel: 'write' },
   { role: 'hr_executive', key: 'attendance', accessLevel: 'read' },
-  { role: 'hr_executive', key: 'document_vault', accessLevel: 'write' },
+  { role: 'hr_executive', key: 'document_vault', accessLevel: 'read' },
 
   // finance_manager
   { role: 'finance_manager', key: 'dashboard', accessLevel: 'read' },
@@ -89,6 +89,7 @@ const SEED_GRANTS: Grant[] = [
   { role: 'finance_executive', key: 'users', accessLevel: 'read' },
   { role: 'finance_executive', key: 'leaves', accessLevel: 'read' },
   { role: 'finance_executive', key: 'salaries', accessLevel: 'read' },
+  { role: 'finance_executive', key: 'salary_bulk_upload', accessLevel: 'write' },
   { role: 'finance_executive', key: 'facilities', accessLevel: 'read' },
   { role: 'finance_executive', key: 'medical_claims', accessLevel: 'write' },
   { role: 'finance_executive', key: 'communications', accessLevel: 'read' },

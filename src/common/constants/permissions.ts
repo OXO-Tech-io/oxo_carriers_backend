@@ -10,6 +10,9 @@ export const PERMISSIONS = {
   VOUCHERS_MARK_PAID: "vouchers.mark_paid",
   LEAVES: "leaves",
   SALARIES: "salaries",
+  // Admin > Bulk Upload (salary Excel upload). Split out of `salaries` so it
+  // can be granted on its own; seeded from every `salaries` write grant.
+  SALARY_BULK_UPLOAD: "salary_bulk_upload",
   FACILITIES: "facilities",
   MEDICAL_CLAIMS: "medical_claims",
   CONSULTANT_SUBMISSIONS: "consultant_submissions",
@@ -18,6 +21,9 @@ export const PERMISSIONS = {
   PROFILE_CHANGE_REQUESTS: "profile_change_requests",
   EMPLOYEE_NOTES: "employee_notes",
   COMMUNICATIONS: "communications",
+  // Admin > Communications (compose/send, all-communications list, delivery
+  // reports). `communications` itself is now just the employee inbox.
+  COMMUNICATIONS_MANAGEMENT: "communications_management",
   EVENTS: "events",
   FORMS: "forms",
   WORK_LOGS: "work_logs",
@@ -51,6 +57,7 @@ export interface PermissionDefinition {
     | "vouchers"
     | "leaves"
     | "salaries"
+    | "salary_bulk_upload"
     | "facilities"
     | "claims"
     | "consultants"
@@ -59,6 +66,7 @@ export interface PermissionDefinition {
     | "profile"
     | "employee_notes"
     | "communications"
+    | "communications_management"
     | "events"
     | "forms"
     | "work_logs"
@@ -137,6 +145,12 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
     group: "salaries",
   },
   {
+    key: PERMISSIONS.SALARY_BULK_UPLOAD,
+    label: "Salary Bulk Upload",
+    description: "Write access lets a user download the template and bulk upload monthly salaries from Excel (Admin > Bulk Upload).",
+    group: "salary_bulk_upload",
+  },
+  {
     key: PERMISSIONS.FACILITIES,
     label: "Facilities",
     description: "Can view and manage facilities and bookings.",
@@ -183,8 +197,14 @@ export const PERMISSION_CATALOG: PermissionDefinition[] = [
   {
     key: PERMISSIONS.COMMUNICATIONS,
     label: "Communications",
-    description: "Can create and send employee communications and view delivery/response reports.",
+    description: "Can receive and respond to communications sent to them (My Communications).",
     group: "communications",
+  },
+  {
+    key: PERMISSIONS.COMMUNICATIONS_MANAGEMENT,
+    label: "Communications Management",
+    description: "Write access lets a user compose and send communications, see all communications and download delivery/response reports (Admin > Communications).",
+    group: "communications_management",
   },
   {
     key: PERMISSIONS.EVENTS,

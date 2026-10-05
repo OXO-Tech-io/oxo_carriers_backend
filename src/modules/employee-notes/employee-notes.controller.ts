@@ -62,7 +62,7 @@ export class EmployeeNotesController {
 
   @Put(':id')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @Roles(UserRole.HR_EXECUTIVE, UserRole.HR_MANAGER)
   update(
     @Param('id') idParam: string,
     @Body() dto: UpdateEmployeeNoteDto,

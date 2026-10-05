@@ -19,7 +19,6 @@ import { UpdateSalaryStatusDto } from './dto/update-salary-status.dto';
 // Everyone else (Finance included) only ever sees their own slips.
 const PAYROLL_ADMIN_ROLES: UserRole[] = [UserRole.SUPER_ADMIN, UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE];
 // OCD-581: Finance Manager runs the salary bulk upload alongside HR.
-const BULK_UPLOAD_ROLES: UserRole[] = [...PAYROLL_ADMIN_ROLES, UserRole.FINANCE_MANAGER];
 
 const isPayrollAdmin = (role: UserRole) => PAYROLL_ADMIN_ROLES.includes(role);
 
@@ -277,9 +276,7 @@ export class SalaryService {
     dto: BulkUploadSalaryDtoLike,
     requester: JwtPayload,
   ): Promise<{ success: number; failed: number; errors: string[] }> {
-    if (!BULK_UPLOAD_ROLES.includes(requester.role)) {
-      throw new ForbiddenException('Only HR and Finance Manager can upload bulk salaries');
-    }
+    // Access is enforced by PermissionGuard (salary_bulk_upload:write) on the controller.
     if (!dto.month || !dto.year) {
       throw new BadRequestException('Month and year are required');
     }

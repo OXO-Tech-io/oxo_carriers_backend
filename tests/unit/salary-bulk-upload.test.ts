@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import ExcelJS from "exceljs";
-import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { BadRequestException } from "@nestjs/common";
 import { UserRole } from "../../src/types";
 
 vi.mock("../../src/modules/salary/Salary", () => ({
@@ -29,7 +29,6 @@ const sm = SalaryModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
 const poolQueryMock = (pool as any).query as ReturnType<typeof vi.fn>;
 
 const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
-const employeeUser = { userId: 5, employeeId: "EMP5", role: UserRole.EMPLOYEE } as any;
 
 const tempFiles: string[] = [];
 
@@ -54,13 +53,6 @@ describe("SalaryService.uploadBulkSalaries", () => {
     for (const file of tempFiles.splice(0)) {
       if (fs.existsSync(file)) fs.unlinkSync(file);
     }
-  });
-
-  it("forbids non-HR roles", async () => {
-    const filePath = await writeWorkbook([["id", "name", "Local Salary", "OXO International Salary"]]);
-    await expect(
-      service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, employeeUser),
-    ).rejects.toThrow(ForbiddenException);
   });
 
   it("requires month and year", async () => {
@@ -144,7 +136,9 @@ describe("SalaryService.uploadBulkSalaries", () => {
     expect(result.failed).toBe(0);
   });
 
-  it("allows the Finance Manager to upload (OCD-581) but not the Finance Executive", async () => {
+  // Access is enforced by PermissionGuard (salary_bulk_upload:write) on the
+  // controller, so the service itself no longer checks the requester's role.
+  it("allows the Finance Manager to upload (OCD-581)", async () => {
     const filePath = await writeWorkbook([
       ["id", "Name", "Local Salary", "OXO International Salary"],
       [1, "Jane", "1000", "500"],
@@ -153,13 +147,9 @@ describe("SalaryService.uploadBulkSalaries", () => {
     sm.createSalaryFromExcel.mockResolvedValue({ id: 1 });
 
     const financeManager = { userId: 3, employeeId: "FIN1", role: UserRole.FINANCE_MANAGER } as any;
-    const financeExecutive = { userId: 4, employeeId: "FIN2", role: UserRole.FINANCE_EXECUTIVE } as any;
 
     const ok = await service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, financeManager);
     expect(ok.success).toBe(1);
-    await expect(
-      service.uploadBulkSalaries(filePath, { month: "8", year: "2026" }, financeExecutive),
-    ).rejects.toThrow(ForbiddenException);
   });
 
   it("rejects non-numeric salary values with row and field details (OCD-580)", async () => {

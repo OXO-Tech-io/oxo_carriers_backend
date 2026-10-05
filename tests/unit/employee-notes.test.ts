@@ -102,16 +102,14 @@ describe("EmployeeNotesService", () => {
 
     it("throws ForbiddenException when a non-author HR Manager edits another HR Manager's note", async () => {
       getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
-      findByIdMock.mockResolvedValue({ role: UserRole.HR_MANAGER });
       const hrManager = { userId: 5, role: UserRole.HR_MANAGER } as any;
       await expect(service.update(1, { content: "updated" } as any, hrManager)).rejects.toThrow(ForbiddenException);
     });
 
-    it("allows a super admin to edit any note", async () => {
+    it("forbids a super admin from editing a note they didn't add", async () => {
       getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
-      updateMock.mockResolvedValue({ id: 1, content: "updated" });
-      const result = await service.update(1, { content: "updated" } as any, superAdmin);
-      expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
+      await expect(service.update(1, { content: "updated" } as any, superAdmin)).rejects.toThrow(ForbiddenException);
+      expect(updateMock).not.toHaveBeenCalled();
     });
 
     it("allows the author to edit their own note", async () => {
@@ -122,13 +120,11 @@ describe("EmployeeNotesService", () => {
       expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
     });
 
-    it("allows a more senior role to edit a subordinate's note", async () => {
+    it("forbids a more senior role from editing a subordinate's note", async () => {
       getByIdMock.mockResolvedValue({ id: 1, authorUserId: 2 });
-      findByIdMock.mockResolvedValue({ role: UserRole.HR_EXECUTIVE });
-      updateMock.mockResolvedValue({ id: 1, content: "updated" });
       const hrManager = { userId: 5, role: UserRole.HR_MANAGER } as any;
-      const result = await service.update(1, { content: "updated" } as any, hrManager);
-      expect(result).toEqual({ success: true, message: "Note updated", data: { id: 1, content: "updated" } });
+      await expect(service.update(1, { content: "updated" } as any, hrManager)).rejects.toThrow(ForbiddenException);
+      expect(updateMock).not.toHaveBeenCalled();
     });
   });
 });
