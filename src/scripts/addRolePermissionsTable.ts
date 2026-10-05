@@ -47,7 +47,10 @@ const SEED_GRANTS: Grant[] = [
   { role: 'hr_manager', key: 'groups', accessLevel: 'write' },
   { role: 'hr_manager', key: 'notices', accessLevel: 'write' },
   { role: 'hr_manager', key: 'attendance', accessLevel: 'read' },
-  { role: 'hr_manager', key: 'document_vault', accessLevel: 'write' },
+  // Read only: uploading to the Document Vault is Super Admin only (an admin can
+  // still grant a specific user 'write' from the Permissions screen). See
+  // removeHrManagerDocumentVaultWrite.ts for already-provisioned databases.
+  { role: 'hr_manager', key: 'document_vault', accessLevel: 'read' },
   { role: 'hr_manager', key: 'archive', accessLevel: 'read' },
 
   // hr_executive
@@ -73,6 +76,7 @@ const SEED_GRANTS: Grant[] = [
   { role: 'finance_manager', key: 'users', accessLevel: 'read' },
   { role: 'finance_manager', key: 'leaves', accessLevel: 'read' },
   { role: 'finance_manager', key: 'salaries', accessLevel: 'write' },
+  { role: 'finance_manager', key: 'salary_bulk_upload', accessLevel: 'write' },
   { role: 'finance_manager', key: 'facilities', accessLevel: 'read' },
   { role: 'finance_manager', key: 'medical_claims', accessLevel: 'write' },
   { role: 'finance_manager', key: 'communications', accessLevel: 'read' },
