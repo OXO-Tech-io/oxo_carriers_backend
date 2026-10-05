@@ -14,7 +14,7 @@ import { employee } from '../../employees/employee.schema';
 
 // Enums
 export const claimTypeEnum = pgEnum('claim_type', ['IN', 'OPD']);
-export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected']);
+export const claimStatusEnum = pgEnum('claim_status', ['pending', 'approved', 'rejected', 'cancelled']);
 // OCD-494: payment-processing status for approved claims.
 export const medicalPaymentStatusEnum = pgEnum('medical_payment_status', ['not_paid', 'partially_paid', 'paid']);
 

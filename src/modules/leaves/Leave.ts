@@ -1,6 +1,6 @@
 import pool from '../../config/database';
 import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types';
-import { calculateProRatedAnnualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
+import { calculateProRatedAnnualLeave, calculateAccruedCasualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
 import { EmployeeModel } from '../../employees/Employee';
 import { isAnnualLeaveType, isCasualLeaveType } from '../../common/constants/leaveTypes';
 
@@ -309,7 +309,7 @@ export class LeaveModel {
       return calculateProRatedAnnualLeave(hireDate, year);
     }
     if (isCasualLeaveType(leaveTypeName)) {
-      return calculateCasualLeaveEntitlement(hireDate, year, maxDays);
+      return calculateAccruedCasualLeave(hireDate, year, maxDays);
     }
     return null;
   }
@@ -392,6 +392,26 @@ export class LeaveModel {
       pendingByType.set(row.leave_type_id, parseFloat(row.pending_days) || 0);
     }
 
+    // Days already taken (HR-approved) in the current calendar month, plus the
+    // casual-leave full-year entitlement, so the UI can show "you get X this
+    // year, Y accrued so far, Z taken this month".
+    const monthRes = await pool.query(
+      `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as used_this_month
+       FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status = 'hr_approved'
+         AND EXTRACT(YEAR FROM start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+         AND EXTRACT(MONTH FROM start_date) = EXTRACT(MONTH FROM CURRENT_DATE)
+       GROUP BY leave_type_id`,
+      [employeeId]
+    );
+    const usedThisMonthByType = new Map<number, number>();
+    for (const row of monthRes.rows as any[]) {
+      usedThisMonthByType.set(row.leave_type_id, parseFloat(row.used_this_month) || 0);
+    }
+    const hireRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE employee_id = $1', [employeeId]);
+    const balanceHireDate = hireRes.rows[0]?.hire_date ? new Date(hireRes.rows[0].hire_date) : new Date();
+
     // Transform the flat structure to nested structure
     const balances = (result.rows as any[]).map((row: any) => {
       // Use calculated remaining_days (always accurate)
@@ -411,6 +431,10 @@ export class LeaveModel {
         remaining_days: remaining,
         pending_days: pendingDays,
         available_days: availableDays,
+        used_this_month: usedThisMonthByType.get(row.leave_type_id) || 0,
+        year_entitlement: isCasualLeaveType(row.name)
+          ? calculateCasualLeaveEntitlement(balanceHireDate, currentYear, row.max_days)
+          : parseFloat(row.total_days) || row.total_days,
         year: row.year,
         leave_type: {
           id: row.lt_id,

@@ -87,7 +87,7 @@ export class SalaryController {
 
   @Get('bulk-uploads/templates')
   @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.SALARIES, 'write')
+  @RequirePermission(PERMISSIONS.SALARY_BULK_UPLOAD, 'write')
   async downloadBulkUploadTemplate(@Res() res: Response) {
     const buffer = await this.salaryService.generateBulkUploadTemplate();
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -139,7 +139,7 @@ export class SalaryController {
 
   @Post('bulk-uploads')
   @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.SALARIES, 'write')
+  @RequirePermission(PERMISSIONS.SALARY_BULK_UPLOAD, 'write')
   @UseInterceptors(FileInterceptor('excel', { storage, fileFilter, limits: { fileSize: 10 * 1024 * 1024 } }))
   async bulkUpload(
     @UploadedFile() file: Express.Multer.File,

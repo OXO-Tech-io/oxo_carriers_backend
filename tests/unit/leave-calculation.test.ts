@@ -24,30 +24,31 @@ describe("leaveCalculation utils", () => {
     expect(isFirstYear(new Date("2025-01-01"), 2026)).toBe(false);
   });
 
-  describe("entitlement for an employee joining 30 Sep 2026", () => {
-    const hireDate = new Date("2026-09-30");
+  describe("entitlement for an employee joining 2 Oct 2026", () => {
+    const hireDate = new Date("2026-10-02");
     it("1st year: annual 0, casual 1.5", () => {
       expect(calculateProRatedAnnualLeave(hireDate, 2026)).toBe(0);
       expect(calculateCasualLeaveEntitlement(hireDate, 2026, 7)).toBe(1.5);
     });
-    it("2nd year: annual 7, casual 7", () => {
-      expect(calculateProRatedAnnualLeave(hireDate, 2027)).toBe(7);
+    it("2nd year: annual 4, casual 7", () => {
+      expect(calculateProRatedAnnualLeave(hireDate, 2027)).toBe(4);
       expect(calculateCasualLeaveEntitlement(hireDate, 2027, 7)).toBe(7);
     });
   });
 
   describe("calculateAccruedCasualLeave", () => {
-    it("matches the OCD-502 bug report: hired 10 Sep 2026, as of 18 Sep 2026 -> 0 days", () => {
-      const hireDate = new Date("2026-09-10");
-      const asOf = new Date("2026-09-18");
-      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, asOf)).toBe(0);
+    it("counts the joining month: hired 2 Oct 2026 -> 0.5 in Oct, 1.0 in Nov, 1.5 in Dec", () => {
+      const hireDate = new Date("2026-10-02");
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-10-15"))).toBe(0.5);
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-11-01"))).toBe(1);
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-12-10"))).toBe(1.5);
     });
 
-    it("accrues 0.5 days per completed month of service", () => {
+    it("accrues 0.5 days per calendar month starting with the hire month", () => {
       const hireDate = new Date("2026-01-10");
-      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-02-09"))).toBe(0);
-      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-02-10"))).toBe(0.5);
-      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-04-10"))).toBe(1.5);
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-01-20"))).toBe(0.5);
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-02-01"))).toBe(1);
+      expect(calculateAccruedCasualLeave(hireDate, 2026, 7, new Date("2026-04-10"))).toBe(2);
     });
 
     it("caps accrual at the leave type's standard max_days", () => {

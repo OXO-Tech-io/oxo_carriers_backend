@@ -39,12 +39,13 @@ export function calculateProRatedAnnualLeave(hireDate: Date, year: number): numb
 /**
  * Calculate accrued Casual Leave entitlement based on hire date.
  *
- * Casual Leave accrues at 0.5 days per completed month of service, capped at
- * the leave type's standard annual entitlement (`maxDays`) once that many
- * months have completed. This naturally pro-rates the joined year (fewer
- * completed months = fewer accrued days) without needing a separate rule for
- * later years, since a tenured employee will always have completed enough
- * months to be capped at `maxDays`.
+ * Casual Leave accrues at 0.5 days per calendar month, starting with the month
+ * the employee joined (joining on 2 Oct 2026 earns 0.5 in October, 1.0 by
+ * November and 1.5 by December). Each month's 0.5 is available from the 1st of
+ * that month and unused days carry forward within the year, so a missed
+ * October can still be taken as 1.0 in November or 1.5 in December. Accrual is
+ * capped at the leave type's standard annual entitlement (`maxDays`); a
+ * tenured employee has accrued far more than that, so is simply capped.
  */
 export function calculateAccruedCasualLeave(
   hireDate: Date,
@@ -55,7 +56,7 @@ export function calculateAccruedCasualLeave(
   const hireYear = hireDate.getFullYear();
   if (hireYear > year) return 0;
 
-  // Completed months are measured up to "now" when `year` is the current
+  // Months are counted up to "now" when `year` is the current
   // year, or up to the end of that year for past years.
   let cutoff: Date;
   if (year === asOf.getFullYear()) {
@@ -66,23 +67,23 @@ export function calculateAccruedCasualLeave(
     cutoff = new Date(year, 0, 1);
   }
 
-  let completedMonths =
+  // Calendar months from the hire month to the cutoff month, both inclusive.
+  const accruedMonths = Math.max(
+    0,
     (cutoff.getFullYear() - hireDate.getFullYear()) * 12 +
-    (cutoff.getMonth() - hireDate.getMonth());
-  if (cutoff.getDate() < hireDate.getDate()) {
-    completedMonths -= 1;
-  }
-  completedMonths = Math.max(0, completedMonths);
+      (cutoff.getMonth() - hireDate.getMonth()) +
+      1
+  );
 
-  const accrued = Math.round(completedMonths * 0.5 * 10) / 10;
+  const accrued = Math.round(accruedMonths * 0.5 * 10) / 10;
   return Math.min(accrued, maxDays);
 }
 
 /**
  * Casual Leave entitlement for a whole calendar year: the accrual measured at
- * the end of that year (0.5 days per completed month of service, capped at
- * `maxDays`). E.g. hired 30 Sep 2026 -> 1.5 for 2026, then the full `maxDays`
- * from 2027.
+ * the end of that year. E.g. hired 2 Oct 2026 -> 1.5 for 2026 (Oct, Nov, Dec),
+ * then the full `maxDays` from 2027. The balance actually available to take
+ * today is `calculateAccruedCasualLeave` as of now.
  */
 export function calculateCasualLeaveEntitlement(
   hireDate: Date,

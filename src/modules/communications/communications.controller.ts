@@ -52,7 +52,7 @@ export class CommunicationsController {
   async list(@Query('employee_id') employeeId: string | undefined, @CurrentEmployee() employee: JwtPayload) {
     const canManage =
       employee.role === UserRole.SUPER_ADMIN ||
-      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.COMMUNICATIONS, 'write')));
+      (!!employee.employeeId && (await hasPermission(employee.employeeId, PERMISSIONS.COMMUNICATIONS_MANAGEMENT, 'write')));
 
     if (employeeId) {
       if (employeeId !== employee.employeeId && !canManage) {
@@ -71,7 +71,7 @@ export class CommunicationsController {
 
   @Post()
   @UseGuards(PermissionGuard)
-  @RequirePermission(PERMISSIONS.COMMUNICATIONS, 'write')
+  @RequirePermission(PERMISSIONS.COMMUNICATIONS_MANAGEMENT, 'write')
   @UseInterceptors(FilesInterceptor(ATTACHMENTS_FIELD, MAX_ATTACHMENTS, communicationAttachmentsMulterOptions))
   async create(
     @CurrentEmployee() employee: JwtPayload,
@@ -92,8 +92,8 @@ export class CommunicationsController {
   }
 
   @Get('reports')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.COMMUNICATIONS_MANAGEMENT, 'write')
   async report(@Res() res: Response) {
     const buffer = await this.communicationsService.generateReport();
     res.setHeader('Content-Type', XLSX_CONTENT_TYPE);
@@ -102,8 +102,8 @@ export class CommunicationsController {
   }
 
   @Get(':id/reports')
-  @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.COMMUNICATIONS_MANAGEMENT, 'write')
   async reportById(@Param('id') idParam: string, @Res() res: Response) {
     const id = this.parseId(idParam);
     const buffer = await this.communicationsService.generateReport(id);

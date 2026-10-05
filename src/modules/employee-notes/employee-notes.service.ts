@@ -7,16 +7,8 @@ import { UpdateEmployeeNoteDto } from './dto/update-employee-note.dto';
 
 const NOTE_CREATOR_ROLES: UserRole[] = [UserRole.HR_EXECUTIVE, UserRole.HR_MANAGER, UserRole.SUPER_ADMIN];
 
-// OCD-480: notes are historical/audit records - only the note's own author,
-// or someone holding a strictly more senior role than the author, may edit
-// it. Mirrors the HR_MANAGER > HR_EXECUTIVE authority already established
-// for Profile Approvals (OCD-473) - super_admin outranks everyone and never
-// needs the ownership check (also bypasses RolesGuard on this route already).
-const NOTE_ROLE_RANK: Partial<Record<UserRole, number>> = {
-  [UserRole.HR_EXECUTIVE]: 1,
-  [UserRole.HR_MANAGER]: 2,
-  [UserRole.SUPER_ADMIN]: 3,
-};
+// Notes are historical/audit records - only the user who added a note may
+// edit it, regardless of role seniority.
 
 @Injectable()
 export class EmployeeNotesService {
@@ -57,15 +49,8 @@ export class EmployeeNotesService {
     const existing = await employeeNoteService.getById(id);
     if (!existing) throw new NotFoundException('Note not found');
 
-    if (existing.authorUserId !== actor.userId && actor.role !== UserRole.SUPER_ADMIN) {
-      const author = existing.authorUserId ? await EmployeeModel.findById(existing.authorUserId) : null;
-      const authorRank = author ? NOTE_ROLE_RANK[author.role as UserRole] ?? 0 : 0;
-      const actorRank = NOTE_ROLE_RANK[actor.role] ?? 0;
-      if (actorRank <= authorRank) {
-        throw new ForbiddenException(
-          'You can only edit notes you authored, unless you hold a more senior role than the author'
-        );
-      }
+    if (existing.authorUserId !== actor.userId) {
+      throw new ForbiddenException('You can only edit notes you added yourself');
     }
 
     const note = await employeeNoteService.update(id, dto.content);
