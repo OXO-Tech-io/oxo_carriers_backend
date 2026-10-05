@@ -51,7 +51,9 @@
     "db:add-notice-schedule-fields": "ts-node src/scripts/addNoticeScheduleFields.ts",
     "db:add-document-version-and-mandatory-viewing": "ts-node src/scripts/addDocumentVersionAndMandatoryViewing.ts",
     "db:grant-finance-manager-salaries-write": "ts-node src/scripts/grantFinanceManagerSalariesWrite.ts",
+    "db:grant-finance-manager-salary-bulk-upload": "ts-node src/scripts/grantFinanceManagerSalaryBulkUpload.ts",
     "db:remove-hr-executive-document-vault-write": "ts-node src/scripts/removeHrExecutiveDocumentVaultWrite.ts",
+    "db:remove-hr-manager-document-vault-write": "ts-node src/scripts/removeHrManagerDocumentVaultWrite.ts",
     "db:remove-hr-executive-communications-access": "ts-node src/scripts/removeHrExecutiveCommunicationsAccess.ts",
     "db:add-employee-active-session-id": "ts-node src/scripts/addEmployeeActiveSessionId.ts",
     "db:backfill-file-blobs-to-gcs": "ts-node src/scripts/backfillFileBlobsToGcs.ts"
