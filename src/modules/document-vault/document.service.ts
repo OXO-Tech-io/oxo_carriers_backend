@@ -19,6 +19,11 @@ export const documentService = {
       throw new BadRequestError('At least one employee is required when targeting specific employees');
     }
 
+    // Checked before the document row is created so a rejected request leaves nothing behind.
+    if (files.length === 0) {
+      throw new BadRequestError('At least one file is required');
+    }
+
     const document = await DocumentModel.create({ title, description, targetType, version, isMandatoryViewing, createdBy });
 
     if (targetType === 'individual') {
