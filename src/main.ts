@@ -104,19 +104,40 @@ async function bootstrap() {
   });
 
   // ─── Security headers ────────────────────────────────────────────────────
-  app.use(
-    helmet({
-      crossOriginResourcePolicy: { policy: 'cross-origin' },
-      crossOriginEmbedderPolicy: false,
-      contentSecurityPolicy: {
-        directives: {
-          defaultSrc: ["'self'"],
-          styleSrc: ["'self'", "'unsafe-inline'"],
-          scriptSrc: ["'self'"],
-          imgSrc: ["'self'", 'data:', 'https:'],
-        },
+  const cspDirectives = {
+    defaultSrc: ["'self'"],
+    styleSrc: ["'self'", "'unsafe-inline'"],
+    scriptSrc: ["'self'"],
+    imgSrc: ["'self'", 'data:', 'https:'],
+  };
+  const apiHelmet = helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+    contentSecurityPolicy: { directives: cspDirectives },
+  });
+  // Uploaded files (e.g. PDFs in the Document Vault viewer) are rendered inside
+  // the frontend via <embed>/<iframe>, which is a different origin from this
+  // API. Helmet's default `frame-ancestors 'self'` + `X-Frame-Options:
+  // SAMEORIGIN` makes the browser refuse to show them ("localhost refused to
+  // connect"), so /uploads may be framed by the same origins CORS already trusts.
+  // X-Frame-Options can't express an allow-list, hence frameguard off here.
+  const uploadsHelmet = helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+    crossOriginEmbedderPolicy: false,
+    frameguard: false,
+    contentSecurityPolicy: {
+      directives: {
+        ...cspDirectives,
+        frameAncestors: [
+          "'self'",
+          ...allowedOrigins,
+          ...(env.IS_PRODUCTION ? [] : ['http://localhost:*', 'http://127.0.0.1:*']),
+        ],
       },
-    }),
+    },
+  });
+  app.use((req: any, res: any, next: any) =>
+    (req.path.startsWith('/uploads/') ? uploadsHelmet : apiHelmet)(req, res, next),
   );
 
   // ─── Request logging (pino-http) ─────────────────────────────────────────

@@ -49,11 +49,22 @@ describe("documentService (core)", () => {
   });
 
   describe("create", () => {
+    const file = { buffer: Buffer.from("x") } as any;
+
     it("rejects an individual target with no employees", async () => {
       await expect(documentService.create("T", null, "individual", [], "1.0", false, 9, [])).rejects.toMatchObject({
         statusCode: 400,
       });
       expect(dm.create).not.toHaveBeenCalled();
+    });
+
+    it("rejects a create with no files, before inserting the document row", async () => {
+      await expect(documentService.create("T", null, "all", [], "1.0", false, 9, [])).rejects.toMatchObject({
+        statusCode: 400,
+        message: "At least one file is required",
+      });
+      expect(dm.create).not.toHaveBeenCalled();
+      expect(am.createMany).not.toHaveBeenCalled();
     });
 
     it("resolves numeric ids to business employeeIds (deduped) before inserting recipients", async () => {
@@ -65,7 +76,7 @@ describe("documentService (core)", () => {
       ]);
       drm.createMany.mockResolvedValue([]);
 
-      const result = await documentService.create("T", "desc", "individual", [1, 2], "1.0", false, 9, []);
+      const result = await documentService.create("T", "desc", "individual", [1, 2], "1.0", false, 9, [file]);
 
       expect(em.findByIds).toHaveBeenCalledWith([1, 2]);
       expect(drm.createMany).toHaveBeenCalledWith(100, ["EMP1", "EMP2"]);
@@ -74,19 +85,19 @@ describe("documentService (core)", () => {
 
     it("does not create recipient rows for an 'all' target", async () => {
       dm.create.mockResolvedValue({ id: 101 });
-      await documentService.create("T", null, "all", [], "1.0", false, 9, []);
+      await documentService.create("T", null, "all", [], "1.0", false, 9, [file]);
       expect(drm.createMany).not.toHaveBeenCalled();
     });
 
     it("creates attachments when files are provided", async () => {
       dm.create.mockResolvedValue({ id: 102 });
-      await documentService.create("T", null, "all", [], "1.0", false, 9, [{ buffer: Buffer.from("x") } as any]);
+      await documentService.create("T", null, "all", [], "1.0", false, 9, [file]);
       expect(am.createMany).toHaveBeenCalledWith("document_vault", 102, expect.any(Array), 9);
     });
 
     it("persists version and isMandatoryViewing on the document row", async () => {
       dm.create.mockResolvedValue({ id: 103 });
-      await documentService.create("T", null, "all", [], "2.3", true, 9, []);
+      await documentService.create("T", null, "all", [], "2.3", true, 9, [file]);
       expect(dm.create).toHaveBeenCalledWith({
         title: "T",
         description: null,
