@@ -9,6 +9,8 @@ import { LeaveBalanceQueryDto } from './dto/leave-balance-query.dto';
 import { ApproveLeaveRequestDto } from './dto/approve-leave-request.dto';
 import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 import { CoverageCandidatesQueryDto } from './dto/coverage-candidates-query.dto';
+import { persistDurableUpload } from '../../common/upload/persist-durable-upload';
+import { FILE_CATEGORIES } from '../../common/constants/fileCategories';
 
 const SELF_ONLY_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
@@ -114,7 +116,12 @@ export class LeavesService {
   async createLeaveRequest(employee: JwtPayload, body: unknown, file: Express.Multer.File | undefined) {
     const input = createLeaveRequestSchema.parse(body);
     const attachmentUrl = file ? `/uploads/documents/${file.filename}` : undefined;
-    return leaveService.createLeaveRequest(this.requireEmployeeId(employee), input, attachmentUrl);
+    const request = await leaveService.createLeaveRequest(this.requireEmployeeId(employee), input, attachmentUrl);
+    // Only once the request exists (a rejected one would just orphan the copy), and while
+    // multer's disk file is still there to read - without this the attachment link 404s with
+    // "Cannot GET /uploads/documents/..." as soon as the instance's disk is recycled.
+    if (file) await persistDurableUpload(file, FILE_CATEGORIES.DOCUMENTS);
+    return request;
   }
 
   async approveLeaveRequest(employee: JwtPayload, id: number, dto: ApproveLeaveRequestDto) {

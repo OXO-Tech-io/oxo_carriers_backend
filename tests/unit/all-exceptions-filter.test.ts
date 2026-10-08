@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from "vitest";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, UnauthorizedException } from "@nestjs/common";
 import { ZodError, z } from "zod";
 import { AllExceptionsFilter } from "../../src/common/filters/all-exceptions.filter";
 import { AppError } from "../../src/utils/AppError";
@@ -73,6 +73,32 @@ describe("AllExceptionsFilter", () => {
     expect(response.json).toHaveBeenCalledWith(
       expect.objectContaining({ message: "field a required, field b required" }),
     );
+  });
+
+  it("preserves a string `code` from an HttpException response body (OCD-455 SESSION_TERMINATED)", () => {
+    const filter = new AllExceptionsFilter();
+    const { response, host } = createHost();
+
+    filter.catch(
+      new UnauthorizedException({ message: "Session terminated", code: "SESSION_TERMINATED" }),
+      host,
+    );
+
+    expect(response.status).toHaveBeenCalledWith(401);
+    expect(response.json).toHaveBeenCalledWith({
+      success: false,
+      message: "Session terminated",
+      code: "SESSION_TERMINATED",
+    });
+  });
+
+  it("omits `code` when the HttpException response body has none", () => {
+    const filter = new AllExceptionsFilter();
+    const { response, host } = createHost();
+
+    filter.catch(new UnauthorizedException("Invalid or expired token"), host);
+
+    expect(response.json).toHaveBeenCalledWith({ success: false, message: "Invalid or expired token" });
   });
 
   it("returns 500 for an unrecognized error", () => {

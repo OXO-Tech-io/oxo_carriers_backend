@@ -30,8 +30,12 @@ vi.mock("../../src/employees/Employee", () => ({
 vi.mock("../../src/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
+vi.mock("../../src/common/upload/persist-durable-upload", () => ({
+  persistDurableUpload: vi.fn(),
+}));
 
 import { leaveService } from "../../src/modules/leaves/leave.service";
+import { persistDurableUpload } from "../../src/common/upload/persist-durable-upload";
 import {
   sendLeaveApprovedEmail,
   sendLeaveRejectedEmail,
@@ -46,6 +50,7 @@ import { LeaveTypesService } from "../../src/modules/leave-types/leave-types.ser
 import { LeaveTypesController } from "../../src/modules/leave-types/leave-types.controller";
 
 const ls = leaveService as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const persistDurableUploadMock = persistDurableUpload as unknown as ReturnType<typeof vi.fn>;
 const emailMocks = {
   approved: sendLeaveApprovedEmail as unknown as ReturnType<typeof vi.fn>,
   rejected: sendLeaveRejectedEmail as unknown as ReturnType<typeof vi.fn>,
@@ -146,6 +151,46 @@ describe("LeavesService", () => {
       expect.objectContaining({ leave_type_id: 1 }),
       "/uploads/documents/doc.pdf",
     );
+  });
+
+  describe("createLeaveRequest attachment durability", () => {
+    const body = { leave_type_id: 1, start_date: "2026-08-03", end_date: "2026-08-04" };
+    const file = { filename: "doc.pdf", mimetype: "application/pdf", path: "/tmp/doc.pdf" } as any;
+
+    // Without a durable copy the stored /uploads/documents/<file> link 404s
+    // ("Cannot GET /uploads/documents/...") once Cloud Run recycles its disk.
+    it("persists a durable copy of the uploaded document under the documents category", async () => {
+      ls.createLeaveRequest.mockResolvedValue({ id: 1 });
+      persistDurableUploadMock.mockResolvedValue(undefined);
+      const result = await service.createLeaveRequest(employee, body, file);
+      expect(persistDurableUploadMock).toHaveBeenCalledWith(file, "documents");
+      expect(result).toEqual({ id: 1 });
+    });
+
+    it("persists the copy only after the leave request was created", async () => {
+      const order: string[] = [];
+      ls.createLeaveRequest.mockImplementation(async () => {
+        order.push("created");
+        return { id: 1 };
+      });
+      persistDurableUploadMock.mockImplementation(async () => {
+        order.push("persisted");
+      });
+      await service.createLeaveRequest(employee, body, file);
+      expect(order).toEqual(["created", "persisted"]);
+    });
+
+    it("does not persist an orphan copy when the leave request is rejected", async () => {
+      ls.createLeaveRequest.mockRejectedValue(new BadRequestException("Insufficient leave balance"));
+      await expect(service.createLeaveRequest(employee, body, file)).rejects.toThrow(BadRequestException);
+      expect(persistDurableUploadMock).not.toHaveBeenCalled();
+    });
+
+    it("does not persist anything when no document was attached", async () => {
+      ls.createLeaveRequest.mockResolvedValue({ id: 1 });
+      await service.createLeaveRequest(employee, body, undefined);
+      expect(persistDurableUploadMock).not.toHaveBeenCalled();
+    });
   });
 
   it("createLeaveRequest propagates a ZodError for an invalid body", async () => {

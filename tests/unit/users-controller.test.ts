@@ -1,5 +1,9 @@
+import "reflect-metadata";
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import { ForbiddenException } from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
 import { UserRole } from "../../src/types";
+import { RolesGuard } from "../../src/common/guards/roles.guard";
 import { UsersController } from "../../src/modules/users/users.controller";
 
 const createUsersServiceMock = () => ({
@@ -117,5 +121,42 @@ describe("UsersController", () => {
     service.delete.mockResolvedValue(undefined);
     const result = await controller.delete(1, employee);
     expect(result).toEqual({ success: true, message: "User deleted successfully" });
+  });
+
+  // OCD-592: DELETE /users/:id is the HTTP-level gate (UsersService.delete is
+  // the second one). These run the real RolesGuard against the route's real
+  // metadata - not a mocked reflector - so loosening the @Roles() decorator
+  // on the handler fails here.
+  describe("DELETE /users/:id route guard (OCD-592)", () => {
+    const runGuard = (role: UserRole) => {
+      const guard = new RolesGuard(new Reflector());
+      const context: any = {
+        getHandler: () => UsersController.prototype.delete,
+        getClass: () => UsersController,
+        switchToHttp: () => ({ getRequest: () => ({ employee: { userId: 9, role } }) }),
+      };
+      return () => guard.canActivate(context);
+    };
+
+    it("is protected by RolesGuard", () => {
+      const guards = Reflect.getMetadata("__guards__", UsersController.prototype.delete) as unknown[];
+      expect(guards).toContain(RolesGuard);
+    });
+
+    it("lets a Super Admin through", () => {
+      expect(runGuard(UserRole.SUPER_ADMIN)()).toBe(true);
+    });
+
+    it.each([
+      UserRole.HR_MANAGER,
+      UserRole.HR_EXECUTIVE,
+      UserRole.FINANCE_MANAGER,
+      UserRole.FINANCE_EXECUTIVE,
+      UserRole.EMPLOYEE,
+      UserRole.CONSULTANT,
+      UserRole.SERVICE_PROVIDER,
+    ])("rejects %s with 403", (role) => {
+      expect(runGuard(role)).toThrow(ForbiddenException);
+    });
   });
 });
