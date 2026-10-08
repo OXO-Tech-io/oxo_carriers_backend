@@ -7,11 +7,17 @@
         "strict": true,
         "esModuleInterop": true,
         "skipLibCheck": true,
-        "forceConsistentCasingInFileNames": true
+        "forceConsistentCasingInFileNames": true,
+        "experimentalDecorators": true,
+        "emitDecoratorMetadata": true,
+        "allowSyntheticDefaultImports": true
     },
     "include": [
         "src/**/*"
     ],
+    "ts-node": {
+        "files": true
+    },
     "exclude": [
         "node_modules",
         "src/config/initDatabase.ts",

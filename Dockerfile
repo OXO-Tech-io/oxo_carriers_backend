@@ -4,7 +4,7 @@
 FROM mirror.gcr.io/library/node:20-alpine AS builder
 RUN npm install -g pnpm
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 COPY tsconfig*.json ./
 RUN pnpm install --frozen-lockfile
 COPY . .
@@ -20,9 +20,12 @@ RUN curl -o /cloud-sql-proxy https://dl.google.com/cloudsql/cloud_sql_proxy.linu
     chmod +x /cloud-sql-proxy
 
 WORKDIR /app
-COPY package.json pnpm-lock.yaml* ./
+COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 RUN pnpm install --prod --frozen-lockfile
 COPY --from=builder /app/dist ./dist
+# Logo and seal images used by the salary slip PDF (OCD-576) - without this the
+# runtime image has no /app/public and the PDF falls back to LOGO/SEAL boxes.
+COPY --from=builder /app/public ./public
 COPY --from=builder /app/src/db ./src/db
 COPY --from=builder /app/drizzle.config.ts ./drizzle.config.ts
 
@@ -43,4 +46,4 @@ EXPOSE 5000
 # Default CMD runs the Node.js app directly
 # When running in Cloud Run with Cloud SQL, the Cloud Run environment
 # handles the Cloud SQL connection via the service account
-CMD ["node", "dist/app.js"]
+CMD ["node", "dist/main.js"]

@@ -9,6 +9,25 @@ export enum UserRole {
   SERVICE_PROVIDER = "service_provider",
 }
 
+export enum EmployeeStatus {
+  ACTIVE = "active",
+  INACTIVE = "inactive",
+  ON_HOLD = "on_hold",
+}
+
+// Internal vs Client Side classification, set at employee-creation time.
+// Internal employees must nominate a coverup employee when requesting leave
+// (see leaveService.createLeaveRequest).
+export enum EmployeeCategory {
+  INTERNAL = "internal",
+  CLIENT_SIDE = "client_side",
+}
+
+export enum SessionAction {
+  CLOCK_IN = "clock_in",
+  CLOCK_OUT = "clock_out",
+}
+
 export enum VoucherStatus {
   PENDING_REVIEW = "pending_review",
   APPROVED = "approved",
@@ -93,8 +112,6 @@ export interface User {
   companyName?: string | null;
   contactNumber?: string | null;
   mustChangePassword: boolean | null;
-  emailVerified?: boolean | null;
-  emailVerificationToken?: string | null;
   createdAt: Date | null;
   updatedAt: Date | null;
 }
@@ -110,11 +127,20 @@ export interface LeaveType {
 
 export interface LeaveBalance {
   id: number;
-  user_id: number;
+  employee_id: string;
   leave_type_id: number;
   total_days: number;
   used_days: number;
   remaining_days: number;
+  /** Days tied up in requests still pending/team-leader-approved (not yet
+   * deducted from remaining_days, which only reflects HR-approved days). */
+  pending_days: number;
+  /** remaining_days minus pending_days - what can still be requested. */
+  available_days: number;
+  /** HR-approved days taken in the current calendar month. */
+  used_this_month: number;
+  /** Full-year entitlement (casual leave: what accrues by 31 Dec; total_days is only what has accrued so far). */
+  year_entitlement: number;
   year: number;
   leave_type: LeaveType;
   created_at?: Date;
@@ -123,7 +149,7 @@ export interface LeaveBalance {
 
 export interface LeaveRequest {
   id: number;
-  user_id: number;
+  employee_id: string;
   leave_type_id: number;
   start_date: Date;
   end_date: Date;
@@ -138,12 +164,20 @@ export interface LeaveRequest {
   attachment_url?: string;
   created_at: Date;
   updated_at: Date;
+  /** Required (and enforced in leaveService.createLeaveRequest) when the requester is an Internal employee */
+  coverup_employee_id?: string;
   /** Joined user data (available when model query includes LEFT JOIN users) */
   user?: {
     id: number;
     first_name: string;
     last_name: string;
     email: string;
+    employee_id: string;
+  };
+  /** Joined coverup employee data, resolved the same way as `user` */
+  coverup_employee?: {
+    first_name: string;
+    last_name: string;
     employee_id: string;
   };
   /** Joined leave type data (available when model query includes LEFT JOIN leave_types) */
@@ -180,7 +214,7 @@ export interface SalaryComponent {
 
 export interface EmployeeSalaryStructure {
   id: number;
-  user_id: number;
+  employee_id: string;
   component_id: number;
   amount: number;
   is_percentage: boolean;
@@ -197,7 +231,7 @@ export interface EmployeeSalaryStructureWithComponent extends EmployeeSalaryStru
 
 export interface MonthlySalary {
   id: number;
-  user_id: number;
+  employee_id: string;
   month_year: Date;
   basic_salary: number;
   local_salary?: number;
@@ -249,7 +283,7 @@ export enum BookingStatus {
 export interface FacilityBooking {
   id: number;
   facility_id: number;
-  user_id: number;
+  employee_id: string;
   start_time: Date;
   end_time: Date;
   purpose?: string;
@@ -267,11 +301,18 @@ export enum MedicalClaimStatus {
   PENDING = "pending",
   APPROVED = "approved",
   REJECTED = "rejected",
+  CANCELLED = "cancelled",
+}
+
+export enum MedicalClaimPaymentStatus {
+  NOT_PAID = "not_paid",
+  PARTIALLY_PAID = "partially_paid",
+  PAID = "paid",
 }
 
 export interface MedicalInsuranceClaim {
   id: number;
-  user_id: number;
+  employee_id: string;
   type: MedicalClaimType;
   quarter: string;
   amount: number;
@@ -282,6 +323,12 @@ export interface MedicalInsuranceClaim {
   reviewed_by?: number | null;
   reviewed_at?: Date | null;
   resubmission_of?: number | null;
+  payment_status: MedicalClaimPaymentStatus;
+  paid_amount?: number | null;
+  payment_date?: string | null; // YYYY-MM-DD (OCD-584)
+  payment_reference?: string | null;
+  paid_by?: number | null;
+  paid_at?: Date | null;
   created_at: Date;
   updated_at: Date;
   user?: {
@@ -301,7 +348,7 @@ export enum ConsultantSubmissionStatus {
 
 export interface ConsultantWorkSubmission {
   id: number;
-  user_id: number;
+  employee_id: string;
   project: string;
   tech: string;
   total_hours: number;
@@ -326,13 +373,16 @@ export interface ConsultantWorkSubmission {
 
 export interface JwtPayload {
   userId: number;
+  employeeId: string | null;
   email: string;
   role: UserRole;
   sub?: string;
+  /** Keycloak's `sid` (session id) claim - see OCD-455 single-session enforcement. */
+  sid?: string;
 }
 
 import { Request } from "express";
 
 export interface AuthRequest extends Request {
-  user?: JwtPayload;
+  employee?: JwtPayload;
 }

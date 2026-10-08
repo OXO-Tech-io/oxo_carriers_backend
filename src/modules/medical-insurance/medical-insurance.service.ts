@@ -1,0 +1,491 @@
+import fs from 'fs';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { MedicalInsuranceModel, getCurrentQuarter, getMaxAmountForType } from './MedicalInsurance';
+import { JwtPayload, MedicalClaimPaymentStatus, MedicalClaimStatus, MedicalClaimType, UserRole } from '../../types';
+import { logger } from '../../lib/logger';
+import { EmployeeModel } from '../../employees/Employee';
+import { env } from '../../config/env';
+import { isSecureBucketConfigured, uploadPrivateObject } from '../../lib/storage/gcsStorage';
+import { FILE_CATEGORIES } from '../../common/constants/fileCategories';
+import {
+  sendMedicalClaimApprovedEmail,
+  sendMedicalClaimRejectedEmail,
+  sendMedicalClaimSubmittedEmail,
+} from '../../config/email';
+import { CreateMedicalClaimDto } from './dto/create-medical-claim.dto';
+import { ResubmitMedicalClaimDto } from './dto/resubmit-medical-claim.dto';
+import { DecideMedicalClaimDto } from './dto/decide-medical-claim.dto';
+import { RecordMedicalClaimPaymentDto } from './dto/record-medical-claim-payment.dto';
+
+// OCD-583: payment processing belongs to Finance (Super Admin keeps its usual
+// blanket access); HR reviews claims but never records payments.
+const PAYMENT_PROCESSING_ROLES = new Set<UserRole>([
+  UserRole.FINANCE_MANAGER,
+  UserRole.FINANCE_EXECUTIVE,
+  UserRole.SUPER_ADMIN,
+]);
+// OCD-582: Finance only ever sees Approved claims; HR and Super Admin review
+// every claim (pending/rejected included).
+const FINANCE_ROLES = new Set<UserRole>([UserRole.FINANCE_MANAGER, UserRole.FINANCE_EXECUTIVE]);
+const ALL_CLAIMS_ROLES = new Set<UserRole>([UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE, UserRole.SUPER_ADMIN]);
+// OCD-584: a payment date is a calendar date, so 'today' is judged in the
+// company's timezone rather than the (UTC) server's.
+const PAYMENT_TIMEZONE = 'Asia/Colombo';
+const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})/;
+const PAYMENT_STATUS_VALUES = Object.values(MedicalClaimPaymentStatus) as string[];
+// OCD-489: employees only become eligible for the Medical Insurance benefit
+// after completing this many months of service. Configurable via
+// MEDICAL_INSURANCE_MIN_SERVICE_MONTHS (defaults to 6).
+const MIN_SERVICE_MONTHS_FOR_ELIGIBILITY = env.MEDICAL_INSURANCE_MIN_SERVICE_MONTHS;
+
+export type MedicalDocumentFiles = {
+  supportive_document?: Express.Multer.File[];
+  relevant_document?: Express.Multer.File[];
+};
+
+@Injectable()
+export class MedicalInsuranceService {
+  private requireEmployeeId(employee: JwtPayload): string {
+    if (!employee.employeeId) {
+      throw new BadRequestException('Your account has no employee ID assigned yet');
+    }
+    return employee.employeeId;
+  }
+
+  /**
+   * OCD-489: blocks claim submission until the employee has completed the
+   * minimum service period. Employees with no hire_date on file are let
+   * through - there's nothing to validate against, and this predates the
+   * eligibility requirement being tracked at all.
+   */
+  private async assertServiceEligibility(employeeId: string): Promise<void> {
+    const employeeRecord = await EmployeeModel.findByEmployeeId(employeeId);
+    const hireDate = employeeRecord?.hireDate ? new Date(employeeRecord.hireDate) : null;
+    if (!hireDate || isNaN(hireDate.getTime())) return;
+
+    const eligibleFrom = new Date(hireDate);
+    eligibleFrom.setMonth(eligibleFrom.getMonth() + MIN_SERVICE_MONTHS_FOR_ELIGIBILITY);
+
+    if (new Date() < eligibleFrom) {
+      throw new BadRequestException(
+        `Medical insurance claims can only be submitted after completing ${MIN_SERVICE_MONTHS_FOR_ELIGIBILITY} months of service. You will be eligible from ${eligibleFrom.toLocaleDateString('en-GB')}.`,
+      );
+    }
+  }
+
+  async apply(employee: JwtPayload, dto: CreateMedicalClaimDto, files: MedicalDocumentFiles | undefined) {
+    const employeeId = this.requireEmployeeId(employee);
+    await this.assertServiceEligibility(employeeId);
+    const type = dto.type as MedicalClaimType;
+    const quarter = dto.quarter || getCurrentQuarter();
+    const amount = parseFloat(dto.amount as string);
+
+    if (!type || (type !== MedicalClaimType.IN && type !== MedicalClaimType.OPD)) {
+      throw new BadRequestException('Type must be IN or OPD');
+    }
+    if (amount == null || isNaN(amount) || amount <= 0) {
+      throw new BadRequestException('Valid amount is required');
+    }
+
+    const maxAmount = getMaxAmountForType(type);
+    if (amount > maxAmount) {
+      throw new BadRequestException(
+        `${type} claim amount cannot exceed ${maxAmount.toLocaleString()}${type === 'OPD' ? ' per quarter' : ''}`,
+      );
+    }
+
+    if (type === MedicalClaimType.OPD) {
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, quarter);
+      if (used + amount > maxAmount) {
+        throw new BadRequestException(
+          `OPD quarter limit exceeded. Used: ${used.toLocaleString()}, limit: ${maxAmount.toLocaleString()} for ${quarter}`,
+        );
+      }
+    }
+
+    const supportiveFile = files?.supportive_document?.[0];
+    if (!supportiveFile) {
+      throw new BadRequestException('Supportive document is required');
+    }
+    const supportive_document_url = `/uploads/documents/${supportiveFile.filename}`;
+    const relevantFile = files?.relevant_document?.[0];
+    const relevant_document_url = relevantFile ? `/uploads/documents/${relevantFile.filename}` : null;
+    await this.persistUploadedDocuments(files);
+
+    const claim = await MedicalInsuranceModel.create({
+      employee_id: employeeId,
+      type,
+      quarter,
+      amount,
+      supportive_document_url,
+      relevant_document_url,
+    });
+
+    // Confirmation email to employee (non-blocking, matches the original
+    // controller's fire-and-forget try/catch after responding).
+    void this.sendSubmittedEmail(claim);
+
+    return { success: true, message: 'Medical insurance claim submitted', claim };
+  }
+
+  /**
+   * OCD-493: best-effort durable copy of every uploaded file - see
+   * MedicalInsuranceModel.persistDocumentBlob. Also uploads to the GCS bucket
+   * when configured (medical claim documents always land under
+   * uploads/documents - see supportive_document_url/relevant_document_url
+   * above), in addition to (not instead of) the Postgres copy.
+   */
+  private async persistUploadedDocuments(files: MedicalDocumentFiles | undefined): Promise<void> {
+    const uploaded = [...(files?.supportive_document ?? []), ...(files?.relevant_document ?? [])];
+    await Promise.all(
+      uploaded.flatMap((file) => [
+        MedicalInsuranceModel.persistDocumentBlob(file).catch((err: unknown) =>
+          logger.error({ err, filename: file.filename }, 'Failed to persist medical claim document to the database'),
+        ),
+        isSecureBucketConfigured()
+          ? uploadPrivateObject(`uploads/${FILE_CATEGORIES.DOCUMENTS}/${file.filename}`, fs.readFileSync(file.path), file.mimetype).catch(
+              (err: unknown) => logger.error({ err, filename: file.filename }, 'Failed to persist medical claim document to cloud storage'),
+            )
+          : Promise.resolve(),
+      ]),
+    );
+  }
+
+  async getMyClaims(employeeId: string, status?: MedicalClaimStatus) {
+    const claims = await MedicalInsuranceModel.findByEmployeeId(employeeId, { status });
+    return { success: true, claims };
+  }
+
+  async getAll(status?: MedicalClaimStatus, type?: MedicalClaimType) {
+    const claims = await MedicalInsuranceModel.getAll({ status, type });
+    return { success: true, claims };
+  }
+
+  /**
+   * Single list endpoint - branches on role so the frontend only calls one
+   * route. `mine=true` (OCD-488) forces the "My Claims" view regardless of
+   * role: the personal /medical-insurance page must always show only the
+   * logged-in user's own claims, even for HR/Finance/Super Admin, who
+   * otherwise get every claim here for the separate admin review list.
+   */
+  async getClaims(employee: JwtPayload, status?: MedicalClaimStatus, type?: MedicalClaimType, mine?: boolean) {
+    if (mine) {
+      if (!employee.employeeId) {
+        return { success: true, claims: [] };
+      }
+      return this.getMyClaims(employee.employeeId, status);
+    }
+    if (employee.role && ALL_CLAIMS_ROLES.has(employee.role)) {
+      return this.getAll(status, type);
+    }
+    // Finance Manager/Executive process payment for approved claims across all
+    // employees (OCD-494) - and only those (OCD-582): a Pending/Rejected filter
+    // yields nothing rather than exposing them.
+    if (employee.role && FINANCE_ROLES.has(employee.role)) {
+      if (status && status !== MedicalClaimStatus.APPROVED) {
+        return { success: true, claims: [] };
+      }
+      return this.getAll(MedicalClaimStatus.APPROVED, type);
+    }
+    return this.getMyClaims(this.requireEmployeeId(employee), status);
+  }
+
+  async getClaimById(employee: JwtPayload, id: number) {
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    const isOwn = claim.employee_id === employee.employeeId;
+    if (employee.role === UserRole.EMPLOYEE && !isOwn) {
+      throw new ForbiddenException('Forbidden');
+    }
+    // OCD-582: Finance can open approved claims (or their own), nothing else.
+    if (employee.role && FINANCE_ROLES.has(employee.role) && !isOwn && claim.status !== MedicalClaimStatus.APPROVED) {
+      throw new ForbiddenException('Forbidden');
+    }
+    return { success: true, claim };
+  }
+
+  /** Single decision endpoint - approve or reject, chosen via body.action. */
+  async decideClaim(employee: JwtPayload, id: number, dto: DecideMedicalClaimDto) {
+    const { action, admin_comment } = dto;
+
+    if (
+      employee.role !== UserRole.HR_MANAGER &&
+      employee.role !== UserRole.HR_EXECUTIVE &&
+      employee.role !== UserRole.SUPER_ADMIN
+    ) {
+      throw new ForbiddenException('Only HR can review medical claims');
+    }
+
+    if (action !== 'approve' && action !== 'reject') {
+      throw new BadRequestException("action must be 'approve' or 'reject'");
+    }
+
+    if (action === 'reject' && (!admin_comment || typeof admin_comment !== 'string' || !admin_comment.trim())) {
+      throw new BadRequestException('Admin comment is required for rejection');
+    }
+
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.status !== MedicalClaimStatus.PENDING) {
+      throw new BadRequestException('Claim is not pending');
+    }
+
+    const newStatus = action === 'approve' ? MedicalClaimStatus.APPROVED : MedicalClaimStatus.REJECTED;
+    const updated = await MedicalInsuranceModel.updateStatus(
+      id,
+      newStatus,
+      employee.userId,
+      action === 'reject' ? admin_comment!.trim() : null,
+    );
+
+    // Decision email to employee (non-blocking).
+    void this.sendDecisionEmail(action, updated, admin_comment);
+
+    return {
+      success: true,
+      message: action === 'approve' ? 'Claim approved' : 'Claim rejected',
+      claim: updated,
+    };
+  }
+
+  /**
+   * OCD-494: payment processing for an approved claim - lets HR/Finance mark
+   * a claim Paid/Partly Paid/Not Paid and record amount/date/reference.
+   */
+  async recordPayment(employee: JwtPayload, id: number, dto: RecordMedicalClaimPaymentDto) {
+    if (!employee.role || !PAYMENT_PROCESSING_ROLES.has(employee.role)) {
+      throw new ForbiddenException('Only Finance can process claim payments');
+    }
+
+    const paymentStatus = dto.payment_status;
+    if (!paymentStatus || !PAYMENT_STATUS_VALUES.includes(paymentStatus)) {
+      throw new BadRequestException(
+        `payment_status must be one of: ${PAYMENT_STATUS_VALUES.join(', ')}`,
+      );
+    }
+
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.status !== MedicalClaimStatus.APPROVED) {
+      throw new BadRequestException('Payment can only be recorded for approved claims');
+    }
+
+    const isPaidOrPartial =
+      paymentStatus === MedicalClaimPaymentStatus.PAID || paymentStatus === MedicalClaimPaymentStatus.PARTIALLY_PAID;
+
+    let paidAmount: number | null = null;
+    if (dto.paid_amount != null && dto.paid_amount !== '') {
+      paidAmount = parseFloat(dto.paid_amount);
+      if (isNaN(paidAmount) || paidAmount < 0) {
+        throw new BadRequestException('Amount Paid must be a valid non-negative number');
+      }
+    }
+    if (isPaidOrPartial) {
+      if (paidAmount == null || paidAmount <= 0) {
+        throw new BadRequestException('Amount Paid is required when marking a claim as Paid or Partly Paid');
+      }
+      if (paidAmount > Number(claim.amount)) {
+        throw new BadRequestException('Amount Paid cannot exceed the approved claim amount');
+      }
+    }
+
+    // OCD-584: keep only the calendar date (no time component) and refuse
+    // future dates. Passed on as 'YYYY-MM-DD' so no timezone shift can move it.
+    let paymentDate: string | null = null;
+    if (dto.payment_date) {
+      const match = DATE_ONLY.exec(dto.payment_date.trim());
+      const parsed = match ? new Date(Date.UTC(+match[1], +match[2] - 1, +match[3])) : null;
+      if (!match || !parsed || parsed.getUTCMonth() !== +match[2] - 1 || parsed.getUTCDate() !== +match[3]) {
+        throw new BadRequestException('Payment Date is invalid');
+      }
+      paymentDate = `${match[1]}-${match[2]}-${match[3]}`;
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: PAYMENT_TIMEZONE });
+      if (paymentDate > today) {
+        throw new BadRequestException('Payment Date cannot be in the future');
+      }
+    } else if (isPaidOrPartial) {
+      throw new BadRequestException('Payment Date is required when marking a claim as Paid or Partly Paid');
+    }
+
+    const updated = await MedicalInsuranceModel.recordPayment(id, paymentStatus as MedicalClaimPaymentStatus, {
+      paid_amount: paidAmount,
+      payment_date: paymentDate,
+      payment_reference: dto.payment_reference?.trim() || null,
+      paid_by: employee.userId,
+      paid_at: new Date(),
+    });
+
+    return { success: true, message: 'Payment details recorded', claim: updated };
+  }
+
+  /** OCD-486: an employee withdraws their own claim while it's still Pending. */
+  async cancelClaim(employee: JwtPayload, id: number) {
+    const employeeId = this.requireEmployeeId(employee);
+    const claim = await MedicalInsuranceModel.findById(id);
+    if (!claim) {
+      throw new NotFoundException('Claim not found');
+    }
+    if (claim.employee_id !== employeeId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    if (claim.status !== MedicalClaimStatus.PENDING) {
+      throw new BadRequestException('Only claims that are still Pending can be cancelled');
+    }
+
+    const updated = await MedicalInsuranceModel.cancel(id);
+    return { success: true, message: 'Claim cancelled', claim: updated };
+  }
+
+  /** OCD-487: remaining OPD quarterly balance for the current employee, used to drive live form validation. */
+  async getOpdBalance(employee: JwtPayload, quarter?: string) {
+    const employeeId = this.requireEmployeeId(employee);
+    const resolvedQuarter = quarter || getCurrentQuarter();
+    const maxAmount = getMaxAmountForType(MedicalClaimType.OPD);
+    const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, resolvedQuarter);
+    const remaining = Math.max(0, maxAmount - used);
+
+    return {
+      success: true,
+      quarter: resolvedQuarter,
+      limit: maxAmount,
+      used,
+      remaining,
+    };
+  }
+
+  async resubmit(
+    employee: JwtPayload,
+    id: number,
+    dto: ResubmitMedicalClaimDto,
+    files: MedicalDocumentFiles | undefined,
+  ) {
+    const employeeId = this.requireEmployeeId(employee);
+    await this.assertServiceEligibility(employeeId);
+    const type = (dto.type as MedicalClaimType) || undefined;
+    const quarter = dto.quarter || undefined;
+    const amount = dto.amount != null ? parseFloat(dto.amount) : undefined;
+
+    const original = await MedicalInsuranceModel.findById(id);
+    if (!original) {
+      throw new NotFoundException('Original claim not found');
+    }
+    if (original.employee_id !== employeeId) {
+      throw new ForbiddenException('Forbidden');
+    }
+    if (original.status !== MedicalClaimStatus.REJECTED) {
+      throw new BadRequestException('Only rejected claims can be resubmitted');
+    }
+
+    const finalType = type || original.type;
+    const finalQuarter = quarter || original.quarter;
+    const finalAmount = amount != null && !isNaN(amount) ? amount : original.amount;
+
+    const maxAmount = getMaxAmountForType(finalType);
+    if (finalAmount > maxAmount) {
+      throw new BadRequestException(
+        `${finalType} claim amount cannot exceed ${maxAmount.toLocaleString()}${finalType === 'OPD' ? ' per quarter' : ''}`,
+      );
+    }
+
+    if (finalType === MedicalClaimType.OPD) {
+      const used = await MedicalInsuranceModel.getUsedOPDAmountForQuarter(employeeId, finalQuarter);
+      if (used + finalAmount > maxAmount) {
+        throw new BadRequestException(`OPD quarter limit exceeded for ${finalQuarter}`);
+      }
+    }
+
+    const supportiveFile = files?.supportive_document?.[0];
+    if (!supportiveFile) {
+      throw new BadRequestException('Supportive document is required for resubmission');
+    }
+    const supportive_document_url = `/uploads/documents/${supportiveFile.filename}`;
+    const relevantFile = files?.relevant_document?.[0];
+    const relevant_document_url = relevantFile
+      ? `/uploads/documents/${relevantFile.filename}`
+      : (original.relevant_document_url ?? null);
+    await this.persistUploadedDocuments(files);
+
+    const claim = await MedicalInsuranceModel.create({
+      employee_id: employeeId,
+      type: finalType,
+      quarter: finalQuarter,
+      amount: finalAmount,
+      supportive_document_url,
+      relevant_document_url,
+      resubmission_of: id,
+    });
+
+    return { success: true, message: 'Claim resubmitted', claim };
+  }
+
+  getLimits() {
+    return {
+      success: true,
+      limits: {
+        IN: { maxPerClaim: 300000, description: 'In-patient up to 300,000' },
+        OPD: { maxPerQuarter: 6000, yearlyTotal: 24000, description: 'Out-patient 6,000 per quarter (24,000 per year)' },
+      },
+      currentQuarter: getCurrentQuarter(),
+    };
+  }
+
+  private async sendSubmittedEmail(claim: Awaited<ReturnType<typeof MedicalInsuranceModel.create>>) {
+    try {
+      const employeeName = claim.user ? `${claim.user.first_name} ${claim.user.last_name}`.trim() : 'Employee';
+      const employeeEmail = claim.user?.email;
+      if (employeeEmail) {
+        await sendMedicalClaimSubmittedEmail(employeeEmail, {
+          employeeName,
+          claimId: `CLM-${claim.id}`,
+          claimType: claim.type,
+          claimAmount: `${parseFloat(String(claim.amount)).toLocaleString()}`,
+          submissionDate: new Date().toLocaleDateString('en-GB'),
+        });
+      }
+    } catch (emailErr: unknown) {
+      logger.error({ err: emailErr }, 'Failed to send medical claim submitted email');
+    }
+  }
+
+  private async sendDecisionEmail(
+    action: 'approve' | 'reject',
+    updated: Awaited<ReturnType<typeof MedicalInsuranceModel.updateStatus>>,
+    admin_comment?: string,
+  ) {
+    try {
+      const employeeName = updated?.user ? `${updated.user.first_name} ${updated.user.last_name}`.trim() : 'Employee';
+      const employeeEmail = updated?.user?.email;
+      if (employeeEmail && updated) {
+        if (action === 'approve') {
+          await sendMedicalClaimApprovedEmail(employeeEmail, {
+            employeeName,
+            claimId: `CLM-${updated.id}`,
+            claimType: updated.type,
+            claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            approvedAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            approvalDate: new Date().toLocaleDateString('en-GB'),
+            settlementInfo: 'Bank Direct Deposit',
+            processingTimeline: '2-4 Business Days',
+          });
+        } else {
+          await sendMedicalClaimRejectedEmail(employeeEmail, {
+            employeeName,
+            claimId: `CLM-${updated.id}`,
+            claimType: updated.type,
+            claimAmount: `${parseFloat(String(updated.amount)).toLocaleString()}`,
+            rejectionReason: (admin_comment ?? '').trim(),
+            requiredCorrections: 'Please review the rejection reason and resubmit with corrected documentation.',
+          });
+        }
+      }
+    } catch (emailErr: unknown) {
+      logger.error({ err: emailErr }, 'Failed to send medical claim decision email');
+    }
+  }
+}

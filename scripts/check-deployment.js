@@ -7,7 +7,7 @@ console.log('🔍 Checking backend deployment setup...\n');
 const rootDir = process.cwd();
 const checks = {
   serverJs: { path: path.join(rootDir, 'src', 'server.js'), required: true },
-  distApp: { path: path.join(rootDir, 'dist', 'app.js'), required: false },
+  distApp: { path: path.join(rootDir, 'dist', 'main.js'), required: false },
   packageJson: { path: path.join(rootDir, 'package.json'), required: true },
   envFile: { path: path.join(rootDir, '.env'), required: false },
   nodeModules: { path: path.join(rootDir, 'node_modules'), required: false },
@@ -81,7 +81,7 @@ if (allGood) {
   console.log('3. Set PORT to match your server configuration');
   console.log('4. Set FRONTEND_URL=https://oxo-carriers-frontend-297614602590.us-central1.run.app');
   console.log('5. Run: npm install --production (if node_modules missing)');
-  console.log('6. If using dist/app.js, run: npm run build first');
+  console.log('6. If using dist/main.js, run: npm run build first');
   console.log('7. Start the application in cPanel Node.js Selector\n');
 } else {
   console.log('❌ Some required files are missing!');

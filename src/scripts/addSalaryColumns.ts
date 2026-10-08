@@ -2,14 +2,14 @@ import pool from '../config/database';
 
 async function addSalaryColumns() {
   try {
-    console.log('🔧 Adding local_salary and oxo_international_salary columns to monthly_salaries table...');
+    console.log('🔧 Adding local_salary and oxo_international_salary columns to tbl_monthly_salaries table...');
 
     // Check if columns already exist
     const columnsResult = await pool.query(`
       SELECT column_name
       FROM information_schema.columns
       WHERE table_schema = current_schema()
-      AND table_name = 'monthly_salaries'
+      AND table_name = 'tbl_monthly_salaries'
       AND column_name IN ('local_salary', 'oxo_international_salary')
     `);
 
@@ -18,7 +18,7 @@ async function addSalaryColumns() {
     // Add local_salary column if it doesn't exist
     if (!existingColumns.includes('local_salary')) {
       await pool.query(`
-        ALTER TABLE monthly_salaries
+        ALTER TABLE tbl_monthly_salaries
         ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0
       `);
       console.log('  ✓ Added local_salary column');
@@ -29,7 +29,7 @@ async function addSalaryColumns() {
     // Add oxo_international_salary column if it doesn't exist
     if (!existingColumns.includes('oxo_international_salary')) {
       await pool.query(`
-        ALTER TABLE monthly_salaries
+        ALTER TABLE tbl_monthly_salaries
         ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0
       `);
       console.log('  ✓ Added oxo_international_salary column');

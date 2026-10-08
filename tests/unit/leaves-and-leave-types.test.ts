@@ -1,0 +1,399 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { UserRole } from "../../src/types";
+
+vi.mock("../../src/modules/leaves/leave.service", () => ({
+  leaveService: {
+    getLeaveTypes: vi.fn(),
+    getLeaveBalance: vi.fn(),
+    listLeaveRequests: vi.fn(),
+    getLeaveRequestById: vi.fn(),
+    createLeaveRequest: vi.fn(),
+    approveLeaveRequest: vi.fn(),
+    rejectLeaveRequest: vi.fn(),
+  },
+}));
+vi.mock("../../src/config/email", () => ({
+  sendLeaveApprovedEmail: vi.fn(),
+  sendLeaveRejectedEmail: vi.fn(),
+  sendLeaveSubmittedEmail: vi.fn(),
+}));
+vi.mock("../../src/modules/communications/communication.service", () => ({
+  communicationService: { create: vi.fn() },
+}));
+vi.mock("../../src/modules/notifications/notification.service", () => ({
+  notificationService: { notify: vi.fn(), notifyMany: vi.fn() },
+}));
+vi.mock("../../src/employees/Employee", () => ({
+  EmployeeModel: { findByEmployeeId: vi.fn() },
+}));
+vi.mock("../../src/lib/logger", () => ({
+  logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}));
+vi.mock("../../src/common/upload/persist-durable-upload", () => ({
+  persistDurableUpload: vi.fn(),
+}));
+
+import { leaveService } from "../../src/modules/leaves/leave.service";
+import { persistDurableUpload } from "../../src/common/upload/persist-durable-upload";
+import {
+  sendLeaveApprovedEmail,
+  sendLeaveRejectedEmail,
+  sendLeaveSubmittedEmail,
+} from "../../src/config/email";
+import { communicationService } from "../../src/modules/communications/communication.service";
+import { notificationService } from "../../src/modules/notifications/notification.service";
+import { EmployeeModel } from "../../src/employees/Employee";
+import { LeavesService } from "../../src/modules/leaves/leaves.service";
+import { LeavesController } from "../../src/modules/leaves/leaves.controller";
+import { LeaveTypesService } from "../../src/modules/leave-types/leave-types.service";
+import { LeaveTypesController } from "../../src/modules/leave-types/leave-types.controller";
+
+const ls = leaveService as unknown as Record<string, ReturnType<typeof vi.fn>>;
+const persistDurableUploadMock = persistDurableUpload as unknown as ReturnType<typeof vi.fn>;
+const emailMocks = {
+  approved: sendLeaveApprovedEmail as unknown as ReturnType<typeof vi.fn>,
+  rejected: sendLeaveRejectedEmail as unknown as ReturnType<typeof vi.fn>,
+  submitted: sendLeaveSubmittedEmail as unknown as ReturnType<typeof vi.fn>,
+};
+const communicationCreateMock = communicationService.create as unknown as ReturnType<typeof vi.fn>;
+const notifyMock = notificationService.notify as unknown as ReturnType<typeof vi.fn>;
+const em = EmployeeModel as unknown as Record<string, ReturnType<typeof vi.fn>>;
+
+const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
+const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
+const flush = () => new Promise((resolve) => setImmediate(resolve));
+
+describe("LeaveTypesService / LeaveTypesController", () => {
+  it("LeaveTypesService delegates to leaveService.getLeaveTypes", async () => {
+    ls.getLeaveTypes.mockResolvedValue([{ id: 1 }]);
+    const service = new LeaveTypesService();
+    expect(await service.getLeaveTypes()).toEqual([{ id: 1 }]);
+  });
+
+  it("LeaveTypesController wraps a success envelope", async () => {
+    const serviceMock = { getLeaveTypes: vi.fn().mockResolvedValue([{ id: 1 }]) };
+    const controller = new LeaveTypesController(serviceMock as any);
+    const result = await controller.getLeaveTypes();
+    expect(result).toEqual({ success: true, message: "Leave types fetched", data: [{ id: 1 }] });
+  });
+});
+
+describe("LeavesService", () => {
+  const service = new LeavesService();
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("getLeaveBalance forbids a self-only role querying another employee", async () => {
+    await expect(service.getLeaveBalance(employee, "EMP2", {} as any)).rejects.toThrow(ForbiddenException);
+  });
+
+  it("getLeaveBalance allows querying your own balance", async () => {
+    ls.getLeaveBalance.mockResolvedValue([{ leave_type_id: 1 }]);
+    const result = await service.getLeaveBalance(employee, "EMP1", {} as any);
+    expect(result).toEqual([{ leave_type_id: 1 }]);
+  });
+
+  it("listLeaveRequests requires an employeeId", async () => {
+    await expect(
+      service.listLeaveRequests({ ...employee, employeeId: null }, {} as any),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  describe("listLeaveRequests scoping (OCD-504/OCD-505/OCD-510)", () => {
+    it("forces self-scope for a role that cannot view all, e.g. HR Executive", async () => {
+      const hrExecutive = { userId: 3, employeeId: "HR2", role: UserRole.HR_EXECUTIVE } as any;
+      ls.listLeaveRequests.mockResolvedValue([]);
+      await service.listLeaveRequests(hrExecutive, {} as any);
+      expect(ls.listLeaveRequests).toHaveBeenCalledWith("HR2", true, {});
+    });
+
+    it("forces self-scope for Finance/Consultant/Service Provider roles too", async () => {
+      const consultant = { userId: 4, employeeId: "C1", role: UserRole.CONSULTANT } as any;
+      ls.listLeaveRequests.mockResolvedValue([]);
+      await service.listLeaveRequests(consultant, {} as any);
+      expect(ls.listLeaveRequests).toHaveBeenCalledWith("C1", true, {});
+    });
+
+    it("lets an HR Manager view every request by default (org-wide Leave Management)", async () => {
+      ls.listLeaveRequests.mockResolvedValue([]);
+      await service.listLeaveRequests(hr, {} as any);
+      expect(ls.listLeaveRequests).toHaveBeenCalledWith("HR1", false, {});
+    });
+
+    it("scopes an HR Manager to their own requests when mine=true (personal My Requests view)", async () => {
+      ls.listLeaveRequests.mockResolvedValue([]);
+      await service.listLeaveRequests(hr, { mine: true } as any);
+      expect(ls.listLeaveRequests).toHaveBeenCalledWith("HR1", true, { mine: true });
+    });
+
+    it("excludes the approver's own request from the pending-approvals queue", async () => {
+      ls.listLeaveRequests.mockResolvedValue([
+        { id: 1, employee_id: "HR1" },
+        { id: 2, employee_id: "EMP2" },
+      ]);
+      const result = await service.listLeaveRequests(hr, { status: "pending" } as any);
+      expect(result).toEqual([{ id: 2, employee_id: "EMP2" }]);
+    });
+  });
+
+  it("createLeaveRequest parses the body and forwards the attachment url", async () => {
+    ls.createLeaveRequest.mockResolvedValue({ id: 1 });
+    await service.createLeaveRequest(
+      employee,
+      { leave_type_id: 1, start_date: "2026-08-03", end_date: "2026-08-04" },
+      { filename: "doc.pdf" } as any,
+    );
+    expect(ls.createLeaveRequest).toHaveBeenCalledWith(
+      "EMP1",
+      expect.objectContaining({ leave_type_id: 1 }),
+      "/uploads/documents/doc.pdf",
+    );
+  });
+
+  describe("createLeaveRequest attachment durability", () => {
+    const body = { leave_type_id: 1, start_date: "2026-08-03", end_date: "2026-08-04" };
+    const file = { filename: "doc.pdf", mimetype: "application/pdf", path: "/tmp/doc.pdf" } as any;
+
+    // Without a durable copy the stored /uploads/documents/<file> link 404s
+    // ("Cannot GET /uploads/documents/...") once Cloud Run recycles its disk.
+    it("persists a durable copy of the uploaded document under the documents category", async () => {
+      ls.createLeaveRequest.mockResolvedValue({ id: 1 });
+      persistDurableUploadMock.mockResolvedValue(undefined);
+      const result = await service.createLeaveRequest(employee, body, file);
+      expect(persistDurableUploadMock).toHaveBeenCalledWith(file, "documents");
+      expect(result).toEqual({ id: 1 });
+    });
+
+    it("persists the copy only after the leave request was created", async () => {
+      const order: string[] = [];
+      ls.createLeaveRequest.mockImplementation(async () => {
+        order.push("created");
+        return { id: 1 };
+      });
+      persistDurableUploadMock.mockImplementation(async () => {
+        order.push("persisted");
+      });
+      await service.createLeaveRequest(employee, body, file);
+      expect(order).toEqual(["created", "persisted"]);
+    });
+
+    it("does not persist an orphan copy when the leave request is rejected", async () => {
+      ls.createLeaveRequest.mockRejectedValue(new BadRequestException("Insufficient leave balance"));
+      await expect(service.createLeaveRequest(employee, body, file)).rejects.toThrow(BadRequestException);
+      expect(persistDurableUploadMock).not.toHaveBeenCalled();
+    });
+
+    it("does not persist anything when no document was attached", async () => {
+      ls.createLeaveRequest.mockResolvedValue({ id: 1 });
+      await service.createLeaveRequest(employee, body, undefined);
+      expect(persistDurableUploadMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("createLeaveRequest propagates a ZodError for an invalid body", async () => {
+    await expect(service.createLeaveRequest(employee, {}, undefined)).rejects.toThrow();
+  });
+
+  it("approveLeaveRequest forwards actor info and dto fields", async () => {
+    ls.approveLeaveRequest.mockResolvedValue({ id: 1 });
+    await service.approveLeaveRequest(hr, 1, { approvedBy: "hr", rejectionReason: undefined } as any);
+    expect(ls.approveLeaveRequest).toHaveBeenCalledWith(1, hr.userId, hr.role, "hr", undefined);
+  });
+
+  it("rejectLeaveRequest forwards the role and reason", async () => {
+    ls.rejectLeaveRequest.mockResolvedValue({ id: 1 });
+    await service.rejectLeaveRequest(hr, 1, { rejectionReason: "no balance" } as any);
+    expect(ls.rejectLeaveRequest).toHaveBeenCalledWith(1, hr.role, "no balance");
+  });
+});
+
+describe("LeavesController", () => {
+  const createServiceMock = () => ({
+    getLeaveBalance: vi.fn(),
+    listLeaveRequests: vi.fn(),
+    getLeaveRequestById: vi.fn(),
+    createLeaveRequest: vi.fn(),
+    approveLeaveRequest: vi.fn(),
+    rejectLeaveRequest: vi.fn(),
+  });
+
+  let service: ReturnType<typeof createServiceMock>;
+  let controller: LeavesController;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = createServiceMock();
+    controller = new LeavesController(service as any);
+  });
+
+  it("getLeaveRequestById rejects a non-numeric id", async () => {
+    await expect(controller.getLeaveRequestById(employee, "abc")).rejects.toThrow(BadRequestException);
+  });
+
+  it("createLeaveRequest sends a submission email and in-app notification when the employee has an email", async () => {
+    const created = {
+      id: 5,
+      employee_id: "EMP1",
+      user: { first_name: "Jane", last_name: "Doe", email: "jane@x.com" },
+      leave_type: { name: "Annual" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 2,
+      reason: "Trip",
+    };
+    service.createLeaveRequest.mockResolvedValue(created);
+    emailMocks.submitted.mockResolvedValue(undefined);
+
+    const result = await controller.createLeaveRequest(employee, {}, undefined);
+    expect(result.data).toEqual(created);
+    await flush();
+    expect(emailMocks.submitted).toHaveBeenCalledWith(
+      "jane@x.com",
+      expect.objectContaining({ employeeName: "Jane Doe", referenceNumber: "LV-5" }),
+    );
+    expect(notifyMock).toHaveBeenCalledWith(
+      "EMP1",
+      "leave_submitted",
+      expect.any(String),
+      expect.any(String),
+      { leaveRequestId: 5 },
+      "/leaves",
+    );
+  });
+
+  it("createLeaveRequest doesn't blow up when the employee has no email", async () => {
+    service.createLeaveRequest.mockResolvedValue({ id: 6, user: null, start_date: "2026-08-01", end_date: "2026-08-02", total_days: 1 });
+    const result = await controller.createLeaveRequest(employee, {}, undefined);
+    await flush();
+    expect(result.message).toBe("Leave request created");
+    expect(emailMocks.submitted).not.toHaveBeenCalled();
+  });
+
+  it("createLeaveRequest logs (doesn't throw) when the confirmation email fails", async () => {
+    service.createLeaveRequest.mockResolvedValue({
+      id: 7,
+      user: { first_name: "A", last_name: "B", email: "a@b.com" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 1,
+    });
+    emailMocks.submitted.mockRejectedValue(new Error("smtp down"));
+    await expect(controller.createLeaveRequest(employee, {}, undefined)).resolves.toBeDefined();
+    await flush();
+  });
+
+  it("approveLeaveRequest fires the approval email and in-app notification in the background", async () => {
+    service.approveLeaveRequest.mockResolvedValue({
+      id: 8,
+      employee_id: "EMP1",
+      user: { first_name: "A", last_name: "B", email: "a@b.com" },
+      leave_type: { name: "Annual" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 1,
+    });
+    emailMocks.approved.mockResolvedValue(undefined);
+    await controller.approveLeaveRequest(hr, "8", { approvedBy: "hr" } as any);
+    await flush();
+    expect(emailMocks.approved).toHaveBeenCalledWith(
+      "a@b.com",
+      expect.objectContaining({ approvedBy: "HR Management", referenceNumber: "LV-8" }),
+    );
+    expect(notifyMock).toHaveBeenCalledWith(
+      "EMP1",
+      "leave_approved",
+      expect.any(String),
+      expect.any(String),
+      { leaveRequestId: 8 },
+      "/leaves",
+    );
+  });
+
+  describe("coverup employee notification", () => {
+    const approvedWithCoverup = {
+      id: 10,
+      status: "hr_approved",
+      user: { first_name: "A", last_name: "B", email: "a@b.com" },
+      leave_type: { name: "Annual" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 1,
+      coverup_employee_id: "EMP2",
+    };
+
+    it("creates a Communication (so it shows in My Communications, not just the notification bell) on final HR approval", async () => {
+      service.approveLeaveRequest.mockResolvedValue(approvedWithCoverup);
+      emailMocks.approved.mockResolvedValue(undefined);
+      em.findByEmployeeId.mockResolvedValue({ id: 42, firstName: "Cov", lastName: "Up", email: "cov@x.com" });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).toHaveBeenCalledWith(
+        "Coverup Assignment",
+        expect.stringContaining("A B"),
+        [42],
+        [],
+        hr.userId,
+        [],
+      );
+    });
+
+    it("does not notify a coverup employee on the intermediate team_leader approval step", async () => {
+      service.approveLeaveRequest.mockResolvedValue({ ...approvedWithCoverup, status: "team_leader_approved" });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "team_leader" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("skips coverup notification when the request has no coverup employee", async () => {
+      service.approveLeaveRequest.mockResolvedValue({ ...approvedWithCoverup, coverup_employee_id: undefined });
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
+
+    it("no-ops when the coverup employee's record can't be found", async () => {
+      service.approveLeaveRequest.mockResolvedValue(approvedWithCoverup);
+      em.findByEmployeeId.mockResolvedValue(null);
+
+      await controller.approveLeaveRequest(hr, "10", { approvedBy: "hr" } as any);
+      await flush();
+
+      expect(communicationCreateMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it("rejectLeaveRequest fires the rejection email and in-app notification in the background", async () => {
+    service.rejectLeaveRequest.mockResolvedValue({
+      id: 9,
+      employee_id: "EMP1",
+      user: { first_name: "A", last_name: "B", email: "a@b.com" },
+      start_date: "2026-08-01",
+      end_date: "2026-08-02",
+      total_days: 1,
+    });
+    emailMocks.rejected.mockResolvedValue(undefined);
+    await controller.rejectLeaveRequest(hr, "9", { rejectionReason: "policy" } as any);
+    await flush();
+    expect(emailMocks.rejected).toHaveBeenCalledWith(
+      "a@b.com",
+      expect.objectContaining({ rejectionReason: "policy", referenceNumber: "LV-9" }),
+    );
+    expect(notifyMock).toHaveBeenCalledWith(
+      "EMP1",
+      "leave_rejected",
+      expect.any(String),
+      expect.stringContaining("policy"),
+      { leaveRequestId: 9 },
+      "/leaves",
+    );
+  });
+});

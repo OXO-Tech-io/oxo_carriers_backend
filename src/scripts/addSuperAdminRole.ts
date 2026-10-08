@@ -23,7 +23,7 @@ async function run() {
       SELECT COLUMN_TYPE
       FROM information_schema.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME   = 'users'
+        AND TABLE_NAME   = 'tbl_employee'
         AND COLUMN_NAME  = 'role'
       LIMIT 1
     `);
@@ -50,7 +50,7 @@ async function run() {
 
     console.log(`[Migration] Applying new ENUM: ${newType}`);
     await connection.execute(`
-      ALTER TABLE users
+      ALTER TABLE tbl_employee
         MODIFY COLUMN role ${newType} NOT NULL
     `);
 

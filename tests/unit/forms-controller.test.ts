@@ -1,0 +1,170 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
+import { UserRole } from "../../src/types";
+
+vi.mock("../../src/middleware/permissions", () => ({
+  hasPermission: vi.fn(),
+}));
+
+import { hasPermission } from "../../src/middleware/permissions";
+import { FormsController } from "../../src/modules/forms/forms.controller";
+
+const hasPermissionMock = hasPermission as unknown as ReturnType<typeof vi.fn>;
+
+const createServiceMock = () => ({
+  listAssignedToMe: vi.fn(),
+  list: vi.fn(),
+  create: vi.fn(),
+  getFormWithGraph: vi.fn(),
+  isDistributedTo: vi.fn(),
+  listDistributedUserIds: vi.fn(),
+  update: vi.fn(),
+  delete: vi.fn(),
+  duplicate: vi.fn(),
+  publish: vi.fn(),
+  distribute: vi.fn(),
+  getMyResponse: vi.fn(),
+  submitResponse: vi.fn(),
+  listResponses: vi.fn(),
+  exportResponses: vi.fn(),
+  createSection: vi.fn(),
+  reorderSections: vi.fn(),
+  createQuestion: vi.fn(),
+  reorderQuestions: vi.fn(),
+});
+
+const createRes = () => ({ setHeader: vi.fn(), send: vi.fn() });
+
+const employee = { userId: 1, employeeId: "EMP1", role: UserRole.EMPLOYEE } as any;
+const hr = { userId: 2, employeeId: "HR1", role: UserRole.HR_MANAGER } as any;
+
+describe("FormsController", () => {
+  let service: ReturnType<typeof createServiceMock>;
+  let controller: FormsController;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    service = createServiceMock();
+    controller = new FormsController(service as any);
+  });
+
+  describe("list", () => {
+    it("returns forms assigned to the caller when mine=true, for any role", async () => {
+      service.listAssignedToMe.mockResolvedValue([{ id: 1 }]);
+      const result = await controller.list(employee, "true");
+      expect(service.listAssignedToMe).toHaveBeenCalledWith(1);
+      expect(result.data).toEqual([{ id: 1 }]);
+      expect(hasPermissionMock).not.toHaveBeenCalled();
+    });
+
+    it("forbids a non-HR caller from listing all forms", async () => {
+      hasPermissionMock.mockResolvedValue(false);
+      await expect(controller.list(employee, undefined)).rejects.toThrow(ForbiddenException);
+    });
+
+    it("allows HR to list all forms", async () => {
+      hasPermissionMock.mockResolvedValue(true);
+      service.list.mockResolvedValue([{ id: 2 }]);
+      const result = await controller.list(hr, undefined);
+      expect(hasPermissionMock).toHaveBeenCalledWith("HR1", "forms", "write");
+      expect(result.data).toEqual([{ id: 2 }]);
+    });
+
+    it("allows a super admin to list all forms without a permission lookup", async () => {
+      service.list.mockResolvedValue([{ id: 3 }]);
+      const result = await controller.list({ ...hr, role: UserRole.SUPER_ADMIN }, undefined);
+      expect(hasPermissionMock).not.toHaveBeenCalled();
+      expect(result.data).toEqual([{ id: 3 }]);
+    });
+  });
+
+  describe("getById", () => {
+    it("rejects a non-numeric id", async () => {
+      await expect(controller.getById("abc", employee)).rejects.toThrow(BadRequestException);
+    });
+
+    it("allows a super admin without checking distribution", async () => {
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      const result = await controller.getById("1", { ...employee, role: UserRole.SUPER_ADMIN });
+      expect(service.isDistributedTo).not.toHaveBeenCalled();
+      expect(result.data).toEqual({ form: { id: 1 } });
+    });
+
+    it("allows HR (permission check) without checking distribution", async () => {
+      hasPermissionMock.mockResolvedValue(true);
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      await controller.getById("1", hr);
+      expect(hasPermissionMock).toHaveBeenCalledWith("HR1", "forms", "write");
+      expect(service.isDistributedTo).not.toHaveBeenCalled();
+    });
+
+    it("allows a non-privileged employee who is a distribution recipient", async () => {
+      hasPermissionMock.mockResolvedValue(false);
+      service.isDistributedTo.mockResolvedValue(true);
+      service.getFormWithGraph.mockResolvedValue({ form: { id: 1 } });
+      const result = await controller.getById("1", employee);
+      expect(service.isDistributedTo).toHaveBeenCalledWith(1, employee.userId);
+      expect(result.data).toEqual({ form: { id: 1 } });
+    });
+
+    it("rejects a non-privileged employee who was never distributed the form", async () => {
+      hasPermissionMock.mockResolvedValue(false);
+      service.isDistributedTo.mockResolvedValue(false);
+      await expect(controller.getById("1", employee)).rejects.toThrow(ForbiddenException);
+      expect(service.getFormWithGraph).not.toHaveBeenCalled();
+    });
+  });
+
+  it("create forwards the current employee's userId", async () => {
+    service.create.mockResolvedValue({ id: 1 });
+    await controller.create(hr, { title: "T" });
+    expect(service.create).toHaveBeenCalledWith({ title: "T" }, hr.userId);
+  });
+
+  it("submitResponse defaults files to an empty array when none are uploaded", async () => {
+    service.submitResponse.mockResolvedValue({ response: {}, answers: [] });
+    await controller.submitResponse(employee, "1", { answers: [] }, undefined);
+    expect(service.submitResponse).toHaveBeenCalledWith(1, employee.userId, { answers: [] }, []);
+  });
+
+  describe("exportResponses", () => {
+    it("streams xlsx by default", async () => {
+      service.exportResponses.mockResolvedValue(Buffer.from("data"));
+      const res = createRes();
+      await controller.exportResponses("1", undefined, res as any);
+      expect(service.exportResponses).toHaveBeenCalledWith(1, "xlsx");
+      expect(res.setHeader).toHaveBeenCalledWith(
+        "Content-Type",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      );
+    });
+
+    it("streams csv when format=csv", async () => {
+      service.exportResponses.mockResolvedValue(Buffer.from("data"));
+      const res = createRes();
+      await controller.exportResponses("1", "csv", res as any);
+      expect(service.exportResponses).toHaveBeenCalledWith(1, "csv");
+      expect(res.setHeader).toHaveBeenCalledWith("Content-Type", "text/csv");
+      expect(res.setHeader).toHaveBeenCalledWith(
+        "Content-Disposition",
+        "attachment; filename=form-1-responses.csv",
+      );
+    });
+
+    it("rejects a non-numeric id", async () => {
+      await expect(controller.exportResponses("abc", undefined, createRes() as any)).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  it("createSection parses formId and delegates", async () => {
+    service.createSection.mockResolvedValue({ id: 1 });
+    await controller.createSection("3", { title: "S" });
+    expect(service.createSection).toHaveBeenCalledWith(3, { title: "S" });
+  });
+
+  it("reorderSections still validates the formId even though it isn't otherwise used", async () => {
+    await expect(controller.reorderSections("abc", {})).rejects.toThrow(BadRequestException);
+  });
+});

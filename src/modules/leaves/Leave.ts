@@ -1,0 +1,500 @@
+import pool from '../../config/database';
+import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types';
+import { calculateProRatedAnnualLeave, calculateAccruedCasualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
+import { EmployeeModel } from '../../employees/Employee';
+import { isAnnualLeaveType, isCasualLeaveType } from '../../common/constants/leaveTypes';
+
+
+/** first_name/last_name/email are encrypted on tbl_employee - the join can
+ * still filter/select non-PII columns (e.g. department), but must not select
+ * the encrypted columns directly. This batch-resolves and attaches the
+ * decrypted `user` (and, if present, `coverup_employee`) object after the
+ * fact (also correct for a single row). */
+async function withUsers<T extends { employee_id: string; coverup_employee_id?: string | null }>(
+  rows: T[]
+): Promise<Array<T & { user?: any; coverup_employee?: any }>> {
+  const idsToResolve = rows.flatMap(r => [r.employee_id, r.coverup_employee_id]);
+  const employeeMap = await EmployeeModel.findByEmployeeIds(idsToResolve);
+  return rows.map(row => {
+    const emp = employeeMap.get(row.employee_id);
+    const coverupEmp = row.coverup_employee_id ? employeeMap.get(row.coverup_employee_id) : undefined;
+    return {
+      ...row,
+      user: emp
+        ? { id: emp.id, first_name: emp.firstName, last_name: emp.lastName, email: emp.email, employee_id: row.employee_id }
+        : undefined,
+      coverup_employee: coverupEmp
+        ? { first_name: coverupEmp.firstName, last_name: coverupEmp.lastName, employee_id: row.coverup_employee_id }
+        : undefined,
+    };
+  });
+}
+
+export class LeaveModel {
+  static async createRequest(request: {
+    employee_id: string;
+    leave_type_id: number;
+    start_date: Date;
+    end_date: Date;
+    total_days: number;
+    is_half_day?: boolean;
+    half_day_period?: 'morning' | 'evening';
+    reason?: string;
+    attachment_url?: string;
+    coverup_employee_id?: string;
+  }): Promise<LeaveRequest> {
+    const result = await pool.query(
+      `INSERT INTO tbl_leave_requests (employee_id, leave_type_id, start_date, end_date, total_days, is_half_day, half_day_period, reason, attachment_url, coverup_employee_id, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'pending') RETURNING id`,
+      [
+        request.employee_id,
+        request.leave_type_id,
+        request.start_date,
+        request.end_date,
+        request.total_days,
+        request.is_half_day || false,
+        request.half_day_period || null,
+        request.reason || null,
+        request.attachment_url || null,
+        request.coverup_employee_id || null
+      ]
+    );
+
+    const newId = (result.rows[0] as any).id;
+    const createdRequest = await this.findById(newId);
+    if (!createdRequest) {
+      throw new Error('Failed to create leave request');
+    }
+    return createdRequest;
+  }
+
+  static async findById(id: number): Promise<LeaveRequest | null> {
+    const result = await pool.query(
+      `SELECT lr.*,
+              lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
+              lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
+       FROM tbl_leave_requests lr
+       LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
+       WHERE lr.id = $1`,
+      [id]
+    );
+    const rowsArray = result.rows as any[];
+    if (rowsArray.length === 0) return null;
+
+    const row = rowsArray[0];
+    const [withUser] = await withUsers([row]);
+    return {
+      id: row.id,
+      employee_id: row.employee_id,
+      leave_type_id: row.leave_type_id,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      total_days: row.total_days,
+      reason: row.reason,
+      status: row.status,
+      team_leader_approval_date: row.team_leader_approval_date,
+      hr_approval_date: row.hr_approval_date,
+      rejection_reason: row.rejection_reason,
+      attachment_url: row.attachment_url,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
+      leave_type: row.leave_type_name ? {
+        id: row.leave_type_id_full,
+        name: row.leave_type_name,
+        description: row.leave_type_description || '',
+        max_days: row.leave_type_max_days,
+        is_active: row.leave_type_is_active,
+        created_at: row.leave_type_created_at
+      } : undefined,
+      user: withUser.user,
+      coverup_employee: withUser.coverup_employee
+    } as LeaveRequest;
+  }
+
+  static async findByEmployeeId(employeeId: string, filters?: {
+    status?: LeaveStatus;
+    year?: number;
+  }): Promise<LeaveRequest[]> {
+    let query = `
+      SELECT lr.*,
+             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
+             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
+      FROM tbl_leave_requests lr
+      LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
+      WHERE lr.employee_id = $1
+    `;
+    const params: any[] = [employeeId];
+
+    if (filters?.status) {
+      params.push(filters.status);
+      query += ` AND lr.status = $${params.length}`;
+    }
+
+    if (filters?.year) {
+      params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM lr.start_date) = $${params.length}`;
+    }
+
+    query += ' ORDER BY lr.created_at DESC';
+
+    const result = await pool.query(query, params);
+    const withUserRows = await withUsers(result.rows as any[]);
+    return withUserRows.map((row: any) => ({
+      id: row.id,
+      employee_id: row.employee_id,
+      leave_type_id: row.leave_type_id,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      total_days: parseFloat(row.total_days) || row.total_days,
+      is_half_day: row.is_half_day === 1 || row.is_half_day === true,
+      half_day_period: row.half_day_period || undefined,
+      reason: row.reason,
+      status: row.status,
+      team_leader_approval_date: row.team_leader_approval_date,
+      hr_approval_date: row.hr_approval_date,
+      rejection_reason: row.rejection_reason,
+      attachment_url: row.attachment_url,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
+      leave_type: row.leave_type_name ? {
+        id: row.leave_type_id_full,
+        name: row.leave_type_name,
+        description: row.leave_type_description || '',
+        max_days: row.leave_type_max_days,
+        is_active: row.leave_type_is_active,
+        created_at: row.leave_type_created_at
+      } : undefined,
+      user: row.user,
+      coverup_employee: row.coverup_employee
+    })) as LeaveRequest[];
+  }
+
+  static async getAll(filters?: {
+    status?: LeaveStatus;
+    department?: string;
+    employeeId?: string;
+    year?: number;
+  }): Promise<LeaveRequest[]> {
+    let query = `
+      SELECT lr.*,
+             lt.id as leave_type_id_full, lt.name as leave_type_name, lt.description as leave_type_description,
+             lt.max_days as leave_type_max_days, lt.is_active as leave_type_is_active, lt.created_at as leave_type_created_at
+      FROM tbl_leave_requests lr
+      LEFT JOIN tbl_employee u ON lr.employee_id = u.employee_id
+      LEFT JOIN tbl_leave_types lt ON lr.leave_type_id = lt.id
+      WHERE 1=1
+    `;
+    const params: any[] = [];
+
+    if (filters?.status) {
+      params.push(filters.status);
+      query += ` AND lr.status = $${params.length}`;
+    }
+
+    if (filters?.department) {
+      params.push(filters.department);
+      query += ` AND u.department = $${params.length}`;
+    }
+
+    if (filters?.employeeId) {
+      params.push(filters.employeeId);
+      query += ` AND lr.employee_id = $${params.length}`;
+    }
+
+    if (filters?.year) {
+      params.push(filters.year);
+      query += ` AND EXTRACT(YEAR FROM lr.start_date) = $${params.length}`;
+    }
+
+    query += ' ORDER BY lr.created_at DESC';
+
+    const result = await pool.query(query, params);
+    const withUserRows = await withUsers(result.rows as any[]);
+    return withUserRows.map((row: any) => ({
+      id: row.id,
+      employee_id: row.employee_id,
+      leave_type_id: row.leave_type_id,
+      start_date: row.start_date,
+      end_date: row.end_date,
+      total_days: parseFloat(row.total_days) || row.total_days,
+      is_half_day: row.is_half_day === 1 || row.is_half_day === true,
+      half_day_period: row.half_day_period || undefined,
+      reason: row.reason,
+      status: row.status,
+      team_leader_approval_date: row.team_leader_approval_date,
+      hr_approval_date: row.hr_approval_date,
+      rejection_reason: row.rejection_reason,
+      attachment_url: row.attachment_url,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+      coverup_employee_id: row.coverup_employee_id,
+      leave_type: row.leave_type_name ? {
+        id: row.leave_type_id_full,
+        name: row.leave_type_name,
+        description: row.leave_type_description || '',
+        max_days: row.leave_type_max_days,
+        is_active: row.leave_type_is_active,
+        created_at: row.leave_type_created_at
+      } : undefined,
+      user: row.user,
+      coverup_employee: row.coverup_employee
+    })) as LeaveRequest[];
+  }
+
+  static async updateStatus(
+    id: number,
+    status: LeaveStatus,
+    approvedBy: 'team_leader' | 'hr',
+    rejectionReason?: string
+  ): Promise<LeaveRequest | null> {
+    const params: any[] = [status];
+    const updateFields: string[] = [`status = $${params.length}`];
+
+    if (approvedBy === 'team_leader' && status === LeaveStatus.TEAM_LEADER_APPROVED) {
+      updateFields.push('team_leader_approval_date = NOW()');
+    }
+
+    if (approvedBy === 'hr' && status === LeaveStatus.HR_APPROVED) {
+      updateFields.push('hr_approval_date = NOW()');
+    }
+
+    if (rejectionReason) {
+      params.push(rejectionReason);
+      updateFields.push(`rejection_reason = $${params.length}`);
+    }
+
+    params.push(id);
+
+    await pool.query(
+      `UPDATE tbl_leave_requests SET ${updateFields.join(', ')} WHERE id = $${params.length}`,
+      params
+    );
+
+    // If HR approved, deduct from balance
+    if (status === LeaveStatus.HR_APPROVED) {
+      const request = await this.findById(id);
+      if (request) {
+        await this.deductLeaveBalance(request.employee_id, request.leave_type_id, request.total_days);
+      }
+    }
+
+    return await this.findById(id);
+  }
+
+  static async deductLeaveBalance(employeeId: string, leaveTypeId: number, days: number): Promise<void> {
+    const currentYear = new Date().getFullYear();
+    await pool.query(
+      `UPDATE tbl_employee_leave_balance
+       SET used_days = used_days + $1,
+           remaining_days = total_days - (used_days + $2)
+       WHERE employee_id = $3 AND leave_type_id = $4 AND year = $5`,
+      [days, days, employeeId, leaveTypeId, currentYear]
+    );
+  }
+
+  /** Annual Leave (joined-year rule) and Casual Leave (monthly accrual) both
+   * grow/shrink based on hire date and the current date rather than being a
+   * flat per-year constant, so unlike other leave types their entitlement
+   * can't just be snapshotted once when the balance row is first created -
+   * it has to be recomputed against "now" on every read and kept in sync. */
+  private static computeEntitlement(
+    leaveTypeName: string,
+    maxDays: number,
+    hireDate: Date,
+    year: number
+  ): number | null {
+    if (isAnnualLeaveType(leaveTypeName)) {
+      return calculateProRatedAnnualLeave(hireDate, year);
+    }
+    if (isCasualLeaveType(leaveTypeName)) {
+      return calculateAccruedCasualLeave(hireDate, year, maxDays);
+    }
+    return null;
+  }
+
+  static async getLeaveBalance(employeeId: string, year?: number): Promise<LeaveBalance[]> {
+    const currentYear = year || new Date().getFullYear();
+
+    try {
+      // Get all active leave types
+      const leaveTypesRes = await pool.query(
+        'SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true'
+      );
+      const activeLeaveTypes = leaveTypesRes.rows as any[];
+
+      // Fetch user details to get hire date (needed for pro-rated leave calculation)
+      const userRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE employee_id = $1', [employeeId]);
+      const user = userRes.rows[0];
+      const hireDate = user?.hire_date ? new Date(user.hire_date) : new Date();
+
+      // For each active leave type, ensure the user has a balance record with
+      // an up-to-date entitlement for accrual-based types (Annual/Casual).
+      for (const type of activeLeaveTypes) {
+        const entitlement = this.computeEntitlement(type.name, type.max_days, hireDate, currentYear);
+
+        const balanceCheck = await pool.query(
+          'SELECT total_days, used_days FROM tbl_employee_leave_balance WHERE employee_id = $1 AND leave_type_id = $2 AND year = $3',
+          [employeeId, type.id, currentYear]
+        );
+        if (balanceCheck.rows.length === 0) {
+          const totalDays = entitlement !== null ? entitlement : type.max_days;
+          await pool.query(
+            `INSERT INTO tbl_employee_leave_balance (employee_id, leave_type_id, total_days, used_days, remaining_days, year)
+             VALUES ($1, $2, $3, 0, $3, $4)`,
+            [employeeId, type.id, totalDays, currentYear]
+          );
+        } else if (entitlement !== null) {
+          const existing = balanceCheck.rows[0] as { total_days: string; used_days: string };
+          const storedTotal = parseFloat(existing.total_days);
+          if (Math.abs(storedTotal - entitlement) > 0.001) {
+            const usedDays = parseFloat(existing.used_days) || 0;
+            await pool.query(
+              `UPDATE tbl_employee_leave_balance
+               SET total_days = $1, remaining_days = $1 - $2
+               WHERE employee_id = $3 AND leave_type_id = $4 AND year = $5`,
+              [entitlement, usedDays, employeeId, type.id, currentYear]
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to auto-initialize leave balances in getLeaveBalance:', err);
+    }
+
+    const result = await pool.query(
+      `SELECT elb.*,
+              lt.id as lt_id, lt.name, lt.description, lt.max_days, lt.is_active,
+              (elb.total_days - elb.used_days) as calculated_remaining_days
+       FROM tbl_employee_leave_balance elb
+       JOIN tbl_leave_types lt ON elb.leave_type_id = lt.id
+       WHERE elb.employee_id = $1 AND elb.year = $2
+       ORDER BY lt.name`,
+      [employeeId, currentYear]
+    );
+
+    // Days tied up in requests that haven't been finally HR-approved yet -
+    // used_days (and therefore remaining_days) only reflects HR-approved
+    // requests, so without this a pending request doesn't reduce what still
+    // looks "available to request" until HR acts on it.
+    const pendingRes = await pool.query(
+      `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as pending_days
+       FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status IN ('pending', 'team_leader_approved')
+         AND EXTRACT(YEAR FROM start_date) = $2
+       GROUP BY leave_type_id`,
+      [employeeId, currentYear]
+    );
+    const pendingByType = new Map<number, number>();
+    for (const row of pendingRes.rows as any[]) {
+      pendingByType.set(row.leave_type_id, parseFloat(row.pending_days) || 0);
+    }
+
+    // Days already taken (HR-approved) in the current calendar month, plus the
+    // casual-leave full-year entitlement, so the UI can show "you get X this
+    // year, Y accrued so far, Z taken this month".
+    const monthRes = await pool.query(
+      `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as used_this_month
+       FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status = 'hr_approved'
+         AND EXTRACT(YEAR FROM start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
+         AND EXTRACT(MONTH FROM start_date) = EXTRACT(MONTH FROM CURRENT_DATE)
+       GROUP BY leave_type_id`,
+      [employeeId]
+    );
+    const usedThisMonthByType = new Map<number, number>();
+    for (const row of monthRes.rows as any[]) {
+      usedThisMonthByType.set(row.leave_type_id, parseFloat(row.used_this_month) || 0);
+    }
+    const hireRes = await pool.query('SELECT hire_date FROM tbl_employee WHERE employee_id = $1', [employeeId]);
+    const balanceHireDate = hireRes.rows[0]?.hire_date ? new Date(hireRes.rows[0].hire_date) : new Date();
+
+    // Transform the flat structure to nested structure
+    const balances = (result.rows as any[]).map((row: any) => {
+      // Use calculated remaining_days (always accurate)
+      const remainingDays = row.calculated_remaining_days !== null && row.calculated_remaining_days !== undefined
+        ? row.calculated_remaining_days
+        : (row.total_days - row.used_days);
+      const remaining = parseFloat(remainingDays) || remainingDays;
+      const pendingDays = pendingByType.get(row.leave_type_id) || 0;
+      const availableDays = Math.max(0, remaining - pendingDays);
+
+      return {
+        id: row.id,
+        employee_id: row.employee_id,
+        leave_type_id: row.leave_type_id,
+        total_days: parseFloat(row.total_days) || row.total_days,
+        used_days: parseFloat(row.used_days) || row.used_days,
+        remaining_days: remaining,
+        pending_days: pendingDays,
+        available_days: availableDays,
+        used_this_month: usedThisMonthByType.get(row.leave_type_id) || 0,
+        year_entitlement: isCasualLeaveType(row.name)
+          ? calculateCasualLeaveEntitlement(balanceHireDate, currentYear, row.max_days)
+          : parseFloat(row.total_days) || row.total_days,
+        year: row.year,
+        leave_type: {
+          id: row.lt_id,
+          name: row.name,
+          description: row.description || '',
+          max_days: row.max_days,
+          is_active: row.is_active,
+          created_at: new Date()
+        },
+        created_at: row.created_at ? new Date(row.created_at) : new Date(),
+        updated_at: row.updated_at ? new Date(row.updated_at) : new Date()
+      };
+    });
+
+    return balances as LeaveBalance[];
+  }
+
+  static async getLeaveTypes(): Promise<LeaveType[]> {
+    const result = await pool.query('SELECT * FROM tbl_leave_types WHERE is_active = true ORDER BY name');
+    return result.rows as LeaveType[];
+  }
+
+  /** Of the given employee ids, which ones already have a non-rejected/cancelled
+   * leave request overlapping [startDate, endDate] - used to exclude them as
+   * coverup candidates and to guard against submitting one server-side. */
+  static async findEmployeeIdsWithOverlappingLeave(
+    employeeIds: string[],
+    startDate: string,
+    endDate: string
+  ): Promise<Set<string>> {
+    if (employeeIds.length === 0) return new Set();
+    const result = await pool.query(
+      `SELECT DISTINCT employee_id FROM tbl_leave_requests
+       WHERE employee_id = ANY($1)
+         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND start_date <= $3 AND end_date >= $2`,
+      [employeeIds, startDate, endDate]
+    );
+    return new Set((result.rows as Array<{ employee_id: string }>).map((r) => r.employee_id));
+  }
+
+  /** Of the requesting employee's own non-rejected/cancelled leave requests,
+   * which ones overlap [startDate, endDate] - used to block a new request
+   * for a date the employee already has a pending/approved request on. Only
+   * the half-day fields are needed by the caller's AM/PM compatibility check. */
+  static async findOverlappingRequestsForEmployee(
+    employeeId: string,
+    startDate: string,
+    endDate: string
+  ): Promise<Array<{ is_half_day: boolean; half_day_period: 'morning' | 'evening' | null }>> {
+    const result = await pool.query(
+      `SELECT is_half_day, half_day_period FROM tbl_leave_requests
+       WHERE employee_id = $1
+         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND start_date <= $3 AND end_date >= $2`,
+      [employeeId, startDate, endDate]
+    );
+    return (result.rows as any[]).map((r) => ({
+      is_half_day: r.is_half_day === true || r.is_half_day === 1,
+      half_day_period: r.half_day_period || null,
+    }));
+  }
+}

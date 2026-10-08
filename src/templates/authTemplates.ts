@@ -119,3 +119,43 @@ export const getWelcomeCredentialsEmailHtml = (params: AuthEmailParams): string 
     extraHtml: extraHtml,
   });
 };
+
+/**
+ * 5. Password Reset (temporary password) Email - used when HR/Admin resets an
+ * existing user's password. Unlike getPasswordResetEmailHtml (a self-service
+ * "click here to reset" link), this carries the actual new temporary password
+ * because the reset is admin-initiated and already applied in Keycloak.
+ */
+export const getPasswordResetCredentialsEmailHtml = (params: AuthEmailParams): string => {
+  const details: DetailsRow[] = [
+    { label: 'Employee ID', value: params.employeeId || 'N/A' },
+    { label: 'Temporary Password', value: `<code style="font-family: monospace; background-color: #F1F5F9; padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #1E293B;">${params.password || ''}</code>` },
+  ];
+
+  const extraHtml = `
+    <table border="0" cellpadding="0" cellspacing="0" role="presentation" width="100%" style="background-color: #FEF3C7; border-left: 4px solid #F59E0B; border-radius: 4px; margin-top: 16px; margin-bottom: 24px;">
+      <tr>
+        <td style="padding: 16px; text-align: left;">
+          <h4 style="margin: 0 0 4px 0; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: bold; color: #92400E;">Security Warning</h4>
+          <p style="margin: 0; font-family: 'Inter', sans-serif; font-size: 12px; color: #B45309; line-height: 1.5;">
+            This is a temporary password. For security reasons, you will be prompted to change it immediately upon your next login. Do not share these credentials with anyone.
+          </p>
+        </td>
+      </tr>
+    </table>
+  `;
+
+  return renderMasterLayout({
+    subject: 'Password Reset - OXO Carriers',
+    preheader: 'Your password has been reset. View your new temporary password inside.',
+    heroIcon: 'warning',
+    statusBadgeText: 'SECURITY REQUEST',
+    statusBadgeType: 'warning',
+    title: 'Password Reset',
+    messageHtml: `<p style="margin:0;">Hello ${params.name || 'User'},</p><p style="margin:12px 0 0 0;">${params.message_body || 'Your password has been reset by HR/Admin. Use the temporary password below to log in to the Employee Portal.'}</p>`,
+    detailsTableHtml: renderDetailsTable(details),
+    ctaText: params.button_text || 'Go to Login Portal',
+    ctaLink: params.loginUrl || '#',
+    extraHtml: extraHtml,
+  });
+};

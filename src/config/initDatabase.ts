@@ -110,22 +110,22 @@ const verifyTables = async (connection: mysql.Connection): Promise<void> => {
     `);
 
     const expectedTables = [
-      "users",
-      "user_permissions",
-      "leave_types",
-      "employee_leave_balance",
-      "leave_requests",
-      "salary_components",
-      "employee_salary_structure",
-      "monthly_salaries",
-      "salary_slip_details",
-      "audit_logs",
-      "facilities",
-      "facility_bookings",
-      "medical_insurance_claims",
-      "consultant_work_submissions",
-      "vendors",
-      "payment_vouchers",
+      "tbl_employee",
+      "tbl_user_permissions",
+      "tbl_leave_types",
+      "tbl_employee_leave_balance",
+      "tbl_leave_requests",
+      "tbl_salary_components",
+      "tbl_employee_salary_structure",
+      "tbl_monthly_salaries",
+      "tbl_salary_slip_details",
+      "tbl_audit_logs",
+      "tbl_facilities",
+      "tbl_facility_bookings",
+      "tbl_medical_insurance_claims",
+      "tbl_consultant_work_submissions",
+      "tbl_vendors",
+      "tbl_payment_vouchers",
     ];
 
     const existingTables = tables.map((t: any) => t.TABLE_NAME);
@@ -154,7 +154,7 @@ const createTablesManually = async (
   // Create users table first (no dependencies)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS users (
+      CREATE TABLE IF NOT EXISTS tbl_employee (
         id INT PRIMARY KEY AUTO_INCREMENT,
         employee_id VARCHAR(50) UNIQUE,
         email VARCHAR(100) UNIQUE NOT NULL,
@@ -182,7 +182,7 @@ const createTablesManually = async (
   // Create user_permissions table (depends on users)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS user_permissions (
+      CREATE TABLE IF NOT EXISTS tbl_user_permissions (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         permission_key VARCHAR(100) NOT NULL,
@@ -191,8 +191,8 @@ const createTablesManually = async (
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_user_permission (user_id, permission_key),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES tbl_employee(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ user_permissions table");
@@ -204,7 +204,7 @@ const createTablesManually = async (
   // Create leave_types table (no dependencies)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS leave_types (
+      CREATE TABLE IF NOT EXISTS tbl_leave_types (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(50) NOT NULL,
         description TEXT,
@@ -222,7 +222,7 @@ const createTablesManually = async (
   // Create salary_components table (no dependencies)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS salary_components (
+      CREATE TABLE IF NOT EXISTS tbl_salary_components (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(100) NOT NULL,
         type ENUM('earning', 'deduction') NOT NULL,
@@ -240,7 +240,7 @@ const createTablesManually = async (
   // Create employee_leave_balance (depends on users and leave_types)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS employee_leave_balance (
+      CREATE TABLE IF NOT EXISTS tbl_employee_leave_balance (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         leave_type_id INT NOT NULL,
@@ -250,8 +250,8 @@ const createTablesManually = async (
         year YEAR NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (leave_type_id) REFERENCES tbl_leave_types(id) ON DELETE CASCADE,
         UNIQUE KEY unique_user_leave_year (user_id, leave_type_id, year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
@@ -267,7 +267,7 @@ const createTablesManually = async (
   // Create leave_requests (depends on users and leave_types)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS leave_requests (
+      CREATE TABLE IF NOT EXISTS tbl_leave_requests (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         leave_type_id INT NOT NULL,
@@ -284,8 +284,8 @@ const createTablesManually = async (
         attachment_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (leave_type_id) REFERENCES leave_types(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (leave_type_id) REFERENCES tbl_leave_types(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ leave_requests table");
@@ -297,7 +297,7 @@ const createTablesManually = async (
   // Create leave_calendar (holidays/public holidays)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS leave_calendar (
+      CREATE TABLE IF NOT EXISTS tbl_leave_calendar (
         id INT PRIMARY KEY AUTO_INCREMENT,
         date DATE NOT NULL UNIQUE,
         name VARCHAR(255) NOT NULL,
@@ -307,7 +307,7 @@ const createTablesManually = async (
         created_by INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (created_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
         INDEX idx_date (date),
         INDEX idx_year (year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -321,7 +321,7 @@ const createTablesManually = async (
   // Create employee_salary_structure (depends on users and salary_components)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS employee_salary_structure (
+      CREATE TABLE IF NOT EXISTS tbl_employee_salary_structure (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         component_id INT NOT NULL,
@@ -331,8 +331,8 @@ const createTablesManually = async (
         effective_date DATE NOT NULL,
         end_date DATE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (component_id) REFERENCES tbl_salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ employee_salary_structure table");
@@ -347,7 +347,7 @@ const createTablesManually = async (
   // Create monthly_salaries (depends on users)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS monthly_salaries (
+      CREATE TABLE IF NOT EXISTS tbl_monthly_salaries (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         month_year DATE NOT NULL,
@@ -362,8 +362,8 @@ const createTablesManually = async (
         paid_date DATE,
         pdf_url VARCHAR(500),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (generated_by) REFERENCES users(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (generated_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
         UNIQUE KEY unique_user_month (user_id, month_year)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
@@ -376,14 +376,14 @@ const createTablesManually = async (
   // Create salary_slip_details (depends on monthly_salaries and salary_components)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS salary_slip_details (
+      CREATE TABLE IF NOT EXISTS tbl_salary_slip_details (
         id INT PRIMARY KEY AUTO_INCREMENT,
         salary_id INT NOT NULL,
         component_id INT NOT NULL,
         amount DECIMAL(10,2) NOT NULL,
         type ENUM('earning', 'deduction') NOT NULL,
-        FOREIGN KEY (salary_id) REFERENCES monthly_salaries(id) ON DELETE CASCADE,
-        FOREIGN KEY (component_id) REFERENCES salary_components(id) ON DELETE CASCADE
+        FOREIGN KEY (salary_id) REFERENCES tbl_monthly_salaries(id) ON DELETE CASCADE,
+        FOREIGN KEY (component_id) REFERENCES tbl_salary_components(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ salary_slip_details table");
@@ -398,7 +398,7 @@ const createTablesManually = async (
   // Create audit_logs (depends on users)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS audit_logs (
+      CREATE TABLE IF NOT EXISTS tbl_audit_logs (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT,
         action VARCHAR(100) NOT NULL,
@@ -409,7 +409,7 @@ const createTablesManually = async (
         ip_address VARCHAR(45),
         user_agent TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ audit_logs table");
@@ -421,7 +421,7 @@ const createTablesManually = async (
   // Create facilities table
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS facilities (
+      CREATE TABLE IF NOT EXISTS tbl_facilities (
         id INT PRIMARY KEY AUTO_INCREMENT,
         name VARCHAR(100) NOT NULL,
         type ENUM('workstation', 'board_room', 'meeting_room', 'accommodation') NOT NULL,
@@ -442,7 +442,7 @@ const createTablesManually = async (
   // Create facility_bookings table
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS facility_bookings (
+      CREATE TABLE IF NOT EXISTS tbl_facility_bookings (
         id INT PRIMARY KEY AUTO_INCREMENT,
         facility_id INT NOT NULL,
         user_id INT NOT NULL,
@@ -452,8 +452,8 @@ const createTablesManually = async (
         status ENUM('pending', 'confirmed', 'cancelled', 'completed') DEFAULT 'confirmed',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (facility_id) REFERENCES facilities(id) ON DELETE CASCADE,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        FOREIGN KEY (facility_id) REFERENCES tbl_facilities(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ facility_bookings table");
@@ -465,7 +465,7 @@ const createTablesManually = async (
   // Create medical_insurance_claims table
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS medical_insurance_claims (
+      CREATE TABLE IF NOT EXISTS tbl_medical_insurance_claims (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         type ENUM('IN', 'OPD') NOT NULL,
@@ -480,9 +480,9 @@ const createTablesManually = async (
         resubmission_of INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
-        FOREIGN KEY (resubmission_of) REFERENCES medical_insurance_claims(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
+        FOREIGN KEY (resubmission_of) REFERENCES tbl_medical_insurance_claims(id) ON DELETE SET NULL,
         INDEX idx_user_status (user_id, status),
         INDEX idx_quarter (quarter),
         INDEX idx_status (status)
@@ -500,7 +500,7 @@ const createTablesManually = async (
   // Migration: remove legacy payment_approver role and align users.role ENUM
   try {
     await connection.query(`
-      UPDATE users SET role = 'finance_executive' WHERE role = 'payment_approver'
+      UPDATE tbl_employee SET role = 'finance_executive' WHERE role = 'payment_approver'
     `);
     logger.info("  ✓ migrated payment_approver users to finance_executive");
   } catch (error: any) {
@@ -510,7 +510,7 @@ const createTablesManually = async (
   // Migration: Add consultant/service_provider roles and hourly_rate to users
   try {
     await connection.query(`
-      ALTER TABLE users
+      ALTER TABLE tbl_employee
       MODIFY COLUMN role ENUM('super_admin', 'hr_manager', 'hr_executive', 'finance_manager', 'finance_executive', 'employee', 'consultant', 'service_provider') NOT NULL
     `);
     logger.info("  ✓ users.role ENUM updated");
@@ -526,7 +526,7 @@ const createTablesManually = async (
   // Migration: ensure user_permissions table exists
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS user_permissions (
+      CREATE TABLE IF NOT EXISTS tbl_user_permissions (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         permission_key VARCHAR(100) NOT NULL,
@@ -535,8 +535,8 @@ const createTablesManually = async (
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY unique_user_permission (user_id, permission_key),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (assigned_by) REFERENCES users(id) ON DELETE SET NULL
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (assigned_by) REFERENCES tbl_employee(id) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
     `);
     logger.info("  ✓ user_permissions table verified");
@@ -549,13 +549,13 @@ const createTablesManually = async (
     const [accessLevelCol]: any = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'user_permissions'
+        AND TABLE_NAME = 'tbl_user_permissions'
         AND COLUMN_NAME = 'access_level'
     `);
 
     if (!accessLevelCol?.length) {
       await connection.query(`
-        ALTER TABLE user_permissions
+        ALTER TABLE tbl_user_permissions
         ADD COLUMN access_level ENUM('read', 'write') NOT NULL DEFAULT 'read' AFTER permission_key
       `);
       logger.info("  ✓ user_permissions.access_level column added");
@@ -564,13 +564,13 @@ const createTablesManually = async (
     const [allowedCol]: any = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
       WHERE TABLE_SCHEMA = DATABASE()
-        AND TABLE_NAME = 'user_permissions'
+        AND TABLE_NAME = 'tbl_user_permissions'
         AND COLUMN_NAME = 'allowed'
     `);
 
     if (allowedCol?.length) {
       await connection.query(`
-        UPDATE user_permissions
+        UPDATE tbl_user_permissions
         SET access_level = CASE WHEN allowed = 1 THEN 'write' ELSE 'read' END
       `);
       logger.info(
@@ -579,7 +579,7 @@ const createTablesManually = async (
 
       try {
         await connection.query(
-          `ALTER TABLE user_permissions DROP COLUMN allowed`,
+          `ALTER TABLE tbl_user_permissions DROP COLUMN allowed`,
         );
         logger.info("  ✓ user_permissions.allowed column removed");
       } catch (dropError: any) {
@@ -592,11 +592,11 @@ const createTablesManually = async (
   try {
     const [cols]: any = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'hourly_rate'
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_employee' AND COLUMN_NAME = 'hourly_rate'
     `);
     if (!cols?.length) {
       await connection.query(`
-        ALTER TABLE users ADD COLUMN hourly_rate DECIMAL(10,2) NULL AFTER position
+        ALTER TABLE tbl_employee ADD COLUMN hourly_rate DECIMAL(10,2) NULL AFTER position
       `);
       logger.info("  ✓ users.hourly_rate column added");
     }
@@ -626,13 +626,13 @@ const createTablesManually = async (
       const [cols]: any = await connection.query(
         `
         SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = ?
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_employee' AND COLUMN_NAME = ?
       `,
         [col.name],
       );
       if (!cols?.length) {
         await connection.query(`
-          ALTER TABLE users ADD COLUMN \`${col.name}\` ${col.def} AFTER \`${col.after}\`
+          ALTER TABLE tbl_employee ADD COLUMN \`${col.name}\` ${col.def} AFTER \`${col.after}\`
         `);
         logger.info(`  ✓ users.${col.name} column added`);
       }
@@ -644,7 +644,7 @@ const createTablesManually = async (
   // Create consultant_work_submissions table
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS consultant_work_submissions (
+      CREATE TABLE IF NOT EXISTS tbl_consultant_work_submissions (
         id INT PRIMARY KEY AUTO_INCREMENT,
         user_id INT NOT NULL,
         project VARCHAR(255) NOT NULL,
@@ -659,9 +659,9 @@ const createTablesManually = async (
         resubmission_of INT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
-        FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
-        FOREIGN KEY (resubmission_of) REFERENCES consultant_work_submissions(id) ON DELETE SET NULL,
+        FOREIGN KEY (user_id) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+        FOREIGN KEY (reviewed_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
+        FOREIGN KEY (resubmission_of) REFERENCES tbl_consultant_work_submissions(id) ON DELETE SET NULL,
         INDEX idx_user_status (user_id, status),
         INDEX idx_status (status)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -678,7 +678,7 @@ const createTablesManually = async (
   // Create vendors table (separate from users; no email verification)
   try {
     await connection.query(`
-      CREATE TABLE IF NOT EXISTS vendors (
+      CREATE TABLE IF NOT EXISTS tbl_vendors (
         id INT PRIMARY KEY AUTO_INCREMENT,
         email VARCHAR(255) NOT NULL,
         company_name VARCHAR(200) NOT NULL,
@@ -701,11 +701,11 @@ const createTablesManually = async (
   // Create payment_vouchers table (uses vendor_id -> vendors)
   try {
     const [pvExists]: any = await connection.query(`
-      SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'payment_vouchers'
+      SELECT 1 FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'tbl_payment_vouchers'
     `);
     if (!pvExists?.length) {
       await connection.query(`
-        CREATE TABLE payment_vouchers (
+        CREATE TABLE tbl_payment_vouchers (
           id INT PRIMARY KEY AUTO_INCREMENT,
           voucher_number VARCHAR(50) UNIQUE NOT NULL,
           created_by INT NOT NULL,
@@ -725,11 +725,11 @@ const createTablesManually = async (
           paid_at TIMESTAMP NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-          FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE CASCADE,
-          FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE,
-          FOREIGN KEY (reviewed_by) REFERENCES users(id) ON DELETE SET NULL,
-          FOREIGN KEY (bank_upload_by) REFERENCES users(id) ON DELETE SET NULL,
-          FOREIGN KEY (paid_by) REFERENCES users(id) ON DELETE SET NULL,
+          FOREIGN KEY (created_by) REFERENCES tbl_employee(id) ON DELETE CASCADE,
+          FOREIGN KEY (vendor_id) REFERENCES tbl_vendors(id) ON DELETE CASCADE,
+          FOREIGN KEY (reviewed_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
+          FOREIGN KEY (bank_upload_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
+          FOREIGN KEY (paid_by) REFERENCES tbl_employee(id) ON DELETE SET NULL,
           INDEX idx_status (status),
           INDEX idx_created_by (created_by)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
@@ -745,7 +745,7 @@ const createTablesManually = async (
   try {
     const [cols]: any = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers'
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_payment_vouchers'
     `);
     const columnNames = (cols || []).map((c: any) => c.COLUMN_NAME);
     if (
@@ -754,37 +754,37 @@ const createTablesManually = async (
     ) {
       const [fkRows]: any = await connection.query(`
         SELECT CONSTRAINT_NAME FROM information_schema.KEY_COLUMN_USAGE
-        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers' AND COLUMN_NAME = 'service_provider_id' AND REFERENCED_TABLE_NAME IS NOT NULL
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_payment_vouchers' AND COLUMN_NAME = 'service_provider_id' AND REFERENCED_TABLE_NAME IS NOT NULL
       `);
       const fkName = fkRows?.[0]?.CONSTRAINT_NAME;
       if (fkName) {
         await connection.query(
-          `ALTER TABLE payment_vouchers DROP FOREIGN KEY \`${fkName}\``,
+          `ALTER TABLE tbl_payment_vouchers DROP FOREIGN KEY \`${fkName}\``,
         );
       }
       await connection.query(`
-        INSERT INTO vendors (id, email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
+        INSERT INTO tbl_vendors (id, email, company_name, contact_number, bank_name, account_holder_name, account_number, bank_branch)
         SELECT id, email, COALESCE(company_name, first_name), contact_number, bank_name, account_holder_name, account_number, bank_branch
-        FROM users WHERE role = 'service_provider'
+        FROM tbl_employee WHERE role = 'service_provider'
       `);
       await connection.query(
-        `ALTER TABLE payment_vouchers ADD COLUMN vendor_id INT NULL AFTER created_by`,
+        `ALTER TABLE tbl_payment_vouchers ADD COLUMN vendor_id INT NULL AFTER created_by`,
       );
       await connection.query(
-        `UPDATE payment_vouchers SET vendor_id = service_provider_id`,
+        `UPDATE tbl_payment_vouchers SET vendor_id = service_provider_id`,
       );
       await connection.query(
-        `ALTER TABLE payment_vouchers DROP COLUMN service_provider_id`,
+        `ALTER TABLE tbl_payment_vouchers DROP COLUMN service_provider_id`,
       );
       await connection.query(
-        `ALTER TABLE payment_vouchers MODIFY vendor_id INT NOT NULL`,
+        `ALTER TABLE tbl_payment_vouchers MODIFY vendor_id INT NOT NULL`,
       );
       await connection.query(`
-        ALTER TABLE payment_vouchers ADD CONSTRAINT fk_pv_vendor FOREIGN KEY (vendor_id) REFERENCES vendors(id) ON DELETE CASCADE
+        ALTER TABLE tbl_payment_vouchers ADD CONSTRAINT fk_pv_vendor FOREIGN KEY (vendor_id) REFERENCES tbl_vendors(id) ON DELETE CASCADE
       `);
       if (!columnNames.includes("invoice_url")) {
         await connection.query(
-          `ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`,
+          `ALTER TABLE tbl_payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description`,
         );
       }
       logger.info("  ✓ payment_vouchers migrated to vendor_id");
@@ -799,11 +799,11 @@ const createTablesManually = async (
   try {
     const [cols]: any = await connection.query(`
       SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS
-      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'payment_vouchers' AND COLUMN_NAME = 'invoice_url'
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'tbl_payment_vouchers' AND COLUMN_NAME = 'invoice_url'
     `);
     if (!cols?.length) {
       await connection.query(`
-        ALTER TABLE payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description
+        ALTER TABLE tbl_payment_vouchers ADD COLUMN invoice_url VARCHAR(500) NULL AFTER description
       `);
       logger.info("  ✓ payment_vouchers.invoice_url column added");
     }
@@ -817,16 +817,16 @@ const createTablesManually = async (
     const [constraints]: any = await connection.query(`
       SELECT CONSTRAINT_NAME 
       FROM information_schema.TABLE_CONSTRAINTS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-      AND TABLE_NAME = 'users' 
+      WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'tbl_employee'
       AND CONSTRAINT_NAME = 'fk_manager'
     `);
 
     if (constraints.length === 0) {
       await connection.query(`
-        ALTER TABLE users 
-        ADD CONSTRAINT fk_manager 
-        FOREIGN KEY (manager_id) REFERENCES users(id) ON DELETE SET NULL
+        ALTER TABLE tbl_employee
+        ADD CONSTRAINT fk_manager
+        FOREIGN KEY (manager_id) REFERENCES tbl_employee(id) ON DELETE SET NULL
       `);
       logger.info("  ✓ manager foreign key constraint");
     } else {
@@ -851,8 +851,8 @@ const createTablesManually = async (
     const [columns]: any = await connection.query(`
       SELECT COLUMN_NAME 
       FROM INFORMATION_SCHEMA.COLUMNS 
-      WHERE TABLE_SCHEMA = DATABASE() 
-      AND TABLE_NAME = 'monthly_salaries' 
+      WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'tbl_monthly_salaries'
       AND COLUMN_NAME IN ('local_salary', 'oxo_international_salary')
     `);
 
@@ -860,7 +860,7 @@ const createTablesManually = async (
 
     if (!existingColumns.includes("local_salary")) {
       await connection.query(`
-        ALTER TABLE monthly_salaries 
+        ALTER TABLE tbl_monthly_salaries
         ADD COLUMN local_salary DECIMAL(10,2) DEFAULT 0 AFTER basic_salary
       `);
       logger.info("  ✓ Added local_salary column to monthly_salaries");
@@ -868,7 +868,7 @@ const createTablesManually = async (
 
     if (!existingColumns.includes("oxo_international_salary")) {
       await connection.query(`
-        ALTER TABLE monthly_salaries 
+        ALTER TABLE tbl_monthly_salaries
         ADD COLUMN oxo_international_salary DECIMAL(10,2) DEFAULT 0 AFTER local_salary
       `);
       logger.info(
@@ -893,12 +893,12 @@ const insertDefaultData = async (
 
     // Insert leave types
     const [leaveTypesResult]: any = await connection.query(`
-      SELECT COUNT(*) as count FROM leave_types
+      SELECT COUNT(*) as count FROM tbl_leave_types
     `);
 
     if (leaveTypesResult[0].count === 0) {
       await connection.query(`
-        INSERT INTO leave_types (name, description, max_days, is_active) VALUES
+        INSERT INTO tbl_leave_types (name, description, max_days, is_active) VALUES
         ('Annual', 'Annual/Paid Leave', 14, true),
         ('Casual', 'Casual Leave', 7, true),
         ('Maternity', 'Maternity Leave', 84, true)
@@ -910,12 +910,12 @@ const insertDefaultData = async (
 
     // Insert salary components
     const [componentsResult]: any = await connection.query(`
-      SELECT COUNT(*) as count FROM salary_components
+      SELECT COUNT(*) as count FROM tbl_salary_components
     `);
 
     if (componentsResult[0].count === 0) {
       await connection.query(`
-        INSERT INTO salary_components (name, type, is_default, is_active) VALUES
+        INSERT INTO tbl_salary_components (name, type, is_default, is_active) VALUES
         ('Basic Salary', 'earning', true, true),
         ('Full Salary', 'earning', false, true),
         ('Local Salary', 'earning', false, true),
@@ -934,12 +934,12 @@ const insertDefaultData = async (
 
     // Insert default facilities
     const [facilitiesResult]: any = await connection.query(`
-      SELECT COUNT(*) as count FROM facilities
+      SELECT COUNT(*) as count FROM tbl_facilities
     `);
 
     if (facilitiesResult[0].count === 0) {
       await connection.query(`
-        INSERT INTO facilities (name, type, description, facilities, capacity, is_active) VALUES
+        INSERT INTO tbl_facilities (name, type, description, facilities, capacity, is_active) VALUES
         ('Workstation A1', 'workstation', 'Standard office workstation', 'Monitor, Keyboard, Mouse, LAN', 1, true),
         ('Board Room 1', 'board_room', 'Executive board room for meetings', 'Projector, Whiteboard, Video Conference, AC', 12, true),
         ('Meeting Room Small', 'meeting_room', 'Small meeting room for quick gatherings', 'Whiteboard, AC', 4, true),
@@ -952,7 +952,7 @@ const insertDefaultData = async (
 
     // Insert default super admin user
     const [existingSuperAdmin]: any = await connection.query(`
-      SELECT id FROM users WHERE role = 'super_admin' LIMIT 1
+      SELECT id FROM tbl_employee WHERE role = 'super_admin' LIMIT 1
     `);
 
     if (existingSuperAdmin.length === 0) {
@@ -960,7 +960,7 @@ const insertDefaultData = async (
         "$2b$10$bNe7lcHqX.bTX7/0RIV6Cumm7VsVMmdYn45gzHp7D2ggx1Q9QmFz2"; // Admin@123
       await connection.query(
         `
-        INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
+        INSERT INTO tbl_employee (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
         VALUES (?, ?, ?, ?, ?, 'super_admin', ?, ?, ?, true, true)
       `,
         [
@@ -984,7 +984,7 @@ const insertDefaultData = async (
     // Insert dummy user
     const [existingUser]: any = await connection.query(
       `
-      SELECT id FROM users WHERE email = ?
+      SELECT id FROM tbl_employee WHERE email = ?
     `,
       ["nimshan@gmail.com"],
     );
@@ -996,7 +996,7 @@ const insertDefaultData = async (
 
       const [userResult]: any = await connection.query(
         `
-        INSERT INTO users (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
+        INSERT INTO tbl_employee (employee_id, email, password, first_name, last_name, role, department, position, hire_date, email_verified, must_change_password)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, true, false)
       `,
         [
@@ -1018,7 +1018,7 @@ const insertDefaultData = async (
       // Initialize leave balances for the dummy user
       const currentYear = new Date().getFullYear();
       const [leaveTypes]: any = await connection.query(`
-        SELECT id, name, max_days FROM leave_types WHERE is_active = true
+        SELECT id, name, max_days FROM tbl_leave_types WHERE is_active = true
       `);
 
       for (const type of leaveTypes) {
@@ -1034,7 +1034,7 @@ const insertDefaultData = async (
 
         await connection.query(
           `
-          INSERT INTO employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
+          INSERT INTO tbl_employee_leave_balance (user_id, leave_type_id, total_days, used_days, remaining_days, year)
           VALUES (?, ?, ?, 0, ?, ?)
         `,
           [userId, type.id, totalDays, totalDays, currentYear],
@@ -1050,7 +1050,7 @@ const insertDefaultData = async (
     try {
       logger.info("⚙️ Ensuring default permissions for employees in MySQL...");
       const [employees]: any = await connection.query(`
-        SELECT id FROM users WHERE role = 'employee'
+        SELECT id FROM tbl_employee WHERE role = 'employee'
       `);
       
       const defaultPermissions = [
@@ -1065,7 +1065,7 @@ const insertDefaultData = async (
       for (const emp of employees) {
         for (const permission of defaultPermissions) {
           await connection.query(`
-            INSERT INTO user_permissions (user_id, permission_key, access_level)
+            INSERT INTO tbl_user_permissions (user_id, permission_key, access_level)
             VALUES (?, ?, 'read')
             ON DUPLICATE KEY UPDATE access_level = VALUES(access_level)
           `, [emp.id, permission]);
