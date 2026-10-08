@@ -333,11 +333,13 @@ export class UsersService {
    * be hard-deleted (the PII row) or become unreachable (everything else,
    * once this employee drops out of EmployeeModel.getAll()) stays available
    * to Administrators/HR Manager via GET /archives.
+   *
+   * OCD-592: only a Super Admin may delete - HR Manager can still view the
+   * Archive but can no longer trigger the deletion itself.
    */
   async delete(userId: number, requester: JwtPayload) {
-    const canDelete = isSuperAdmin(requester) || requester.role === UserRole.HR_MANAGER;
-    if (!canDelete) {
-      throw new ForbiddenException('Only HR Manager or Super Admin can delete users');
+    if (!isSuperAdmin(requester)) {
+      throw new ForbiddenException('Only Super Admin can delete users');
     }
     if (requester.userId === userId) {
       throw new BadRequestException('Cannot delete your own account');

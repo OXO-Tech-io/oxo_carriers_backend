@@ -187,9 +187,14 @@ export class UsersController {
     return { success: true, message };
   }
 
+  // OCD-592: deleting a user profile is destructive, so it's restricted to
+  // Administrator (super_admin) only - HR Manager no longer has it. Same
+  // fixed-role pattern as the Account Status change above (RolesGuard lets
+  // super_admin through on every @Roles list; UsersService.delete repeats
+  // the check as a second line of defence).
   @Delete(':id')
   @UseGuards(RolesGuard)
-  @Roles(UserRole.HR_MANAGER)
+  @Roles(UserRole.SUPER_ADMIN)
   async delete(@Param('id', ParseIntPipe) id: number, @CurrentEmployee() employee: JwtPayload) {
     await this.usersService.delete(id, employee);
     return { success: true, message: 'User deleted successfully' };

@@ -390,23 +390,41 @@ describe("UsersService", () => {
       await expect(service.delete(1, selfEmployee)).rejects.toThrow(ForbiddenException);
     });
 
+    // OCD-592: deleting a user is Super Admin only - HR Manager (who used to be
+    // allowed) and HR Executive are refused before anything is looked up,
+    // archived or removed.
+    it.each([
+      ["HR Manager", hr],
+      ["HR Executive", { userId: 7, employeeId: "HR7", role: UserRole.HR_EXECUTIVE }],
+    ])("refuses a %s and leaves the user, archive, PII and keycloak account untouched", async (_label, requester) => {
+      await expect(service.delete(3, requester as any)).rejects.toThrow(ForbiddenException);
+      await expect(service.delete(3, requester as any)).rejects.toThrow("Only Super Admin can delete users");
+
+      expect(em.findById).not.toHaveBeenCalled();
+      expect(archiveServiceMock.archiveEmployeeDeletion).not.toHaveBeenCalled();
+      expect(kc.deleteUser).not.toHaveBeenCalled();
+      expect(piiDeleteMock).not.toHaveBeenCalled();
+      expect(em.update).not.toHaveBeenCalled();
+      expect(em.delete).not.toHaveBeenCalled();
+    });
+
     it("throws BadRequestException when deleting your own account", async () => {
-      await expect(service.delete(hr.userId, hr)).rejects.toThrow(BadRequestException);
+      await expect(service.delete(superAdmin.userId, superAdmin)).rejects.toThrow(BadRequestException);
     });
 
     it("throws NotFoundException when the target user doesn't exist", async () => {
       em.findById.mockResolvedValue(null);
-      await expect(service.delete(3, hr)).rejects.toThrow(NotFoundException);
+      await expect(service.delete(3, superAdmin)).rejects.toThrow(NotFoundException);
       expect(archiveServiceMock.archiveEmployeeDeletion).not.toHaveBeenCalled();
     });
 
     it("purges PII and the keycloak account but keeps the employee row, deactivating it instead", async () => {
       const user = { id: 3, employeeId: "EMP3", keycloakSub: "kc-3" };
       em.findById.mockResolvedValue(user);
-      await service.delete(3, hr);
+      await service.delete(3, superAdmin);
       // OCD-453: the full-profile snapshot is written to the Archive before
       // the PII row is destroyed / the Keycloak account is removed.
-      expect(archiveServiceMock.archiveEmployeeDeletion).toHaveBeenCalledWith(user, { userId: hr.userId });
+      expect(archiveServiceMock.archiveEmployeeDeletion).toHaveBeenCalledWith(user, { userId: superAdmin.userId });
       expect(kc.deleteUser).toHaveBeenCalledWith("kc-3");
       expect(piiDeleteMock).toHaveBeenCalledWith("EMP3");
       expect(em.delete).not.toHaveBeenCalled();
@@ -420,12 +438,12 @@ describe("UsersService", () => {
     it("does not throw when keycloak deletion fails", async () => {
       em.findById.mockResolvedValue({ id: 3, keycloakSub: "kc-3" });
       kc.deleteUser.mockRejectedValue(new Error("kc error"));
-      await expect(service.delete(3, hr)).resolves.toBeUndefined();
+      await expect(service.delete(3, superAdmin)).resolves.toBeUndefined();
     });
 
     it("skips keycloak deletion when the user has no keycloakSub", async () => {
       em.findById.mockResolvedValue({ id: 3, keycloakSub: null });
-      await service.delete(3, hr);
+      await service.delete(3, superAdmin);
       expect(kc.deleteUser).not.toHaveBeenCalled();
     });
   });
