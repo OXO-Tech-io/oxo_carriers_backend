@@ -9,19 +9,16 @@ vi.mock("../../src/middleware/keycloakAuth", () => ({
 import { verifyKeycloakToken } from "../../src/middleware/keycloakAuth";
 import { JwtAuthGuard } from "../../src/auth/guards/jwt-auth.guard";
 import { IS_PUBLIC_KEY } from "../../src/common/decorators/public.decorator";
-import { SKIP_SESSION_CHECK_KEY } from "../../src/common/decorators/skip-session-check.decorator";
 
 const verifyMock = verifyKeycloakToken as unknown as ReturnType<typeof vi.fn>;
 
 const createContext = (
   headers: Record<string, string>,
   isPublic: boolean | undefined,
-  skipSessionCheck: boolean | undefined = false,
 ) => {
   const reflector = {
     getAllAndOverride: vi.fn((key: string) => {
       if (key === IS_PUBLIC_KEY) return isPublic;
-      if (key === SKIP_SESSION_CHECK_KEY) return skipSessionCheck;
       return undefined;
     }),
   };
@@ -38,7 +35,6 @@ const createEmployeesService = (overrides: Record<string, ReturnType<typeof vi.f
   findByKeycloakSub: vi.fn().mockResolvedValue(null),
   findByEmail: vi.fn().mockResolvedValue(null),
   linkKeycloakSub: vi.fn().mockResolvedValue(undefined),
-  setActiveSessionId: vi.fn().mockResolvedValue(undefined),
   ...overrides,
 });
 
@@ -142,82 +138,16 @@ describe("JwtAuthGuard", () => {
     expect(request.employee.role).toBe(UserRole.EMPLOYEE);
   });
 
-  describe("OCD-455 single active session enforcement", () => {
-    it("allows the request and attaches sid when the token's sid matches the stored activeSessionId", async () => {
-      verifyMock.mockResolvedValue({
-        claims: { sub: "sub-4", email: "d@e.com", sid: "session-a", realm_access: { roles: [] } },
-      });
-      const employee = { id: 8, employeeId: "EMP8", email: "d@e.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: "session-a" };
-      const employeesService = createEmployeesService({
-        findByKeycloakSub: vi.fn().mockResolvedValue(employee),
-      });
-      const { reflector, context, request } = createContext({ authorization: "Bearer good" }, false);
-      const guard = new JwtAuthGuard(reflector as any, employeesService as any);
-      await expect(guard.canActivate(context)).resolves.toBe(true);
-      expect(request.employee.sid).toBe("session-a");
+  it("does not reject a token because of its sid (no single-session enforcement)", async () => {
+    verifyMock.mockResolvedValue({
+      claims: { sub: "sub-4", email: "d@e.com", sid: "session-a", realm_access: { roles: [] } },
     });
-
-    it("allows the request when the employee has no stored activeSessionId yet", async () => {
-      verifyMock.mockResolvedValue({
-        claims: { sub: "sub-5", email: "e@f.com", sid: "session-b", realm_access: { roles: [] } },
-      });
-      const employee = { id: 9, employeeId: "EMP9", email: "e@f.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: null };
-      const employeesService = createEmployeesService({
-        findByKeycloakSub: vi.fn().mockResolvedValue(employee),
-      });
-      const { reflector, context } = createContext({ authorization: "Bearer good" }, false);
-      const guard = new JwtAuthGuard(reflector as any, employeesService as any);
-      await expect(guard.canActivate(context)).resolves.toBe(true);
-      // The guard only ever checks - it never writes activeSessionId itself
-      // (that's POST /auth/claim-sessions's job), even on first sight.
-      expect(employeesService.setActiveSessionId).not.toHaveBeenCalled();
+    const employee = { id: 8, employeeId: "EMP8", email: "d@e.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: "session-other" };
+    const employeesService = createEmployeesService({
+      findByKeycloakSub: vi.fn().mockResolvedValue(employee),
     });
-
-    it("rejects with SESSION_TERMINATED when the token's sid no longer matches the stored activeSessionId", async () => {
-      verifyMock.mockResolvedValue({
-        claims: { sub: "sub-6", email: "f@g.com", sid: "session-old", realm_access: { roles: [] } },
-      });
-      const employee = { id: 10, employeeId: "EMP10", email: "f@g.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: "session-new" };
-      const employeesService = createEmployeesService({
-        findByKeycloakSub: vi.fn().mockResolvedValue(employee),
-      });
-      const { reflector, context } = createContext({ authorization: "Bearer good" }, false);
-      const guard = new JwtAuthGuard(reflector as any, employeesService as any);
-      const rejection = guard.canActivate(context);
-      await expect(rejection).rejects.toThrow(UnauthorizedException);
-      await rejection.catch((err: any) => {
-        expect(err.getResponse()).toMatchObject({ code: "SESSION_TERMINATED" });
-      });
-    });
-
-    it("never promotes a displaced session back to active just because it made another request", async () => {
-      // Same scenario as above, but confirms the guard doesn't call
-      // setActiveSessionId as a side effect of the rejection - a stale
-      // session's repeated requests must never be able to win control back.
-      verifyMock.mockResolvedValue({
-        claims: { sub: "sub-7", email: "g@h.com", sid: "session-old", realm_access: { roles: [] } },
-      });
-      const employee = { id: 11, employeeId: "EMP11", email: "g@h.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: "session-new" };
-      const employeesService = createEmployeesService({
-        findByKeycloakSub: vi.fn().mockResolvedValue(employee),
-      });
-      const { reflector, context } = createContext({ authorization: "Bearer good" }, false);
-      const guard = new JwtAuthGuard(reflector as any, employeesService as any);
-      await guard.canActivate(context).catch(() => undefined);
-      expect(employeesService.setActiveSessionId).not.toHaveBeenCalled();
-    });
-
-    it("skips the session check for a handler marked @SkipSessionCheck even on a sid mismatch", async () => {
-      verifyMock.mockResolvedValue({
-        claims: { sub: "sub-8", email: "h@i.com", sid: "session-fresh", realm_access: { roles: [] } },
-      });
-      const employee = { id: 12, employeeId: "EMP12", email: "h@i.com", role: UserRole.EMPLOYEE, status: "active", activeSessionId: "session-stale" };
-      const employeesService = createEmployeesService({
-        findByKeycloakSub: vi.fn().mockResolvedValue(employee),
-      });
-      const { reflector, context } = createContext({ authorization: "Bearer good" }, false, true);
-      const guard = new JwtAuthGuard(reflector as any, employeesService as any);
-      await expect(guard.canActivate(context)).resolves.toBe(true);
-    });
+    const { reflector, context } = createContext({ authorization: "Bearer good" }, false);
+    const guard = new JwtAuthGuard(reflector as any, employeesService as any);
+    await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 });

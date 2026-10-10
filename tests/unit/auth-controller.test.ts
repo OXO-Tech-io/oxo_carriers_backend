@@ -5,8 +5,7 @@ import { AuthController } from "../../src/modules/auth/auth.controller";
 
 describe("AuthController", () => {
   const findByIdMock = vi.fn();
-  const setActiveSessionIdMock = vi.fn();
-  const employeesService = { findById: findByIdMock, setActiveSessionId: setActiveSessionIdMock } as any;
+  const employeesService = { findById: findByIdMock } as any;
   const controller = new AuthController(employeesService);
 
   beforeEach(() => {
@@ -25,20 +24,5 @@ describe("AuthController", () => {
     const result = await controller.getMe({ userId: 1, role: UserRole.EMPLOYEE } as any);
     expect(result).toEqual({ success: true, message: "Current user", data: { id: 1, email: "a@b.com" } });
     expect(findByIdMock).toHaveBeenCalledWith(1);
-  });
-
-  describe("claimSession (OCD-455)", () => {
-    it("records the token's sid as the employee's active session", async () => {
-      setActiveSessionIdMock.mockResolvedValue(undefined);
-      const result = await controller.claimSession({ userId: 1, role: UserRole.EMPLOYEE, sid: "session-xyz" } as any);
-      expect(setActiveSessionIdMock).toHaveBeenCalledWith(1, "session-xyz");
-      expect(result).toEqual({ success: true, message: "Session claimed" });
-    });
-
-    it("no-ops without error when the token carries no sid claim", async () => {
-      const result = await controller.claimSession({ userId: 1, role: UserRole.EMPLOYEE } as any);
-      expect(setActiveSessionIdMock).not.toHaveBeenCalled();
-      expect(result).toEqual({ success: true, message: "Session claimed" });
-    });
   });
 });

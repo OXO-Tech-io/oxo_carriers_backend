@@ -75,20 +75,20 @@ describe("AllExceptionsFilter", () => {
     );
   });
 
-  it("preserves a string `code` from an HttpException response body (OCD-455 SESSION_TERMINATED)", () => {
+  it("preserves a string `code` from an HttpException response body", () => {
     const filter = new AllExceptionsFilter();
     const { response, host } = createHost();
 
     filter.catch(
-      new UnauthorizedException({ message: "Session terminated", code: "SESSION_TERMINATED" }),
+      new UnauthorizedException({ message: "Forbidden thing", code: "SOME_CODE" }),
       host,
     );
 
     expect(response.status).toHaveBeenCalledWith(401);
     expect(response.json).toHaveBeenCalledWith({
       success: false,
-      message: "Session terminated",
-      code: "SESSION_TERMINATED",
+      message: "Forbidden thing",
+      code: "SOME_CODE",
     });
   });
 
