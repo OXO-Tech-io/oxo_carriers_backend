@@ -54,14 +54,6 @@ export class EmployeeModel {
       .where(eq(employee.id, userId));
   }
 
-  /** OCD-455: records `sid` as this employee's sole active session. */
-  static async setActiveSessionId(userId: number, sessionId: string): Promise<void> {
-    await db
-      .update(employee)
-      .set({ activeSessionId: sessionId })
-      .where(eq(employee.id, userId));
-  }
-
   static async findOrCreateFromKeycloak(claims: {
     sub: string;
     email: string;

@@ -42,8 +42,8 @@ export class AllExceptionsFilter implements ExceptionFilter {
       const body = exception.getResponse();
       const message =
         typeof body === 'string' ? body : (body as { message?: string | string[] }).message ?? exception.message;
-      // Machine-readable code (e.g. JwtAuthGuard's SESSION_TERMINATED, which
-      // lib/api.ts on the frontend keys off) must survive the reshaping above.
+      // A machine-readable `code` on the exception body must survive the
+      // reshaping above.
       const code = typeof body === 'string' ? undefined : (body as { code?: unknown }).code;
       response.status(status).json({
         success: false,
