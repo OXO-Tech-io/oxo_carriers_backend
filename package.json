@@ -55,7 +55,6 @@
     "db:remove-hr-executive-document-vault-write": "ts-node src/scripts/removeHrExecutiveDocumentVaultWrite.ts",
     "db:remove-hr-manager-document-vault-write": "ts-node src/scripts/removeHrManagerDocumentVaultWrite.ts",
     "db:remove-hr-executive-communications-access": "ts-node src/scripts/removeHrExecutiveCommunicationsAccess.ts",
-    "db:add-employee-active-session-id": "ts-node src/scripts/addEmployeeActiveSessionId.ts",
     "db:backfill-file-blobs-to-gcs": "ts-node src/scripts/backfillFileBlobsToGcs.ts"
   },
   "keywords": [],
