@@ -164,7 +164,7 @@ export class ReportsService {
     const employeeCountResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_employee WHERE role = 'employee'`);
     const totalEmployees = Number((employeeCountResult.rows as any[])[0].count);
 
-    const pendingLeavesResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status = 'pending'`);
+    const pendingLeavesResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status::text IN ('pending', 'hr_manager_approved')`);
     const pendingLeaveRequests = Number((pendingLeavesResult.rows as any[])[0].count);
 
     const monthLeavesResult = await pool.query(

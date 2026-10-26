@@ -95,8 +95,12 @@ export class LeavesController {
     const id = this.parseId(idParam);
     const updated = await this.leavesService.approveLeaveRequest(employee, id, dto);
 
-    this.notifyApproved(updated, dto.approvedBy).catch((emailErr: unknown) => {
-      logger.error({ err: emailErr }, 'Failed to send leave approved email');
+    // OCD: an HR Manager approval is only the first stage - the employee is told the
+    // leave is approved once the Administrator also approves.
+    const awaitingAdmin = updated.status === LeaveStatus.HR_MANAGER_APPROVED;
+    const notify = awaitingAdmin ? this.notifyAwaitingAdmin(updated) : this.notifyApproved(updated, dto.approvedBy);
+    notify.catch((emailErr: unknown) => {
+      logger.error({ err: emailErr }, 'Failed to send leave approval notification');
     });
 
     // Only once the leave is finally confirmed (HR approval) - not on the
@@ -107,7 +111,13 @@ export class LeavesController {
       });
     }
 
-    return { success: true, message: 'Leave request updated', data: updated };
+    return {
+      success: true,
+      message: awaitingAdmin
+        ? 'Approved by the HR Manager. Administrator approval is also required before the leave is confirmed.'
+        : 'Leave request updated',
+      data: updated,
+    };
   }
 
   @Put(':id/rejections')
@@ -157,6 +167,35 @@ export class LeavesController {
       submittedDate: new Date().toLocaleDateString('en-GB'),
       referenceNumber: `LV-${request.id}`,
     });
+  }
+
+  /** First-stage (HR Manager) approval: tell the Administrators it needs them, and the
+   * employee only that it is still pending - not that it is approved. */
+  private async notifyAwaitingAdmin(updated: Awaited<ReturnType<LeavesService['approveLeaveRequest']>>) {
+    const employeeName = updated.user ? `${updated.user.first_name} ${updated.user.last_name}`.trim() : 'An employee';
+    const admins = await EmployeeModel.getAll({ role: [UserRole.SUPER_ADMIN] });
+    await Promise.all(
+      admins
+        .filter((admin) => !!admin.employeeId)
+        .map((admin) =>
+          notificationService.notify(
+            admin.employeeId!,
+            'leave_awaiting_admin',
+            'Leave Request Awaiting Approval',
+            `${employeeName}'s ${updated.leave_type?.name ?? 'leave'} request was approved by the HR Manager and needs your approval.`,
+            { leaveRequestId: updated.id },
+            '/admin/leaves'
+          )
+        )
+    );
+    await notificationService.notify(
+      updated.employee_id,
+      'leave_stage_approved',
+      'Leave Request Update',
+      `Your ${updated.leave_type?.name ?? 'leave'} request was reviewed by the HR Manager and is now awaiting Administrator approval. It is not approved yet.`,
+      { leaveRequestId: updated.id },
+      '/leaves'
+    );
   }
 
   private async notifyApproved(

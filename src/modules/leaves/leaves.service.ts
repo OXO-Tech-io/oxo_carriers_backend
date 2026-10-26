@@ -59,7 +59,7 @@ export class LeavesService {
     // self-approval. Excluded here rather than in the shared LeaveModel
     // query since other callers (e.g. the Approved/Rejected tabs) still
     // want every request, including the approver's own.
-    if (!selfOnly && query.status === 'pending') {
+    if (!selfOnly && (query.status === 'pending' || query.status === 'hr_manager_approved')) {
       return requests.filter((request) => request.employee_id !== employeeId);
     }
 

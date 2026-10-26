@@ -256,6 +256,10 @@ export class LeaveModel {
       updateFields.push('team_leader_approval_date = NOW()');
     }
 
+    if (approvedBy === 'hr' && status === LeaveStatus.HR_MANAGER_APPROVED) {
+      updateFields.push('hr_manager_approval_date = NOW()');
+    }
+
     if (approvedBy === 'hr' && status === LeaveStatus.HR_APPROVED) {
       updateFields.push('hr_approval_date = NOW()');
     }
@@ -382,7 +386,7 @@ export class LeaveModel {
       `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as pending_days
        FROM tbl_leave_requests
        WHERE employee_id = $1
-         AND status IN ('pending', 'team_leader_approved')
+         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved')
          AND EXTRACT(YEAR FROM start_date) = $2
        GROUP BY leave_type_id`,
       [employeeId, currentYear]
@@ -469,7 +473,7 @@ export class LeaveModel {
     const result = await pool.query(
       `SELECT DISTINCT employee_id FROM tbl_leave_requests
        WHERE employee_id = ANY($1)
-         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved', 'hr_approved')
          AND start_date <= $3 AND end_date >= $2`,
       [employeeIds, startDate, endDate]
     );
@@ -488,7 +492,7 @@ export class LeaveModel {
     const result = await pool.query(
       `SELECT is_half_day, half_day_period FROM tbl_leave_requests
        WHERE employee_id = $1
-         AND status IN ('pending', 'team_leader_approved', 'hr_approved')
+         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved', 'hr_approved')
          AND start_date <= $3 AND end_date >= $2`,
       [employeeId, startDate, endDate]
     );

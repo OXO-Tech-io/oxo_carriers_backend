@@ -75,6 +75,8 @@ export interface PaymentVoucher {
 export enum LeaveStatus {
   PENDING = "pending",
   TEAM_LEADER_APPROVED = "team_leader_approved",
+  // Approved by the HR Manager; the Administrator must still approve before the leave is confirmed.
+  HR_MANAGER_APPROVED = "hr_manager_approved",
   HR_APPROVED = "hr_approved",
   REJECTED = "rejected",
   CANCELLED = "cancelled",
