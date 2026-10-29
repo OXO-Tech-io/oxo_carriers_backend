@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import pool from '../../config/database';
 import { EmployeeModel } from '../../employees/Employee';
 import { decryptSalary } from '../../utils/encryption';
+import { PENDING_APPROVAL_STATUSES } from '../../common/constants/leaveStatuses';
 
 @Injectable()
 export class ReportsService {
@@ -164,7 +165,10 @@ export class ReportsService {
     const employeeCountResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_employee WHERE role = 'employee'`);
     const totalEmployees = Number((employeeCountResult.rows as any[])[0].count);
 
-    const pendingLeavesResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status::text IN ('pending', 'hr_manager_approved')`);
+    const pendingLeavesResult = await pool.query(
+      `SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status::text = ANY($1::text[])`,
+      [PENDING_APPROVAL_STATUSES],
+    );
     const pendingLeaveRequests = Number((pendingLeavesResult.rows as any[])[0].count);
 
     const monthLeavesResult = await pool.query(

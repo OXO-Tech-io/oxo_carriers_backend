@@ -13,8 +13,11 @@ const STAGE_ROLE: Record<ApprovalStage, UserRole> = {
   admin: UserRole.SUPER_ADMIN,
 };
 
+/** Submitter roles whose requests skip the HR Manager stage and go straight to the Administrator. */
+const ADMIN_ONLY_CHAIN_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.SUPER_ADMIN];
+
 export function getApprovalChain(submitterRole: UserRole): ApprovalStage[] {
-  if (submitterRole === UserRole.HR_MANAGER || submitterRole === UserRole.SUPER_ADMIN) return ['admin'];
+  if (ADMIN_ONLY_CHAIN_ROLES.includes(submitterRole)) return ['admin'];
   return ['hr_manager', 'admin'];
 }
 

@@ -1,54 +1,45 @@
-// OCD-598: per-bank account number rules. Mirrors
-// oxo_carriers_frontend/lib/validation/bankAccountRules.ts - keep both in sync.
+// OCD-598: per-bank account number rules. The rules and the fallback digit
+// range live in tbl_bank_account_rules / tbl_bank_account_settings and are
+// loaded into memory by BankAccountRulesService (on startup, then on a refresh
+// interval) - validation runs inside synchronous Zod refinements, so it can't
+// query the database itself. The frontend fetches the same data from
+// GET /bank-account-rules.
 //
 // The bank is captured as free text, so a rule is resolved by matching the
 // entered name against known aliases. Unrecognised banks fall back to the
-// generic numeric 6-20 digit rule. No supported bank uses alphanumeric account
+// generic numeric digit range. No supported bank uses alphanumeric account
 // numbers, so every rule is digits-only.
 
 export interface BankAccountRule {
   bank: string;
   aliases: string[];
   lengths: number[];
-  /** Optional prefix constraint per length (e.g. Standard Chartered). */
-  prefixes?: Record<number, string[]>;
+  /** Optional prefix constraint keyed by length (e.g. Standard Chartered: { "11": ["18", "01"] }). */
+  prefixes?: Record<string, string[]> | null;
 }
 
-export const FALLBACK_ACCOUNT_NUMBER_MIN = 6;
-export const FALLBACK_ACCOUNT_NUMBER_MAX = 20;
-
-export const BANK_ACCOUNT_RULES: BankAccountRule[] = [
-  { bank: 'Bank of Ceylon', aliases: ['bankofceylon', 'boc'], lengths: [10] },
-  { bank: 'Commercial Bank of Ceylon', aliases: ['commercialbankofceylon', 'commercialbank', 'combank'], lengths: [10] },
-  { bank: 'Citibank', aliases: ['citibank', 'citi'], lengths: [10] },
-  { bank: 'Deutsche Bank', aliases: ['deutschebank'], lengths: [10] },
-  {
-    bank: 'Standard Chartered Bank',
-    aliases: ['standardchartered', 'standardcharteredbank', 'scb'],
-    lengths: [11, 12],
-    prefixes: { 11: ['18', '01'], 12: ['88'] },
-  },
-  { bank: 'Cargills Bank', aliases: ['cargillsbank'], lengths: [12] },
-  { bank: 'DFCC Bank', aliases: ['dfccbank', 'dfcc'], lengths: [12] },
-  { bank: 'Hatton National Bank', aliases: ['hattonnationalbank', 'hnb'], lengths: [12] },
-  { bank: 'HSBC', aliases: ['hsbc'], lengths: [12] },
-  { bank: 'National Development Bank', aliases: ['nationaldevelopmentbank', 'ndbbank', 'ndb'], lengths: [12] },
-  { bank: 'National Savings Bank', aliases: ['nationalsavingsbank', 'nsb'], lengths: [12] },
-  { bank: 'Nations Trust Bank', aliases: ['nationstrustbank', 'ntb'], lengths: [12] },
-  { bank: 'Pan Asia Bank', aliases: ['panasiabank', 'pabc'], lengths: [12] },
-  { bank: 'Regional Development Bank', aliases: ['regionaldevelopmentbank', 'rdb'], lengths: [12] },
-  { bank: 'Sampath Bank', aliases: ['sampathbank'], lengths: [12] },
-  { bank: 'Amana Bank', aliases: ['amanabank'], lengths: [13] },
-  { bank: 'Public Bank', aliases: ['publicbank'], lengths: [13] },
-  { bank: 'Habib Bank', aliases: ['habibbank'], lengths: [13] },
-  { bank: 'State Bank of India', aliases: ['statebankofindia', 'sbi'], lengths: [14] },
-  { bank: "People's Bank", aliases: ['peoplesbank'], lengths: [15] },
-  { bank: 'Seylan Bank', aliases: ['seylanbank'], lengths: [15] },
-  { bank: 'Union Bank', aliases: ['unionbank'], lengths: [16] },
-  { bank: 'CDB', aliases: ['citizensdevelopmentbusiness', 'cdbbank', 'cdb'], lengths: [18] },
-];
+export interface BankAccountRulesConfig {
+  rules: BankAccountRule[];
+  fallbackAccountNumberMin: number;
+  fallbackAccountNumberMax: number;
+}
 
 const normalise = (value: string): string => value.toLowerCase().replace(/[^a-z0-9]/g, '');
+
+let config: BankAccountRulesConfig | null = null;
+
+/** Replaces the in-memory rules. Aliases are normalised so table edits like "BOC" still match. */
+export function setBankAccountRulesConfig(next: BankAccountRulesConfig): void {
+  config = {
+    ...next,
+    rules: next.rules.map((rule) => ({ ...rule, aliases: rule.aliases.map(normalise).filter(Boolean) })),
+  };
+}
+
+export function getBankAccountRulesConfig(): BankAccountRulesConfig {
+  if (!config) throw new Error('Bank account rules have not been loaded from the database yet');
+  return config;
+}
 
 /**
  * Resolves the rule for a free-text bank name. Short abbreviations (<= 5
@@ -60,7 +51,7 @@ export function getBankAccountRule(bankName: string | null | undefined): BankAcc
   const name = normalise(bankName ?? '');
   if (!name) return null;
   let best: { rule: BankAccountRule; length: number } | null = null;
-  for (const rule of BANK_ACCOUNT_RULES) {
+  for (const rule of getBankAccountRulesConfig().rules) {
     for (const alias of rule.aliases) {
       const matches = alias.length <= 5 ? name === alias : name.includes(alias);
       if (matches && (!best || alias.length > best.length)) best = { rule, length: alias.length };
@@ -71,7 +62,10 @@ export function getBankAccountRule(bankName: string | null | undefined): BankAcc
 
 export function describeBankAccountRule(bankName: string | null | undefined): string {
   const rule = getBankAccountRule(bankName);
-  if (!rule) return `Numeric digits only (${FALLBACK_ACCOUNT_NUMBER_MIN}-${FALLBACK_ACCOUNT_NUMBER_MAX} digits)`;
+  if (!rule) {
+    const { fallbackAccountNumberMin: min, fallbackAccountNumberMax: max } = getBankAccountRulesConfig();
+    return `Numeric digits only (${min}-${max} digits)`;
+  }
   const lengths = rule.lengths.join(' or ');
   return `${rule.bank}: ${lengths} digits, numeric only`;
 }
@@ -87,15 +81,16 @@ export function validateAccountNumberForBank(
 
   const rule = getBankAccountRule(bankName);
   if (!rule) {
-    return value.length >= FALLBACK_ACCOUNT_NUMBER_MIN && value.length <= FALLBACK_ACCOUNT_NUMBER_MAX
+    const { fallbackAccountNumberMin: min, fallbackAccountNumberMax: max } = getBankAccountRulesConfig();
+    return value.length >= min && value.length <= max
       ? true
-      : `Bank account number must contain ${FALLBACK_ACCOUNT_NUMBER_MIN}-${FALLBACK_ACCOUNT_NUMBER_MAX} numeric digits only.`;
+      : `Bank account number must contain ${min}-${max} numeric digits only.`;
   }
 
   if (!rule.lengths.includes(value.length)) {
     return `${rule.bank} account numbers must be ${rule.lengths.join(' or ')} digits long.`;
   }
-  const allowed = rule.prefixes?.[value.length];
+  const allowed = rule.prefixes?.[String(value.length)];
   if (allowed && !allowed.some((p) => value.startsWith(p))) {
     return `${rule.bank} ${value.length}-digit account numbers must start with ${allowed.join(' or ')}.`;
   }
