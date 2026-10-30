@@ -3,6 +3,7 @@ import { LeaveRequest, LeaveStatus, LeaveBalance, LeaveType } from '../../types'
 import { calculateProRatedAnnualLeave, calculateAccruedCasualLeave, calculateCasualLeaveEntitlement } from '../../utils/leaveCalculation';
 import { EmployeeModel } from '../../employees/Employee';
 import { isAnnualLeaveType, isCasualLeaveType } from '../../common/constants/leaveTypes';
+import { ACTIVE_LEAVE_STATUSES, NOT_YET_APPROVED_STATUSES } from '../../common/constants/leaveStatuses';
 
 
 /** first_name/last_name/email are encrypted on tbl_employee - the join can
@@ -386,10 +387,10 @@ export class LeaveModel {
       `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as pending_days
        FROM tbl_leave_requests
        WHERE employee_id = $1
-         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved')
+         AND status::text = ANY($3::text[])
          AND EXTRACT(YEAR FROM start_date) = $2
        GROUP BY leave_type_id`,
-      [employeeId, currentYear]
+      [employeeId, currentYear, NOT_YET_APPROVED_STATUSES]
     );
     const pendingByType = new Map<number, number>();
     for (const row of pendingRes.rows as any[]) {
@@ -403,11 +404,11 @@ export class LeaveModel {
       `SELECT leave_type_id, COALESCE(SUM(total_days), 0) as used_this_month
        FROM tbl_leave_requests
        WHERE employee_id = $1
-         AND status = 'hr_approved'
+         AND status = $2
          AND EXTRACT(YEAR FROM start_date) = EXTRACT(YEAR FROM CURRENT_DATE)
          AND EXTRACT(MONTH FROM start_date) = EXTRACT(MONTH FROM CURRENT_DATE)
        GROUP BY leave_type_id`,
-      [employeeId]
+      [employeeId, LeaveStatus.HR_APPROVED]
     );
     const usedThisMonthByType = new Map<number, number>();
     for (const row of monthRes.rows as any[]) {
@@ -473,9 +474,9 @@ export class LeaveModel {
     const result = await pool.query(
       `SELECT DISTINCT employee_id FROM tbl_leave_requests
        WHERE employee_id = ANY($1)
-         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved', 'hr_approved')
+         AND status::text = ANY($4::text[])
          AND start_date <= $3 AND end_date >= $2`,
-      [employeeIds, startDate, endDate]
+      [employeeIds, startDate, endDate, ACTIVE_LEAVE_STATUSES]
     );
     return new Set((result.rows as Array<{ employee_id: string }>).map((r) => r.employee_id));
   }
@@ -492,9 +493,9 @@ export class LeaveModel {
     const result = await pool.query(
       `SELECT is_half_day, half_day_period FROM tbl_leave_requests
        WHERE employee_id = $1
-         AND status::text IN ('pending', 'team_leader_approved', 'hr_manager_approved', 'hr_approved')
+         AND status::text = ANY($4::text[])
          AND start_date <= $3 AND end_date >= $2`,
-      [employeeId, startDate, endDate]
+      [employeeId, startDate, endDate, ACTIVE_LEAVE_STATUSES]
     );
     return (result.rows as any[]).map((r) => ({
       is_half_day: r.is_half_day === true || r.is_half_day === 1,

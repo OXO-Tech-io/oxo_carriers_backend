@@ -112,8 +112,8 @@ export class MedicalInsuranceModel {
     const result = await pool.query(
       `SELECT COALESCE(SUM(amount), 0) as total
        FROM tbl_medical_insurance_claims
-       WHERE employee_id = $1 AND quarter = $2 AND type = 'OPD' AND status IN ('pending', 'approved')`,
-      [employeeId, quarter]
+       WHERE employee_id = $1 AND quarter = $2 AND type = $3 AND status::text = ANY($4::text[])`,
+      [employeeId, quarter, MedicalClaimType.OPD, [MedicalClaimStatus.PENDING, MedicalClaimStatus.APPROVED]]
     );
     const row = (result.rows as any[])[0];
     return parseFloat(row?.total || 0);
