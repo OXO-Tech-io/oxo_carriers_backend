@@ -36,6 +36,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { DocumentVaultModule } from './modules/document-vault/document-vault.module';
 import { ArchiveModule } from './modules/archive/archive.module';
 import { FilesModule } from './common/files/files.module';
+import { AgentActivityModule } from './modules/agent-activity/agent-activity.module';
 
 @Module({
   imports: [
@@ -76,6 +77,7 @@ import { FilesModule } from './common/files/files.module';
     DocumentVaultModule,
     ArchiveModule,
     FilesModule,
+    AgentActivityModule,
   ],
 })
 export class AppModule {}
