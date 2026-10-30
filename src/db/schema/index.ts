@@ -19,6 +19,7 @@ export * from '../../modules/employee-welfare-info/employeeWelfareInfo.schema';
 export * from '../../modules/profile-change-requests/profileChangeRequests.schema';
 export * from '../../modules/notifications/notifications.schema';
 export * from '../../common/schema/attachments.schema';
+export * from '../../common/schema/bankAccountRules.schema';
 export * from '../../modules/employee-notes/employeeNotes.schema';
 export * from '../../modules/communications/communications.schema';
 export * from '../../modules/events/events.schema';

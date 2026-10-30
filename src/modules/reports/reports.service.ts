@@ -3,6 +3,8 @@ import ExcelJS from 'exceljs';
 import pool from '../../config/database';
 import { EmployeeModel } from '../../employees/Employee';
 import { decryptSalary } from '../../utils/encryption';
+import { PENDING_APPROVAL_STATUSES } from '../../common/constants/leaveStatuses';
+import { SalaryStatus, UserRole } from '../../types';
 
 @Injectable()
 export class ReportsService {
@@ -161,10 +163,15 @@ export class ReportsService {
     const currentYear = new Date().getFullYear();
     const currentMonth = new Date().getMonth() + 1;
 
-    const employeeCountResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_employee WHERE role = 'employee'`);
+    const employeeCountResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_employee WHERE role = $1`, [
+      UserRole.EMPLOYEE,
+    ]);
     const totalEmployees = Number((employeeCountResult.rows as any[])[0].count);
 
-    const pendingLeavesResult = await pool.query(`SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status = 'pending'`);
+    const pendingLeavesResult = await pool.query(
+      `SELECT COUNT(*) as count FROM tbl_leave_requests WHERE status::text = ANY($1::text[])`,
+      [PENDING_APPROVAL_STATUSES],
+    );
     const pendingLeaveRequests = Number((pendingLeavesResult.rows as any[])[0].count);
 
     const monthLeavesResult = await pool.query(
@@ -179,8 +186,8 @@ export class ReportsService {
     const monthSalariesResult = await pool.query(
       `SELECT net_salary
        FROM tbl_monthly_salaries
-       WHERE EXTRACT(MONTH FROM month_year) = $1 AND EXTRACT(YEAR FROM month_year) = $2 AND status = 'paid'`,
-      [currentMonth, currentYear],
+       WHERE EXTRACT(MONTH FROM month_year) = $1 AND EXTRACT(YEAR FROM month_year) = $2 AND status = $3`,
+      [currentMonth, currentYear, SalaryStatus.PAID],
     );
     const paidSalaryRows = monthSalariesResult.rows as any[];
     const salariesPaidThisMonth = paidSalaryRows.length;
