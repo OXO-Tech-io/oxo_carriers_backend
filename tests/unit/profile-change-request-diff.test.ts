@@ -23,7 +23,7 @@ describe("profileChangeRequest.validator", () => {
       field: "bank_account",
       operation: "update",
       before: { bankName: "Old Bank", accountHolderName: "A", accountNumber: "1", bankBranch: "B" },
-      after: { bankName: "New Bank", accountHolderName: "A", accountNumber: "2", bankBranch: "C" },
+      after: { bankName: "New Bank", accountHolderName: "A", accountNumber: "20000002", bankBranch: "C" },
     });
     expect(result.success).toBe(true);
   });

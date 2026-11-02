@@ -11,6 +11,7 @@ import { RejectLeaveRequestDto } from './dto/reject-leave-request.dto';
 import { CoverageCandidatesQueryDto } from './dto/coverage-candidates-query.dto';
 import { persistDurableUpload } from '../../common/upload/persist-durable-upload';
 import { FILE_CATEGORIES } from '../../common/constants/fileCategories';
+import { PENDING_APPROVAL_STATUSES } from '../../common/constants/leaveStatuses';
 
 const SELF_ONLY_ROLES: UserRole[] = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 
@@ -59,7 +60,7 @@ export class LeavesService {
     // self-approval. Excluded here rather than in the shared LeaveModel
     // query since other callers (e.g. the Approved/Rejected tabs) still
     // want every request, including the approver's own.
-    if (!selfOnly && query.status === 'pending') {
+    if (!selfOnly && query.status && PENDING_APPROVAL_STATUSES.includes(query.status)) {
       return requests.filter((request) => request.employee_id !== employeeId);
     }
 

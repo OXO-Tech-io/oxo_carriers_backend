@@ -19,6 +19,7 @@ import {
   replaceUserPermissionsWithRoleDefaults,
 } from '../permissions/rolePermissions.model';
 import { ArchiveService } from '../archive/archive.service';
+import { validateBankDetails } from '../../utils/bankAccountRules';
 
 const SELF_ONLY_ROLES = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 const VALID_ROLES: string[] = Object.values(UserRole);
@@ -169,6 +170,17 @@ export class UsersService {
         throw new ConflictException('An employee profile with this NIC number already exists.');
       }
     }
+    // OCD-598..602: format rules for every bank detail field (numeric per-bank
+    // account number, letters-only names, branch code, SWIFT/BIC).
+    const bankIssues = validateBankDetails({
+      bankName: dto.bank_name,
+      accountHolderName: dto.account_holder_name,
+      accountNumber: dto.account_number,
+      bankBranch: dto.bank_branch,
+      bankBranchCode: dto.bank_branch_code,
+      swiftCode: dto.swift_code,
+    });
+    if (bankIssues.length > 0) throw new BadRequestException(bankIssues[0].message);
     if (dto.account_number) {
       const existingAccount = await EmployeeModel.findByAccountNumber(dto.account_number);
       if (existingAccount) {
