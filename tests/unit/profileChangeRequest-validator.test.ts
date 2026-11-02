@@ -223,7 +223,7 @@ describe("profileChangeItemSchema — user_field", () => {
     const bank = {
       bankName: "People's Bank",
       accountHolderName: "Jane",
-      accountNumber: "00112233",
+      accountNumber: "001122334455667",
       bankBranch: "Kandy",
     };
     const result = profileChangeItemSchema.safeParse({
@@ -231,7 +231,7 @@ describe("profileChangeItemSchema — user_field", () => {
       field: "bank_account",
       operation: "update",
       before: bank,
-      after: { ...bank, accountNumber: "99887766" },
+      after: { ...bank, accountNumber: "998877665544332" },
     });
     expect(result.success).toBe(true);
   });
@@ -240,7 +240,7 @@ describe("profileChangeItemSchema — user_field", () => {
     const bank = {
       bankName: "People's Bank",
       accountHolderName: "Jane",
-      accountNumber: "00112233",
+      accountNumber: "001122334455667",
       bankBranch: "Kandy",
     };
     const result = profileChangeItemSchema.safeParse({

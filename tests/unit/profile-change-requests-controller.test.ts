@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { BadRequestException } from "@nestjs/common";
+import { BadRequestException, ForbiddenException } from "@nestjs/common";
 import { UserRole } from "../../src/types";
 
 vi.mock("../../src/modules/profile-change-requests/profileChangeRequest.service", () => ({
@@ -78,9 +78,10 @@ describe("ProfileChangeRequestsController", () => {
       await expect(controller.submit({ changes: [] }, employee)).rejects.toThrow();
     });
 
-    it("submits the request and notifies HR in the background", async () => {
-      pcrs.submitChangeRequest.mockResolvedValue({ id: 10 });
-      em.findById.mockResolvedValue({ firstName: "Jane", lastName: "Doe" });
+    it("submits the request and notifies the first-stage approvers in the background", async () => {
+      const created = { id: 10, employeeId: "EMP1", approvalStage: "hr_manager" };
+      pcrs.submitChangeRequest.mockResolvedValue(created);
+      em.findByEmployeeId.mockResolvedValue({ firstName: "Jane", lastName: "Doe" });
       em.getAll.mockResolvedValue([{ email: "hr1@x.com" }, { email: "hr2@x.com" }]);
       emailMocks.submitted.mockResolvedValue(undefined);
 
@@ -90,21 +91,53 @@ describe("ProfileChangeRequestsController", () => {
         "EMP1",
         expect.objectContaining({ changes: expect.any(Array) }),
         [],
+        UserRole.EMPLOYEE,
       );
-      expect(result).toEqual({ success: true, message: "Profile change request submitted", data: { id: 10 } });
+      expect(result).toEqual({ success: true, message: "Profile change request submitted", data: created });
 
       await flush();
       expect(emailMocks.submitted).toHaveBeenCalledTimes(2);
-      expect(em.getAll).toHaveBeenCalledWith({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
+      expect(em.getAll).toHaveBeenCalledWith({ role: [UserRole.HR_MANAGER] });
     });
 
-    it("skips notification when the submitting employee can't be resolved", async () => {
-      pcrs.submitChangeRequest.mockResolvedValue({ id: 11 });
-      em.findById.mockResolvedValue(null);
+    it("emails the Administrator when the request starts at the admin stage", async () => {
+      pcrs.submitChangeRequest.mockResolvedValue({ id: 12, employeeId: "EMP9", approvalStage: "admin" });
+      em.findByEmployeeId.mockResolvedValue({ firstName: "Jane", lastName: "Doe" });
+      em.getAll.mockResolvedValue([{ email: "admin@x.com" }]);
+      emailMocks.submitted.mockResolvedValue(undefined);
+      await controller.submit({ ...validChanges, targetEmployeeId: "EMP9" }, hr);
+      await flush();
+      expect(em.getAll).toHaveBeenCalledWith({ role: [UserRole.SUPER_ADMIN] });
+    });
+
+    it("skips notification when the affected employee can't be resolved", async () => {
+      pcrs.submitChangeRequest.mockResolvedValue({ id: 11, employeeId: "EMP1", approvalStage: "hr_manager" });
+      em.findByEmployeeId.mockResolvedValue(null);
       em.getAll.mockResolvedValue([{ email: "hr1@x.com" }]);
       await controller.submit(validChanges, employee);
       await flush();
       expect(emailMocks.submitted).not.toHaveBeenCalled();
+    });
+
+    it("lets HR submit on behalf of another employee (OCD-603/604)", async () => {
+      pcrs.submitChangeRequest.mockResolvedValue({ id: 13, employeeId: "EMP9", approvalStage: "admin" });
+      em.findByEmployeeId.mockResolvedValue(null);
+      const exec = { userId: 3, employeeId: "HX1", role: UserRole.HR_EXECUTIVE } as any;
+      await controller.submit({ ...validChanges, targetEmployeeId: "EMP9" }, exec);
+      expect(pcrs.submitChangeRequest).toHaveBeenCalledWith(
+        3,
+        "EMP9",
+        expect.anything(),
+        [],
+        UserRole.HR_EXECUTIVE,
+      );
+    });
+
+    it("forbids a regular employee from submitting for someone else", async () => {
+      await expect(controller.submit({ ...validChanges, targetEmployeeId: "EMP9" }, employee)).rejects.toThrow(
+        ForbiddenException,
+      );
+      expect(pcrs.submitChangeRequest).not.toHaveBeenCalled();
     });
   });
 
@@ -112,14 +145,14 @@ describe("ProfileChangeRequestsController", () => {
     it("list parses the query and delegates", async () => {
       pcrs.listRequests.mockResolvedValue([{ id: 1 }]);
       const result = await controller.list({}, employee);
-      expect(pcrs.listRequests).toHaveBeenCalledWith("EMP1", UserRole.EMPLOYEE, {});
+      expect(pcrs.listRequests).toHaveBeenCalledWith("EMP1", UserRole.EMPLOYEE, {}, 1);
       expect(result.data).toEqual([{ id: 1 }]);
     });
 
     it("getById parses the id param and delegates", async () => {
       pcrs.getRequestById.mockResolvedValue({ id: 5 });
       const result = await controller.getById({ id: "5" }, employee);
-      expect(pcrs.getRequestById).toHaveBeenCalledWith(5, "EMP1", UserRole.EMPLOYEE);
+      expect(pcrs.getRequestById).toHaveBeenCalledWith(5, "EMP1", UserRole.EMPLOYEE, 1);
       expect(result.data).toEqual({ id: 5 });
     });
 
@@ -143,6 +176,18 @@ describe("ProfileChangeRequestsController", () => {
         "jane@x.com",
         expect.objectContaining({ employeeName: "Jane Doe", referenceNumber: "PCR-1" }),
       );
+    });
+
+    it("tells the next approver, not the employee, after an intermediate approval", async () => {
+      pcrs.decide.mockResolvedValue({ id: 4, employeeId: "EMP1", changes: [], status: "pending_approval", approvalStage: "admin" });
+      em.findByEmployeeId.mockResolvedValue({ firstName: "Jane", lastName: "Doe" });
+      em.getAll.mockResolvedValue([{ email: "admin@x.com" }]);
+      emailMocks.submitted.mockResolvedValue(undefined);
+
+      await controller.decision({ id: "4" }, { decision: "approved" }, hr);
+      await flush();
+      expect(emailMocks.submitted).toHaveBeenCalledWith("admin@x.com", expect.objectContaining({ referenceNumber: "PCR-4" }));
+      expect(emailMocks.approved).not.toHaveBeenCalled();
     });
 
     it("sends a rejection email with reviewer comments", async () => {

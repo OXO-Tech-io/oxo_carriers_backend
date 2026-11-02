@@ -214,13 +214,33 @@ export const leaveService = {
       ) {
         throw new ForbiddenError('Only an Administrator or HR Manager can approve');
       }
-      if (
-        request.status !== LeaveStatus.PENDING &&
-        request.status !== LeaveStatus.TEAM_LEADER_APPROVED
-      ) {
-        throw new BadRequestError('Invalid request status for HR approval');
+      const awaitingHrManager =
+        request.status === LeaveStatus.PENDING || request.status === LeaveStatus.TEAM_LEADER_APPROVED;
+      if (actorRole === UserRole.SUPER_ADMIN) {
+        // The Administrator gives the final approval - also directly, e.g. for an
+        // HR Manager's own leave, which has no HR Manager stage.
+        if (!awaitingHrManager && request.status !== LeaveStatus.HR_MANAGER_APPROVED) {
+          throw new BadRequestError('Invalid request status for Administrator approval');
+        }
+        newStatus = LeaveStatus.HR_APPROVED;
+      } else {
+        // HR Manager: first stage only. The employee is not approved until the
+        // Administrator also approves.
+        if (request.status === LeaveStatus.HR_MANAGER_APPROVED) {
+          throw new BadRequestError('Already approved by the HR Manager - awaiting Administrator approval');
+        }
+        if (!awaitingHrManager) {
+          throw new BadRequestError('Invalid request status for HR Manager approval');
+        }
+        const requesterRole = await pool.query('SELECT role FROM tbl_employee WHERE employee_id = $1', [
+          request.employee_id,
+        ]);
+        const role = (requesterRole.rows as Array<{ role: string }>)[0]?.role;
+        if (role === UserRole.HR_MANAGER || role === UserRole.SUPER_ADMIN) {
+          throw new ForbiddenError('Only an Administrator can approve this leave request');
+        }
+        newStatus = LeaveStatus.HR_MANAGER_APPROVED;
       }
-      newStatus = LeaveStatus.HR_APPROVED;
     }
 
     const updated = await LeaveModel.updateStatus(

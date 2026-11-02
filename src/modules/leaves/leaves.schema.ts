@@ -17,6 +17,7 @@ import { employee } from '../../employees/employee.schema';
 export const leaveStatusEnum = pgEnum('leave_status', [
     'pending',
     'team_leader_approved',
+    'hr_manager_approved',
     'hr_approved',
     'rejected',
     'cancelled',
@@ -66,6 +67,7 @@ export const leaveRequests = pgTable('tbl_leave_requests', {
     reason: text('reason'),
     status: leaveStatusEnum('status').default('pending'),
     teamLeaderApprovalDate: timestamp('team_leader_approval_date'),
+    hrManagerApprovalDate: timestamp('hr_manager_approval_date'),
     hrApprovalDate: timestamp('hr_approval_date'),
     rejectionReason: text('rejection_reason'),
     attachmentUrl: varchar('attachment_url', { length: 500 }),

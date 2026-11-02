@@ -324,16 +324,50 @@ describe("leaveService (core)", () => {
         ).rejects.toMatchObject({ statusCode: 400 });
       });
 
-      it("approves from pending or team_leader_approved", async () => {
+      it("HR Manager approval is only the first stage (Administrator must also approve)", async () => {
         lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.TEAM_LEADER_APPROVED });
-        lm.updateStatus.mockResolvedValue({ id: 1, status: LeaveStatus.HR_APPROVED });
+        poolQueryMock.mockResolvedValue({ rows: [{ role: UserRole.EMPLOYEE }] });
+        lm.updateStatus.mockResolvedValue({ id: 1, status: LeaveStatus.HR_MANAGER_APPROVED });
         const result = await leaveService.approveLeaveRequest(1, 9, UserRole.HR_MANAGER, "hr");
+        expect(lm.updateStatus).toHaveBeenCalledWith(1, LeaveStatus.HR_MANAGER_APPROVED, "hr", undefined);
+        expect(result.status).toBe(LeaveStatus.HR_MANAGER_APPROVED);
+      });
+
+      it("blocks the HR Manager from approving a second time", async () => {
+        lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.HR_MANAGER_APPROVED });
+        await expect(
+          leaveService.approveLeaveRequest(1, 9, UserRole.HR_MANAGER, "hr"),
+        ).rejects.toMatchObject({ statusCode: 400 });
+        expect(lm.updateStatus).not.toHaveBeenCalled();
+      });
+
+      it("forbids the HR Manager from approving an HR Manager's or Administrator's own leave", async () => {
+        lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.PENDING });
+        poolQueryMock.mockResolvedValue({ rows: [{ role: UserRole.HR_MANAGER }] });
+        await expect(
+          leaveService.approveLeaveRequest(1, 9, UserRole.HR_MANAGER, "hr"),
+        ).rejects.toMatchObject({ statusCode: 403 });
+      });
+
+      it("the Administrator gives the final approval after the HR Manager", async () => {
+        lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.HR_MANAGER_APPROVED });
+        lm.updateStatus.mockResolvedValue({ id: 1, status: LeaveStatus.HR_APPROVED });
+        const result = await leaveService.approveLeaveRequest(1, 3, UserRole.SUPER_ADMIN, "hr");
+        expect(lm.updateStatus).toHaveBeenCalledWith(1, LeaveStatus.HR_APPROVED, "hr", undefined);
+        expect(result.status).toBe(LeaveStatus.HR_APPROVED);
+      });
+
+      it("the Administrator can also approve directly from pending", async () => {
+        lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.PENDING });
+        lm.updateStatus.mockResolvedValue({ id: 1, status: LeaveStatus.HR_APPROVED });
+        const result = await leaveService.approveLeaveRequest(1, 3, UserRole.SUPER_ADMIN, "hr");
         expect(result.status).toBe(LeaveStatus.HR_APPROVED);
       });
     });
 
     it("throws a 404 AppError when the update returns nothing", async () => {
       lm.findById.mockResolvedValue({ id: 1, employee_id: "EMP1", status: LeaveStatus.PENDING });
+      poolQueryMock.mockResolvedValue({ rows: [{ role: UserRole.EMPLOYEE }] });
       lm.updateStatus.mockResolvedValue(null);
       await expect(
         leaveService.approveLeaveRequest(1, 9, UserRole.HR_MANAGER, "hr"),
