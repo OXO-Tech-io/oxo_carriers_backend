@@ -1,5 +1,6 @@
 import { pgTable, serial, varchar, timestamp, integer, bigint } from 'drizzle-orm/pg-core';
 import { employee } from '../../employees/employee.schema';
+import { bytea } from '../../employees/employeePii.schema';
 
 // Mirrors drizzle/0031 + 0032 (agent activity logs). The agent's mediaTitle is
 // intentionally not stored.
@@ -22,3 +23,31 @@ export const agentActivityLogs = pgTable('tbl_agent_activity_logs', {
 
 export type AgentActivityLog = typeof agentActivityLogs.$inferSelect;
 export type NewAgentActivityLog = typeof agentActivityLogs.$inferInsert;
+
+// Mirrors drizzle/0033. Image bytes for the `screenshot` rows above.
+export const agentScreenshots = pgTable('tbl_agent_screenshots', {
+    id: serial('id').primaryKey(),
+    activityLogId: integer('activity_log_id')
+        .notNull()
+        .references(() => agentActivityLogs.id, { onDelete: 'cascade' }),
+    mimeType: varchar('mime_type', { length: 50 }).notNull(),
+    sizeBytes: integer('size_bytes').notNull(),
+    sha256: varchar('sha256', { length: 64 }),
+    // Null once the image is in GCS (drizzle/0034) - then objectKey points at it.
+    content: bytea('content'),
+    objectKey: varchar('object_key', { length: 500 }),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+// Mirrors drizzle/0035. Hashed device credentials for the agent's direct API calls.
+export const agentDeviceTokens = pgTable('tbl_agent_device_tokens', {
+    id: serial('id').primaryKey(),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    deviceId: varchar('device_id', { length: 100 }).notNull(),
+    tokenHash: varchar('token_hash', { length: 64 }).notNull(),
+    createdAt: timestamp('created_at').defaultNow(),
+    lastUsedAt: timestamp('last_used_at'),
+    revokedAt: timestamp('revoked_at'),
+});

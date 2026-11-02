@@ -5,7 +5,7 @@ import { logger } from '../lib/logger';
 
 // Idempotent runner for the agent-activity migrations, in order - same pattern as
 // addAttendanceTracking.ts (each .sql file is itself idempotent).
-const MIGRATIONS = ['0031_add_agent_activity_logs.sql', '0032_add_agent_activity_window_title.sql'];
+const MIGRATIONS = ['0031_add_agent_activity_logs.sql', '0032_add_agent_activity_window_title.sql', '0033_add_agent_screenshots.sql', '0034_agent_screenshots_gcs.sql', '0035_agent_device_tokens.sql'];
 
 async function addAgentActivityLogs() {
   try {
