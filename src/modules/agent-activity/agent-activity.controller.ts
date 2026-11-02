@@ -30,7 +30,7 @@ export class AgentActivityController {
     return { success: true, message: 'Agent activity logs fetched', data: await this.agentActivityService.list(query) };
   }
 
-  @Get('summary')
+  @Get('summaries')
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.ATTENDANCE, 'read')
   async summary(@Query() query: GetAgentLogsQueryDto) {
