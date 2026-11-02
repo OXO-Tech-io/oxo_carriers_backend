@@ -201,6 +201,7 @@ export class UsersService {
       employee_category: dto.employee_category,
       department: dto.department,
       position: dto.position,
+      career_path: dto.career_path || null,
       work_location: dto.work_location || null,
       hire_date: dto.hire_date ? new Date(dto.hire_date) : undefined,
       undergraduate_degree_completion_date: dto.undergraduate_degree_completion_date
@@ -290,6 +291,7 @@ export class UsersService {
     if (dto.last_name) updates.lastName = dto.last_name;
     if (dto.department !== undefined) updates.department = dto.department;
     if (dto.position !== undefined) updates.position = dto.position;
+    if (dto.career_path !== undefined) updates.careerPath = dto.career_path || null;
     if (dto.manager_id !== undefined) updates.managerId = dto.manager_id ? parseInt(String(dto.manager_id)) : null;
     if (dto.device_id !== undefined) updates.deviceId = dto.device_id || null;
 

@@ -1,4 +1,6 @@
 import { z } from 'zod';
+import { EMPLOYMENT_TYPES } from '../common/constants/employmentTypes';
+import { CAREER_PATHS } from '../common/constants/careerPaths';
 
 const isoDate = z
   .string()
@@ -6,13 +8,14 @@ const isoDate = z
 
 // Reusable "after" (proposed record) shape - imported by profileChangeRequest.validator.ts
 // so field validation for work history records isn't duplicated across modules.
-export const employmentTypeValues = ['regular', 'intern', 'trainee'] as const;
+export const employmentTypeValues = EMPLOYMENT_TYPES;
 
 export const workHistoryAfterSchema = z
   .object({
     organization: z.string().min(1, 'Organization is required').max(255),
     positionHeld: z.string().min(1, 'Position held is required').max(255),
     employmentType: z.enum(employmentTypeValues).optional().default('regular'),
+    careerPath: z.enum(CAREER_PATHS).nullable().optional(),
     startDate: isoDate,
     endDate: isoDate.nullable().optional(), // null/omitted = "Present"
     remarks: z.string().max(2000).nullable().optional(),

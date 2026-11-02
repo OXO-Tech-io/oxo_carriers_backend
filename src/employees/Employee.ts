@@ -19,6 +19,8 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
     accountHolderName: user.accountHolderName ? decryptPII(user.accountHolderName) : null,
     accountNumber: user.accountNumber ? decryptPII(user.accountNumber) : null,
     bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
+    bankBranchCode: user.bankBranchCode ? decryptPII(user.bankBranchCode) : null,
+    swiftCode: user.swiftCode ? decryptPII(user.swiftCode) : null,
     companyName: user.companyName ? decryptPII(user.companyName) : null,
     contactNumber: user.contactNumber ? decryptPII(user.contactNumber) : null,
     personalEmail: user.personalEmail ? decryptPII(user.personalEmail) : null,
@@ -153,6 +155,7 @@ export class EmployeeModel {
     employee_category?: string | null;
     department?: string;
     position?: string;
+    career_path?: string | null;
     work_location?: string | null;
     hire_date?: Date;
     undergraduate_degree_completion_date?: Date | null;
@@ -183,6 +186,7 @@ export class EmployeeModel {
         employeeCategory: (employeeData.employee_category ?? null) as 'internal' | 'client_side' | null,
         department: employeeData.department || null,
         position: employeeData.position || null,
+        careerPath: employeeData.career_path || null,
         workLocation: (employeeData.work_location || null) as 'office' | 'remote' | 'hybrid' | null,
         hireDate: employeeData.hire_date ? employeeData.hire_date.toISOString().split('T')[0] : null,
         undergraduateDegreeCompletionDate: employeeData.undergraduate_degree_completion_date

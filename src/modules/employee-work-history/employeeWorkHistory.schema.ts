@@ -1,9 +1,10 @@
 import { pgTable, serial, varchar, text, date, timestamp, pgEnum } from 'drizzle-orm/pg-core';
 import { relations } from 'drizzle-orm';
+import { EMPLOYMENT_TYPES } from '../../common/constants/employmentTypes';
 import { employee as users } from '../../employees/employee.schema';
 
 // Enums
-export const employmentTypeEnum = pgEnum('employment_type', ['regular', 'intern', 'trainee']);
+export const employmentTypeEnum = pgEnum('employment_type', EMPLOYMENT_TYPES);
 
 // Employee Work History Table
 // Holds only the approved state of an employee's work history.
@@ -18,6 +19,9 @@ export const employeeWorkHistory = pgTable('tbl_employee_work_history', {
     employmentType: employmentTypeEnum('employment_type').notNull().default('regular'),
     startDate: date('start_date').notNull(),
     endDate: date('end_date'), // null = "Present"
+    // Career path this role belongs to (one of CAREER_PATHS) - drives the
+    // "Experience in Related Field" figure of the Work History Summary.
+    careerPath: varchar('career_path', { length: 50 }),
     remarks: text('remarks'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
