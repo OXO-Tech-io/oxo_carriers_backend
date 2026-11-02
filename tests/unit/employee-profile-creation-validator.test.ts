@@ -93,6 +93,39 @@ describe("employeeProfileCreation.validator", () => {
     expect(result.success).toBe(false);
   });
 
+  // OCD-596: location fields accept letters/spaces/hyphens only.
+  it.each(["birthPlace", "city", "district", "electorate"])(
+    "rejects digits, symbols and emoji in statutory %s",
+    (field) => {
+      for (const bad of ["Colombo 7", "Kandy@", "Gampaha\u{1F600}"]) {
+        const result = createEmployeeProfileSchema.safeParse({ statutory: { ...baseStatutory, [field]: bad } });
+        expect(result.success).toBe(false);
+      }
+    }
+  );
+
+  it("accepts hyphens, apostrophes, accents and Sinhala/Tamil names in location fields", () => {
+    for (const ok of ["Nuwara-Eliya", "St. John's", "Mount Lavinia", "කොළඹ", "தமிழ்"]) {
+      const result = createEmployeeProfileSchema.safeParse({
+        statutory: { ...baseStatutory, birthPlace: ok, city: ok },
+      });
+      expect(result.success).toBe(true);
+    }
+  });
+
+  it("allows digits in Grama Niladhari Division but still rejects symbols and emoji", () => {
+    const parse = (v: string) =>
+      createEmployeeProfileSchema.safeParse({ statutory: { ...baseStatutory, gramaNiladariDivision: v } }).success;
+    expect(parse("123A Kollupitiya")).toBe(true);
+    expect(parse("Kandy@")).toBe(false);
+    expect(parse("GN\u{1F600}")).toBe(false);
+  });
+
+  it("rejects invalid residing city/district", () => {
+    expect(createEmployeeProfileSchema.safeParse({ remittance: { residingCity: "Kandy1" } }).success).toBe(false);
+    expect(createEmployeeProfileSchema.safeParse({ remittance: { residingDistrict: "#!" } }).success).toBe(false);
+  });
+
   it("accepts remittance and welfare sections independently", () => {
     const result = createEmployeeProfileSchema.safeParse({
       remittance: { residingCity: "Kandy" },
