@@ -204,6 +204,7 @@ export class UsersService {
       swift_code: dto.swift_code || null,
       company_name: null,
       contact_number: dto.contact_number || null,
+      device_id: dto.device_id || null,
     });
 
     if (profileInput) {
@@ -278,6 +279,7 @@ export class UsersService {
     if (dto.department !== undefined) updates.department = dto.department;
     if (dto.position !== undefined) updates.position = dto.position;
     if (dto.manager_id !== undefined) updates.managerId = dto.manager_id ? parseInt(String(dto.manager_id)) : null;
+    if (dto.device_id !== undefined) updates.deviceId = dto.device_id || null;
 
     // OCD-476: HR Manager, HR Executive and Super Admin get edit access to
     // the organizational/employment fields (work location, employee type,
