@@ -12,7 +12,7 @@ import { IngestAgentLogsDto } from './dto/ingest-agent-logs.dto';
 import { ConfirmScreenshotUploadDto, RequestScreenshotUploadDto } from './dto/agent-screenshot-upload.dto';
 import { AgentDeviceGuard, type AgentDeviceRequest } from './guards/agent-device.guard';
 
-@Controller('agent-activity')
+@Controller('employee-activities')
 export class AgentActivityController {
   constructor(private readonly agentActivityService: AgentActivityService) {}
 
