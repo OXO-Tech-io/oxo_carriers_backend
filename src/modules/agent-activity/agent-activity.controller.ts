@@ -8,7 +8,7 @@ import { AgentActivityService } from './agent-activity.service';
 import { GetAgentLogsQueryDto } from './dto/get-agent-logs-query.dto';
 import { IngestAgentLogsDto } from './dto/ingest-agent-logs.dto';
 
-@Controller('agent-activity')
+@Controller('employee-activities')
 export class AgentActivityController {
   constructor(private readonly agentActivityService: AgentActivityService) {}
 
