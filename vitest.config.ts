@@ -9,6 +9,7 @@ export default defineConfig({
     // bumped so load-induced slowness doesn't get misread as a hung test.
     testTimeout: 15000,
     include: ["tests/unit/**/*.test.ts"],
+    setupFiles: ["tests/setup/bankAccountRules.ts"],
     env: {
       NODE_ENV: "test",
       PORT: "5000",

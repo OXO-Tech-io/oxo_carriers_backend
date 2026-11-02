@@ -82,10 +82,10 @@ export class FacilityBookingModel {
       SELECT COUNT(*) as count
       FROM tbl_facility_bookings
       WHERE facility_id = $1
-      AND status NOT IN ('cancelled')
+      AND status::text <> ALL($4::text[])
       AND (start_time < $2 AND end_time > $3)
     `;
-    const params: any[] = [facility_id, end_time, start_time];
+    const params: any[] = [facility_id, end_time, start_time, [BookingStatus.CANCELLED]];
 
     if (excludeBookingId) {
       params.push(excludeBookingId);

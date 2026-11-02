@@ -18,6 +18,13 @@ import { EmployeeEmergencyContactModel } from '../employee-emergency-contacts/Em
 import { EmployeeWelfareInfoModel } from '../employee-welfare-info/EmployeeWelfareInfo';
 import { EmployeeModel } from '../../employees/Employee';
 import { UserRole } from '../../types';
+import {
+  canDecideAtStage,
+  firstApprovalStage,
+  nextApprovalStage,
+  roleForStage,
+  type ApprovalStage,
+} from './approvalChain';
 import { BadRequestError, ForbiddenError, NotFoundError } from '../../utils/AppError';
 import { encryptPII } from '../../utils/encryption';
 import type {
@@ -35,7 +42,8 @@ import type {
 // request, and deciding on it) is restricted to Administrator/HR Manager -
 // HR Executive is deliberately excluded so they can only see/act on their
 // own submitted requests via listMyRequests/submitChangeRequest, same as a
-// regular employee.
+// regular employee. OCD-603/604/605: who may act on a given request also
+// depends on its approval stage - see approvalChain.ts.
 const HR_ROLES: UserRole[] = [UserRole.HR_MANAGER, UserRole.SUPER_ADMIN];
 
 const PII_FIELD_LABELS: Record<string, string> = {
@@ -288,8 +296,12 @@ export const profileChangeRequestService = {
     userId: number,
     employeeId: string,
     input: SubmitProfileChangeRequestInput,
-    files: AttachmentFileInput[] = []
+    files: AttachmentFileInput[] = [],
+    submitterRole: UserRole = UserRole.EMPLOYEE
   ): Promise<DrizzleProfileChangeRequest> {
+    const targetRow = await db.query.employee.findFirst({ where: eq(users.employeeId, employeeId) });
+    if (!targetRow) throw new NotFoundError('Employee not found');
+
     let previousRequestId: number | undefined;
     if (input.previousRequestId) {
       const previous = await ProfileChangeRequestModel.findById(input.previousRequestId);
@@ -308,6 +320,8 @@ export const profileChangeRequestService = {
       changes: input.changes,
       comments: input.comments ?? null,
       previousRequestId,
+      submittedByRole: submitterRole,
+      approvalStage: firstApprovalStage(submitterRole),
     });
 
     // OCD-478: supporting documents (NIC copy, address proof, etc.) uploaded
@@ -326,18 +340,22 @@ export const profileChangeRequestService = {
       newValues: { changes: input.changes },
     });
 
-    const hrUsers = await EmployeeModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
-    if (hrUsers.length > 0) {
-      const employee = await EmployeeModel.findById(userId);
-      const employeeName = employee ? `${employee.firstName} ${employee.lastName}`.trim() : 'An employee';
+    const reviewers = await EmployeeModel.getAll({ role: [roleForStage(firstApprovalStage(submitterRole))] });
+    if (reviewers.length > 0) {
+      const submitter = await EmployeeModel.findById(userId);
+      const submitterName = submitter ? `${submitter.firstName} ${submitter.lastName}`.trim() : 'Someone';
+      const onBehalf = targetRow.employeeId !== submitter?.employeeId;
+      const subject = onBehalf
+        ? `${submitterName} submitted a profile change request for ${targetRow.employeeId}`
+        : `${submitterName} submitted a profile change request`;
       await db.insert(notifications).values(
-        hrUsers
-          .filter(hr => !!hr.employeeId)
-          .map(hr => ({
-            employeeId: hr.employeeId!,
+        reviewers
+          .filter(r => !!r.employeeId)
+          .map(r => ({
+            employeeId: r.employeeId!,
             type: 'profile_change_submitted',
             title: 'Profile change request submitted',
-            message: `${employeeName} submitted a profile change request awaiting your review.`,
+            message: `${subject} awaiting your review.`,
             payload: { requestId: created.id },
             link: `/profile-approvals?id=${created.id}`,
           }))
@@ -347,11 +365,13 @@ export const profileChangeRequestService = {
     return created;
   },
 
-  async listMyRequests(employeeId: string | null, query: ListProfileChangeRequestsQuery) {
+  async listMyRequests(employeeId: string | null, query: ListProfileChangeRequestsQuery, userId?: number) {
     if (!employeeId) {
       throw new BadRequestError('Your account has no employee ID assigned yet');
     }
-    const requests = await ProfileChangeRequestModel.listByEmployeeId(employeeId, { status: query.status });
+    const requests = userId
+      ? await ProfileChangeRequestModel.listByEmployeeOrSubmitter(employeeId, userId, { status: query.status })
+      : await ProfileChangeRequestModel.listByEmployeeId(employeeId, { status: query.status });
     return attachDocuments(requests);
   },
 
@@ -365,17 +385,23 @@ export const profileChangeRequestService = {
 
   // Branches like leaveService.listLeaveRequests: HR/super_admin see every
   // employee's requests (with status filter), everyone else only sees their own.
-  async listRequests(employeeId: string | null, actorRole: UserRole, query: ListProfileChangeRequestsQuery) {
+  async listRequests(
+    employeeId: string | null,
+    actorRole: UserRole,
+    query: ListProfileChangeRequestsQuery,
+    userId?: number
+  ) {
     if (HR_ROLES.includes(actorRole)) {
       return this.listAllRequests(actorRole, query);
     }
-    return this.listMyRequests(employeeId, query);
+    return this.listMyRequests(employeeId, query, userId);
   },
 
-  async getRequestById(id: number, actorEmployeeId: string | null, actorRole: UserRole) {
+  async getRequestById(id: number, actorEmployeeId: string | null, actorRole: UserRole, actorUserId?: number) {
     const request = await ProfileChangeRequestModel.findById(id);
     if (!request) throw new NotFoundError('Profile change request not found');
-    if (!HR_ROLES.includes(actorRole) && request.employeeId !== actorEmployeeId) {
+    const isSubmitter = !!actorUserId && request.submittedBy === actorUserId;
+    if (!HR_ROLES.includes(actorRole) && request.employeeId !== actorEmployeeId && !isSubmitter) {
       throw new ForbiddenError();
     }
     const [withDocuments] = await attachDocuments([request]);
@@ -400,6 +426,70 @@ export const profileChangeRequestService = {
     }
 
     const changes = (request.changes as ProfileChangeItem[]) ?? [];
+
+    // OCD-603/604/605: only the role that owns the request's current stage may
+    // act on it. Requests created before staging existed sit at the HR Manager stage.
+    const stage = (request.approvalStage ?? 'hr_manager') as ApprovalStage;
+    if (!canDecideAtStage(actorRole, stage)) {
+      throw new ForbiddenError(
+        stage === 'admin'
+          ? 'This request is awaiting Administrator approval'
+          : 'This request is awaiting HR Manager approval'
+      );
+    }
+    const submitterRole = (request.submittedByRole ?? UserRole.EMPLOYEE) as UserRole;
+    const nextStage = decision === 'approved' ? nextApprovalStage(submitterRole, stage) : null;
+
+    // Intermediate approval (e.g. HR Manager): record it and hand the request
+    // to the next stage without applying anything yet.
+    if (nextStage) {
+      const nextReviewers = await EmployeeModel.getAll({ role: [roleForStage(nextStage)] });
+      return db.transaction(async tx => {
+        await tx
+          .update(profileChangeRequests)
+          .set({
+            approvalStage: nextStage,
+            hrManagerReviewerId: actorUserId,
+            hrManagerComments: reviewerComments ?? null,
+            hrManagerApprovedAt: new Date(),
+            updatedAt: new Date(),
+          })
+          .where(eq(profileChangeRequests.id, id));
+        await tx.insert(auditLogs).values({
+          userId: actorUserId,
+          action: 'profile_change_request.stage_approved',
+          tableName: 'tbl_profile_change_requests',
+          recordId: id,
+          oldValues: { approvalStage: stage } as any,
+          newValues: { approvalStage: nextStage } as any,
+        });
+        const recipients = nextReviewers.filter(r => !!r.employeeId);
+        if (recipients.length > 0) {
+          await tx.insert(notifications).values(
+            recipients.map(r => ({
+              employeeId: r.employeeId!,
+              type: 'profile_change_submitted',
+              title: 'Profile change request awaiting approval',
+              message: `Profile change request for ${request.employeeId} was approved by the HR Manager and awaits your approval.`,
+              payload: { requestId: id },
+              link: `/profile-approvals?id=${id}`,
+            }))
+          );
+        }
+        await tx.insert(notifications).values({
+          employeeId: request.employeeId,
+          type: 'profile_change_stage_approved',
+          title: 'Profile change request approved by HR Manager',
+          message:
+            'Your profile change request was approved by the HR Manager and is now awaiting Administrator approval.',
+          payload: { requestId: id },
+          link: `/profile?tab=pending-changes`,
+        });
+        const updated = await tx.query.profileChangeRequests.findFirst({ where: eq(profileChangeRequests.id, id) });
+        if (!updated) throw new NotFoundError('Profile change request not found after update');
+        return updated;
+      });
+    }
 
     return db.transaction(async tx => {
       if (decision === 'approved') {
@@ -612,6 +702,7 @@ export const profileChangeRequestService = {
           .update(profileChangeRequests)
           .set({
             status: 'approved',
+            approvalStage: null,
             reviewerId: actorUserId,
             reviewerComments: reviewerComments ?? null,
             decidedAt: new Date(),
@@ -635,6 +726,7 @@ export const profileChangeRequestService = {
           .update(profileChangeRequests)
           .set({
             status: decision,
+            approvalStage: null,
             reviewerId: actorUserId,
             reviewerComments: reviewerComments ?? null,
             decidedAt: new Date(),
