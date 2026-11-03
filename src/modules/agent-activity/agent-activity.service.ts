@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { and, count, desc, eq, gte, isNull, lt, max, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
@@ -74,7 +74,7 @@ export class AgentActivityService {
    * object key. Requires the bucket - without it there is nowhere for the agent to PUT.
    */
   async requestScreenshotUpload(device: AgentDeviceIdentity, dto: RequestScreenshotUploadDto) {
-    if (!isSecureBucketConfigured()) throw new BadRequestException('Screenshot storage is not configured');
+    if (!isSecureBucketConfigured()) throw new ServiceUnavailableException('Screenshot storage is not configured');
     const objectKey = this.screenshotObjectKey(device.deviceId, dto);
     const uploadUrl = await getPrivateObjectUploadUrl(objectKey, dto.mimeType);
     return { uploadUrl, objectKey, requiredHeaders: { 'Content-Type': dto.mimeType }, expiresInSeconds: 600 };
