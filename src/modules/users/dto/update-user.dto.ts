@@ -1,5 +1,6 @@
 import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
 import { UserRole } from '../../../types';
+import { CAREER_PATHS, CareerPath } from '../../../common/constants/careerPaths';
 
 export class UpdateUserDto {
   @IsOptional()
@@ -17,6 +18,10 @@ export class UpdateUserDto {
   @IsOptional()
   @IsString()
   position?: string;
+
+  @IsOptional()
+  @IsIn(CAREER_PATHS)
+  career_path?: CareerPath;
 
   @IsOptional()
   manager_id?: string | number | null;

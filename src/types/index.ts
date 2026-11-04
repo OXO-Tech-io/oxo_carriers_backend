@@ -104,6 +104,7 @@ export interface User {
   role: 'super_admin' | 'hr_manager' | 'hr_executive' | 'finance_manager' | 'finance_executive' | 'employee' | 'consultant' | 'service_provider';
   department?: string | null;
   position?: string | null;
+  careerPath?: string | null;
   hireDate?: Date | null;
   managerId?: number | null;
   hourlyRate?: string | null; // decimal from DB comes as string

@@ -71,6 +71,10 @@ export const employee = pgTable('tbl_employee', {
     employeeCategory: employeeCategoryEnum('employee_category'),
     department: varchar('department', { length: 100 }),
     position: varchar('position', { length: 100 }),
+    // Career path the designation (position) relates to - one of CAREER_PATHS
+    // (src/common/constants/careerPaths.ts). Plain varchar rather than a pg
+    // enum so the list can grow without an ALTER TYPE; validated in the DTOs.
+    careerPath: varchar('career_path', { length: 50 }),
     workLocation: workLocationEnum('work_location'),
     hourlyRate: varchar('hourly_rate', { length: 500 }),
     bankName: varchar('bank_name', { length: 500 }),

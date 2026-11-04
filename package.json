@@ -42,6 +42,8 @@
     "db:encrypt-additional-notes": "ts-node src/scripts/encryptAdditionalNotes.ts",
     "db:move-non-pii-fields-to-employee": "ts-node src/scripts/moveNonPiiFieldsToEmployee.ts",
     "db:add-personal-email-column": "ts-node src/scripts/addPersonalEmailColumn.ts",
+    "db:add-career-path-column": "ts-node src/scripts/addCareerPathColumn.ts",
+    "db:add-employment-type-values": "ts-node src/scripts/addEmploymentTypeValues.ts",
     "db:add-employee-archive-table": "ts-node src/scripts/addEmployeeArchiveTable.ts",
     "db:add-profile-picture-url-column": "ts-node src/scripts/addProfilePictureUrlColumn.ts",
     "db:add-medical-claim-payment-fields": "ts-node src/scripts/addMedicalClaimPaymentFields.ts",
