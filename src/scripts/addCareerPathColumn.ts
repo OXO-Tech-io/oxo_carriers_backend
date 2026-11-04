@@ -1,4 +1,5 @@
 import pool from '../config/database';
+import { logger } from '../lib/logger';
 
 // Idempotent, additive-only migration script - mirrors addPersonalEmailColumn.ts.
 // Adds the "Related Career Path" columns, matching the `careerPath` fields in
@@ -12,7 +13,7 @@ const COLUMNS = [
 
 async function addCareerPathColumns() {
   try {
-    console.log('🔧 Adding career_path columns...');
+    logger.info('Adding career_path columns');
 
     for (const { table, column, ddl } of COLUMNS) {
       const colRes = await pool.query(
@@ -22,17 +23,20 @@ async function addCareerPathColumns() {
       );
       if (colRes.rows.length === 0) {
         await pool.query(`ALTER TABLE ${table} ADD COLUMN ${column} ${ddl}`);
-        console.log(`  ✓ Added ${table}.${column}`);
+        logger.info({ table, column }, 'Added column');
       } else {
-        console.log(`  ✓ ${table}.${column} already exists`);
+        logger.info({ table, column }, 'Column already exists');
       }
     }
 
-    console.log('✅ career_path columns are up to date');
-    process.exit(0);
-  } catch (error: any) {
-    console.error('❌ Error adding career_path columns:', error);
-    process.exit(1);
+    logger.info('career_path columns are up to date');
+  } catch (error) {
+    logger.error({ err: error }, 'Error adding career_path columns');
+    process.exitCode = 1;
+  } finally {
+    // Close the pool and let the process exit on its own (no process.exit) so the
+    // logger's transport can flush its buffered output first.
+    await pool.end();
   }
 }
 
