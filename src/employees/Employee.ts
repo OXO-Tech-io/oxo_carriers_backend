@@ -19,6 +19,9 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
     accountHolderName: user.accountHolderName ? decryptPII(user.accountHolderName) : null,
     accountNumber: user.accountNumber ? decryptPII(user.accountNumber) : null,
     bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
+    // Branch code and SWIFT code are public bank identifiers, not PII, and are stored in plaintext.
+    // decryptPII passes plaintext through unchanged, so this still reads legacy rows that were
+    // encrypted before this change (see src/scripts/decryptBankCodes.ts to convert them).
     bankBranchCode: user.bankBranchCode ? decryptPII(user.bankBranchCode) : null,
     swiftCode: user.swiftCode ? decryptPII(user.swiftCode) : null,
     companyName: user.companyName ? decryptPII(user.companyName) : null,
@@ -198,8 +201,8 @@ export class EmployeeModel {
         accountHolderName: encryptPII(employeeData.account_holder_name) ?? null,
         accountNumber: encryptPII(employeeData.account_number) ?? null,
         bankBranch: encryptPII(employeeData.bank_branch) ?? null,
-        bankBranchCode: encryptPII(employeeData.bank_branch_code) ?? null,
-        swiftCode: encryptPII(employeeData.swift_code) ?? null,
+        bankBranchCode: employeeData.bank_branch_code || null,
+        swiftCode: employeeData.swift_code || null,
         companyName: encryptPII(employeeData.company_name) ?? null,
         contactNumber: encryptPII(employeeData.contact_number) ?? null,
         deviceId: employeeData.device_id || null,
@@ -228,8 +231,6 @@ export class EmployeeModel {
       'accountHolderName',
       'accountNumber',
       'bankBranch',
-      'bankBranchCode',
-      'swiftCode',
       'companyName',
       'contactNumber'
     ];
