@@ -19,11 +19,10 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
     accountHolderName: user.accountHolderName ? decryptPII(user.accountHolderName) : null,
     accountNumber: user.accountNumber ? decryptPII(user.accountNumber) : null,
     bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
-    // Branch code and SWIFT code are public bank identifiers, not PII, and are stored in plaintext.
-    // decryptPII passes plaintext through unchanged, so this still reads legacy rows that were
-    // encrypted before this change (see src/scripts/decryptBankCodes.ts to convert them).
-    bankBranchCode: user.bankBranchCode ? decryptPII(user.bankBranchCode) : null,
-    swiftCode: user.swiftCode ? decryptPII(user.swiftCode) : null,
+    // bankBranchCode and swiftCode are public bank identifiers, not PII: stored and returned as
+    // plaintext. Rows saved before that change are converted by src/scripts/decryptBankCodes.ts.
+    bankBranchCode: user.bankBranchCode ?? null,
+    swiftCode: user.swiftCode ?? null,
     companyName: user.companyName ? decryptPII(user.companyName) : null,
     contactNumber: user.contactNumber ? decryptPII(user.contactNumber) : null,
     personalEmail: user.personalEmail ? decryptPII(user.personalEmail) : null,
