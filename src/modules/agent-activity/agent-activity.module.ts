@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
-import { AgentActivityController } from './agent-activity.controller';
-import { AgentActivityService } from './agent-activity.service';
+import { EmployeeActivityController } from './agent-activity.controller';
+import { EmployeeActivityService } from './agent-activity.service';
 
 @Module({
-  controllers: [AgentActivityController],
-  providers: [AgentActivityService],
+  controllers: [EmployeeActivityController],
+  providers: [EmployeeActivityService],
 })
 export class AgentActivityModule {}

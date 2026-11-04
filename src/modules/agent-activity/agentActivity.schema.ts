@@ -24,8 +24,8 @@ export const agentActivityLogs = pgTable('tbl_agent_activity_logs', {
 export type AgentActivityLog = typeof agentActivityLogs.$inferSelect;
 export type NewAgentActivityLog = typeof agentActivityLogs.$inferInsert;
 
-// Mirrors drizzle/0033. Image bytes for the `screenshot` rows above.
-export const agentScreenshots = pgTable('tbl_agent_screenshots', {
+// Mirrors drizzle/0033 (renamed in 0036). Image bytes for the `screenshot` rows above.
+export const agentScreenshots = pgTable('tbl_employee_screenshots', {
     id: serial('id').primaryKey(),
     activityLogId: integer('activity_log_id')
         .notNull()
@@ -39,8 +39,8 @@ export const agentScreenshots = pgTable('tbl_agent_screenshots', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-// Mirrors drizzle/0035. Hashed device credentials for the agent's direct API calls.
-export const agentDeviceTokens = pgTable('tbl_agent_device_tokens', {
+// Mirrors drizzle/0035 (renamed in 0037). Hashed device credentials for the agent's direct API calls.
+export const agentDeviceTokens = pgTable('tbl_employee_device_tokens', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 })
         .notNull()

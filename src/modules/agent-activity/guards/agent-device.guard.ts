@@ -7,12 +7,12 @@ import { agentDeviceTokens } from '../../../db/schema';
 import { EmployeeModel } from '../../../employees/Employee';
 import { EmployeeStatus } from '../../../types';
 
-export interface AgentDeviceIdentity {
+export interface EmployeeDeviceIdentity {
   employeeId: string;
   deviceId: string;
 }
 
-export type AgentDeviceRequest = Request & { agentDevice?: AgentDeviceIdentity };
+export type AgentDeviceRequest = Request & { agentDevice?: EmployeeDeviceIdentity };
 
 export const hashDeviceToken = (token: string) => createHash('sha256').update(token).digest('hex');
 

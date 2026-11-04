@@ -8,7 +8,7 @@ import { AgentLogDto } from './dto/ingest-agent-logs.dto';
 import { GetAgentLogsQueryDto } from './dto/get-agent-logs-query.dto';
 import { ConfirmScreenshotUploadDto, RequestScreenshotUploadDto } from './dto/agent-screenshot-upload.dto';
 import { MAX_SCREENSHOT_BYTES } from './agent-activity.constants';
-import { AgentDeviceIdentity, hashDeviceToken } from './guards/agent-device.guard';
+import { EmployeeDeviceIdentity, hashDeviceToken } from './guards/agent-device.guard';
 import {
   deletePrivateObject,
   downloadPrivateObject,
@@ -27,7 +27,7 @@ const normaliseEventType = (type: string) => type.trim().toLowerCase();
 export { MAX_SCREENSHOT_BYTES };
 
 @Injectable()
-export class AgentActivityService {
+export class EmployeeActivityService {
   /**
    * Stores a batch the employee's browser relayed from their local agent. A log only
    * counts if its deviceId is the one HR assigned to this employee, so one employee
@@ -73,7 +73,7 @@ export class AgentActivityService {
    * Agent upload step 1: hands the device a short-lived signed PUT URL for a deterministic
    * object key. Requires the bucket - without it there is nowhere for the agent to PUT.
    */
-  async requestScreenshotUpload(device: AgentDeviceIdentity, dto: RequestScreenshotUploadDto) {
+  async requestScreenshotUpload(device: EmployeeDeviceIdentity, dto: RequestScreenshotUploadDto) {
     if (!isSecureBucketConfigured()) throw new ServiceUnavailableException('Screenshot storage is not configured');
     const objectKey = this.screenshotObjectKey(device.deviceId, dto);
     const uploadUrl = await getPrivateObjectUploadUrl(objectKey, dto.mimeType);
@@ -81,7 +81,7 @@ export class AgentActivityService {
   }
 
   /** Agent upload step 3: verifies the object really landed (and is within the cap) before writing the row. */
-  async confirmScreenshotUpload(device: AgentDeviceIdentity, dto: ConfirmScreenshotUploadDto) {
+  async confirmScreenshotUpload(device: EmployeeDeviceIdentity, dto: ConfirmScreenshotUploadDto) {
     const objectKey = this.screenshotObjectKey(device.deviceId, dto);
     const size = await getPrivateObjectSize(objectKey);
     if (size === null) throw new BadRequestException('Screenshot has not been uploaded');

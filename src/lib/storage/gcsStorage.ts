@@ -1,6 +1,12 @@
 import { Storage } from '@google-cloud/storage';
 import { env } from '../../config/env';
 
+const SIGNED_URL_VERSION = 'v4' as const;
+const SIGNED_URL_ACTION_READ = 'read' as const;
+const SIGNED_URL_ACTION_WRITE = 'write' as const;
+const DEFAULT_READ_URL_TTL_SECONDS = 15 * 60;
+const DEFAULT_UPLOAD_URL_TTL_SECONDS = 10 * 60;
+
 let storageClient: Storage | null = null;
 
 function getClient(): Storage {
@@ -65,14 +71,14 @@ export async function privateObjectExists(objectKey: string): Promise<boolean> {
 }
 
 /** Short-lived read URL for a private object, so the browser can load it straight from GCS without proxying the bytes through the API. */
-export async function getPrivateObjectSignedUrl(objectKey: string, expiresInSeconds = 15 * 60): Promise<string> {
+export async function getPrivateObjectSignedUrl(objectKey: string, expiresInSeconds = DEFAULT_READ_URL_TTL_SECONDS): Promise<string> {
   if (!env.GCS_BUCKET_NAME) {
     throw new Error('GCS_BUCKET_NAME is not configured');
   }
   const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
   const [url] = await bucket.file(objectKey).getSignedUrl({
-    version: 'v4',
-    action: 'read',
+    version: SIGNED_URL_VERSION,
+    action: SIGNED_URL_ACTION_READ,
     expires: Date.now() + expiresInSeconds * 1000,
   });
   return url;
@@ -82,15 +88,15 @@ export async function getPrivateObjectSignedUrl(objectKey: string, expiresInSeco
 export async function getPrivateObjectUploadUrl(
   objectKey: string,
   contentType: string,
-  expiresInSeconds = 10 * 60,
+  expiresInSeconds = DEFAULT_UPLOAD_URL_TTL_SECONDS,
 ): Promise<string> {
   if (!env.GCS_BUCKET_NAME) {
     throw new Error('GCS_BUCKET_NAME is not configured');
   }
   const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
   const [url] = await bucket.file(objectKey).getSignedUrl({
-    version: 'v4',
-    action: 'write',
+    version: SIGNED_URL_VERSION,
+    action: SIGNED_URL_ACTION_WRITE,
     expires: Date.now() + expiresInSeconds * 1000,
     contentType,
   });
