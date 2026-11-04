@@ -166,7 +166,6 @@ export class EmployeeModel {
     swift_code?: string | null;
     company_name?: string | null;
     contact_number?: string | null;
-    device_id?: string | null;
   }): Promise<DrizzleEmployee> {
     const [insertedUser] = await db
       .insert(employee)
@@ -198,7 +197,6 @@ export class EmployeeModel {
         swiftCode: encryptPII(employeeData.swift_code) ?? null,
         companyName: encryptPII(employeeData.company_name) ?? null,
         contactNumber: encryptPII(employeeData.contact_number) ?? null,
-        deviceId: employeeData.device_id || null,
       })
       .returning();
 
