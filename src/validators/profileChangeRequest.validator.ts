@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { educationAfterSchema } from './employeeEducation.validator';
 import { workHistoryAfterSchema } from './employeeWorkHistory.validator';
+import { validateBankDetails } from '../utils/bankAccountRules';
 
 const nullableString = z.string().max(1000).nullable();
 
@@ -18,7 +19,12 @@ export type BankAccountValue = z.infer<typeof bankAccountValueSchema>;
 // lib/validation/textValidation.ts (frontend) - city/district are
 // letters-only "name" fields, address lines are more permissive since house/
 // street numbers are expected.
-const LOCATION_NAME_REGEX = /^[A-Za-zÀ-ɏ\s'.-]+$/;
+// \p{L}\p{M} (not A-Za-z) so Sinhala/Tamil names with combining vowel signs
+// pass, as they do on the frontend; digits, emoji and symbols still fail.
+export const LOCATION_NAME_REGEX = /^[\p{L}\p{M}\s'.-]+$/u;
+// Grama Niladhari Division also allows digits (e.g. "123A Kollupitiya").
+export const GN_DIVISION_REGEX = /^[\p{L}\p{M}\p{N}\s'.-]+$/u;
+export const LOCATION_NAME_MESSAGE = 'must contain only letters, spaces, apostrophes, periods and hyphens';
 const ADDRESS_LINE_REGEX = /^[A-Za-z0-9À-ɏ\s,./#-]+$/;
 
 export const addressValueSchema = z.object({
@@ -240,8 +246,14 @@ function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: Re
     if (!bankAccountValueSchema.safeParse(data.before).success) {
       ctx.addIssue({ code: 'custom', message: 'before must be a bank account object', path: ['before'] });
     }
-    if (!bankAccountValueSchema.safeParse(data.after).success) {
+    const afterParsed = bankAccountValueSchema.safeParse(data.after);
+    if (!afterParsed.success) {
       ctx.addIssue({ code: 'custom', message: 'after must be a bank account object', path: ['after'] });
+    } else {
+      // OCD-598..602: only the new value is checked - the before snapshot may predate these rules.
+      for (const issue of validateBankDetails(afterParsed.data)) {
+        ctx.addIssue({ code: 'custom', message: issue.message, path: ['after', issue.field] });
+      }
     }
     return;
   }
@@ -273,7 +285,14 @@ function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: Re
   // submitted) - `before` is whatever was already stored, which may predate
   // these rules.
   if (typeof data.after !== 'string' || !data.after) return;
-  if ((data.field === 'gramaNiladariDivision' || data.field === 'electorate') && !LOCATION_NAME_REGEX.test(data.after)) {
+  if (data.field === 'gramaNiladariDivision' && !GN_DIVISION_REGEX.test(data.after)) {
+    ctx.addIssue({
+      code: 'custom',
+      message: 'gramaNiladariDivision must contain only letters, numbers, spaces, apostrophes, periods and hyphens',
+      path: ['after'],
+    });
+  }
+  if (data.field === 'electorate' && !LOCATION_NAME_REGEX.test(data.after)) {
     ctx.addIssue({
       code: 'custom',
       message: `${data.field} must contain only letters, spaces, apostrophes, periods and hyphens`,
@@ -331,6 +350,10 @@ function checkScalarPiiChange(data: z.infer<typeof piiFieldChangeBase>, ctx: Ref
     ctx.addIssue({ code: 'custom', message: 'after must be a string or null', path: ['after'] });
   }
   if (typeof data.after !== 'string' || !data.after) return;
+  // OCD-596: Birth Place is a letters-only location name.
+  if (data.field === 'birth_place' && !LOCATION_NAME_REGEX.test(data.after)) {
+    ctx.addIssue({ code: 'custom', message: `birth_place ${LOCATION_NAME_MESSAGE}`, path: ['after'] });
+  }
   // OCD-416/OCD-420/OCD-444: format checks for the NIC/phone-shaped PII
   // fields this batch owns - only applied to `after`, same reasoning as
   // checkUserFieldChange above.
@@ -437,6 +460,9 @@ export const submitProfileChangeRequestSchema = z.object({
   // final step of the self-service Edit Profile wizard.
   comments: z.string().max(2000).optional(),
   previousRequestId: z.coerce.number().int().positive().optional(),
+  // OCD-603/604: HR Manager / HR Executive / Administrator editing another
+  // employee's profile. Omitted for self-service requests.
+  targetEmployeeId: z.string().trim().min(1).max(50).optional(),
 });
 export type SubmitProfileChangeRequestInput = z.infer<typeof submitProfileChangeRequestSchema>;
 

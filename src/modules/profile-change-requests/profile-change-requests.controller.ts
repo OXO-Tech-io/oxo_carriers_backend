@@ -1,8 +1,9 @@
-import { BadRequestException, Body, Controller, Get, Param, Post, Put, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, ForbiddenException, Controller, Get, Param, Post, Put, Query, UploadedFiles, UseGuards, UseInterceptors } from '@nestjs/common';
 import { FilesInterceptor } from '@nestjs/platform-express';
 import { profileChangeRequestService } from './profileChangeRequest.service';
 import { DOCUMENTS_FIELD, DOCUMENTS_MAX_COUNT, profileChangeDocumentsMulterOptions } from './profile-change-requests.upload';
 import { EmployeeModel } from '../../employees/Employee';
+import { ON_BEHALF_SUBMITTER_ROLES, roleForStage, type ApprovalStage } from './approvalChain';
 import { UserRole, JwtPayload } from '../../types';
 import { CurrentEmployee } from '../../common/decorators/current-employee.decorator';
 import { PermissionGuard } from '../../common/guards/permission.guard';
@@ -50,14 +51,24 @@ export class ProfileChangeRequestsController {
       throw new BadRequestException('Your account has no employee ID assigned yet');
     }
     const input = submitProfileChangeRequestSchema.parse(body);
+    // OCD-603/604: HR Manager / HR Executive / Administrator may raise a request
+    // for another employee; everyone else can only change their own profile.
+    let targetEmployeeId = employee.employeeId;
+    if (input.targetEmployeeId && input.targetEmployeeId !== employee.employeeId) {
+      if (!ON_BEHALF_SUBMITTER_ROLES.includes(employee.role)) {
+        throw new ForbiddenException('You can only request changes to your own profile');
+      }
+      targetEmployeeId = input.targetEmployeeId;
+    }
     const request = await profileChangeRequestService.submitChangeRequest(
       employee.userId,
-      employee.employeeId,
+      targetEmployeeId,
       input,
       files ?? [],
+      employee.role,
     );
 
-    this.notifySubmitted(employee.userId, request, input.changes as ProfileChangeItem[]).catch((emailErr: any) => {
+    this.notifySubmitted(request, input.changes as ProfileChangeItem[]).catch((emailErr: any) => {
       logger.error({ err: emailErr }, 'Failed to send profile change submitted email');
     });
 
@@ -67,14 +78,14 @@ export class ProfileChangeRequestsController {
   @Get()
   async list(@Query() query: unknown, @CurrentEmployee() employee: JwtPayload) {
     const parsedQuery = listProfileChangeRequestsQuerySchema.parse(query);
-    const requests = await profileChangeRequestService.listRequests(employee.employeeId, employee.role, parsedQuery);
+    const requests = await profileChangeRequestService.listRequests(employee.employeeId, employee.role, parsedQuery, employee.userId);
     return { success: true, message: 'Profile change requests fetched', data: requests };
   }
 
   @Get(':id')
   async getById(@Param() params: unknown, @CurrentEmployee() employee: JwtPayload) {
     const { id } = profileChangeRequestIdParamSchema.parse(params);
-    const request = await profileChangeRequestService.getRequestById(id, employee.employeeId, employee.role);
+    const request = await profileChangeRequestService.getRequestById(id, employee.employeeId, employee.role, employee.userId);
     return { success: true, message: 'Profile change request fetched', data: request };
   }
 
@@ -97,21 +108,40 @@ export class ProfileChangeRequestsController {
 
     const updated = await profileChangeRequestService.decide(id, employee.userId, employee.role, decision, reviewerComments);
 
-    this.notifyDecided(updated, decision, reviewerComments).catch((emailErr: any) => {
+    // An intermediate approval (HR Manager -> Administrator) leaves the request
+    // pending: tell the next approver instead of telling the employee it is done.
+    const pending = updated.status === 'pending_approval';
+    const notify = pending
+      ? this.notifyStageReviewers(updated, (updated.changes as ProfileChangeItem[]) ?? [])
+      : this.notifyDecided(updated, decision, reviewerComments);
+    notify.catch((emailErr: any) => {
       logger.error({ err: emailErr }, `Failed to send profile change ${decision} email`);
     });
 
     return { success: true, message: 'Profile change request updated', data: updated };
   }
 
-  private async notifySubmitted(userId: number, request: { id: number }, changes: ProfileChangeItem[]) {
-    const employee = await EmployeeModel.findById(userId);
-    const hrUsers = await EmployeeModel.getAll({ role: [UserRole.HR_MANAGER, UserRole.HR_EXECUTIVE] });
+  // OCD-603/604/605: the submitted email goes to whoever owns the request's
+  // first approval stage (HR Manager, or Administrator when an HR Manager raised it).
+  private async notifySubmitted(
+    request: { id: number; employeeId: string; approvalStage: string | null },
+    changes: ProfileChangeItem[],
+  ) {
+    await this.notifyStageReviewers(request, changes);
+  }
+
+  private async notifyStageReviewers(
+    request: { id: number; employeeId: string; approvalStage: string | null },
+    changes: ProfileChangeItem[],
+  ) {
+    const employee = await EmployeeModel.findByEmployeeId(request.employeeId);
     if (!employee) return;
+    const stage = (request.approvalStage ?? 'hr_manager') as ApprovalStage;
+    const reviewers = await EmployeeModel.getAll({ role: [roleForStage(stage)] });
     const employeeName = `${employee.firstName} ${employee.lastName}`.trim();
     const changesSummary = profileChangeRequestService.summarizeChanges(changes);
     await Promise.all(
-      hrUsers.map((hr) =>
+      reviewers.map((hr) =>
         sendProfileChangeSubmittedEmail(hr.email, {
           employeeName,
           changesSummary,

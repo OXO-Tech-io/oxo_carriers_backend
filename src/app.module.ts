@@ -37,6 +37,7 @@ import { DocumentVaultModule } from './modules/document-vault/document-vault.mod
 import { ArchiveModule } from './modules/archive/archive.module';
 import { FilesModule } from './common/files/files.module';
 import { AgentActivityModule } from './modules/agent-activity/agent-activity.module';
+import { BankAccountRulesModule } from './modules/bank-account-rules/bank-account-rules.module';
 
 @Module({
   imports: [
@@ -78,6 +79,7 @@ import { AgentActivityModule } from './modules/agent-activity/agent-activity.mod
     ArchiveModule,
     FilesModule,
     AgentActivityModule,
+    BankAccountRulesModule,
   ],
 })
 export class AppModule {}

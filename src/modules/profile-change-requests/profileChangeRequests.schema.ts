@@ -33,6 +33,12 @@ export const profileChangeRequests = pgTable('tbl_profile_change_requests', {
     // convention (relation only enforced at the Drizzle ORM level, not in Postgres).
     // Links a resubmission back to the request it was returned-for-modification from.
     previousRequestId: integer('previous_request_id'),
+    // OCD-603/604/605: stage the request is waiting at ('hr_manager' | 'admin'; null once decided).
+    approvalStage: varchar('approval_stage', { length: 20 }),
+    submittedByRole: varchar('submitted_by_role', { length: 30 }),
+    hrManagerReviewerId: integer('hr_manager_reviewer_id').references(() => users.id, { onDelete: 'set null' }),
+    hrManagerComments: text('hr_manager_comments'),
+    hrManagerApprovedAt: timestamp('hr_manager_approved_at'),
     createdAt: timestamp('created_at').defaultNow(),
     updatedAt: timestamp('updated_at').defaultNow(),
 });

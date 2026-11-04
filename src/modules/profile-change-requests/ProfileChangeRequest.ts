@@ -3,7 +3,7 @@ import {
   profileChangeRequests,
   type ProfileChangeRequest as DrizzleProfileChangeRequest,
 } from '../../db/schema';
-import { and, eq } from 'drizzle-orm';
+import { and, eq, or } from 'drizzle-orm';
 import type { ProfileChangeItem } from '../../validators/profileChangeRequest.validator';
 import { decryptPII } from '../../utils/encryption';
 
@@ -13,6 +13,8 @@ export type ProfileChangeRequestCreateInput = {
   changes: ProfileChangeItem[];
   comments?: string | null;
   previousRequestId?: number | null;
+  submittedByRole: string;
+  approvalStage: string;
 };
 
 export type ProfileChangeRequestListFilters = {
@@ -68,6 +70,8 @@ export class ProfileChangeRequestModel {
         changes: data.changes,
         comments: data.comments ?? null,
         previousRequestId: data.previousRequestId ?? null,
+        submittedByRole: data.submittedByRole,
+        approvalStage: data.approvalStage,
         status: 'pending_approval',
       })
       .returning();
@@ -96,6 +100,27 @@ export class ProfileChangeRequestModel {
     }
     const records = await db.query.profileChangeRequests.findMany({
       where: and(...conditions),
+      orderBy: (t, { desc }) => [desc(t.createdAt)],
+      with: {
+        employee: { columns: employeeColumns },
+        reviewer: { columns: reviewerColumns },
+      },
+    });
+    return records.map(decryptRelations);
+  }
+
+  // OCD-603/604: a request is "mine" when it affects me or when I raised it on
+  // someone else's behalf (HR Manager / HR Executive editing an employee).
+  static async listByEmployeeOrSubmitter(
+    employeeId: string | null,
+    submitterId: number,
+    filters?: ProfileChangeRequestListFilters
+  ): Promise<ProfileChangeRequestWithRelations[]> {
+    const mine = employeeId
+      ? or(eq(profileChangeRequests.employeeId, employeeId), eq(profileChangeRequests.submittedBy, submitterId))
+      : eq(profileChangeRequests.submittedBy, submitterId);
+    const records = await db.query.profileChangeRequests.findMany({
+      where: filters?.status ? and(mine, eq(profileChangeRequests.status, filters.status)) : mine,
       orderBy: (t, { desc }) => [desc(t.createdAt)],
       with: {
         employee: { columns: employeeColumns },

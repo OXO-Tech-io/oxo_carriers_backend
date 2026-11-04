@@ -6,6 +6,8 @@ import {
   sexValues,
   maritalStatusValues,
   bloodTypeValues,
+  LOCATION_NAME_REGEX,
+  GN_DIVISION_REGEX,
 } from './profileChangeRequest.validator';
 import { educationAfterSchema } from './employeeEducation.validator';
 import { workHistoryAfterSchema } from './employeeWorkHistory.validator';
@@ -21,7 +23,6 @@ const notFutureDateString = isoDateString.refine(
 // NIC_PATTERN/LOCATION_NAME_PATTERN/MOBILE_NUMBER_PATTERN/PHONE_NUMBER_PATTERN/
 // POSTAL_CODE_PATTERN/LINKEDIN_URL_PATTERN in lib/validation/textValidation.ts.
 const NIC_REGEX = /^(\d{9}[VvXx]|\d{12})$/;
-const LOCATION_NAME_REGEX = /^[A-Za-zÀ-ɏ\s'.-]+$/;
 // Accepts local (0XXXXXXXXX) or international (+94XXXXXXXXX) format - see
 // profileChangeRequest.validator.ts's identical widening for why.
 const PHONE_REGEX = /^(0\d{9}|\+94\d{9})$/;
@@ -33,6 +34,10 @@ const optionalNicField = (label: string) =>
   z.string().max(20).nullable().optional().refine((v) => !v || NIC_REGEX.test(v), { message: `${label} must be a valid Sri Lankan NIC number` });
 const locationNameField = (label: string) =>
   z.string().min(1, `${label} is required`).max(150).regex(LOCATION_NAME_REGEX, `${label} must contain only letters, spaces, apostrophes, periods and hyphens`);
+const optionalLocationNameField = (label: string) =>
+  z.string().max(100).nullable().optional().refine((v) => !v || LOCATION_NAME_REGEX.test(v), {
+    message: `${label} must contain only letters, spaces, apostrophes, periods and hyphens`,
+  });
 const optionalPhoneField = (label: string) =>
   z.string().max(30).nullable().optional().refine((v) => !v || PHONE_REGEX.test(v), { message: `${label} must be a valid phone number` });
 
@@ -48,7 +53,13 @@ const statutorySchema = z
     addressLine2: z.string().max(255).nullable().optional(),
     city: locationNameField('City'),
     district: locationNameField('District'),
-    gramaNiladariDivision: locationNameField('Grama Niladhari Division').nullable().optional(),
+    gramaNiladariDivision: z
+      .string()
+      .min(1, 'Grama Niladhari Division is required')
+      .max(150)
+      .regex(GN_DIVISION_REGEX, 'Grama Niladhari Division must contain only letters, numbers, spaces, apostrophes, periods and hyphens')
+      .nullable()
+      .optional(),
     electorate: locationNameField('Electorate').nullable().optional(),
     postalCode: z
       .string()
@@ -57,7 +68,7 @@ const statutorySchema = z
       .optional()
       .refine((v) => !v || POSTAL_CODE_REGEX.test(v), { message: 'Postal code must contain exactly 5 digits' }),
     dateOfBirth: notFutureDateString,
-    birthPlace: z.string().min(1, 'Birth place is required').max(255),
+    birthPlace: locationNameField('Birth place'),
     sex: z.enum(sexValues),
     maritalStatus: z.enum(maritalStatusValues),
     nationality: z.string().min(1, 'Nationality is required').max(100),
@@ -101,8 +112,8 @@ const statutorySchema = z
 const remittanceSchema = z.object({
   residingAddressLine1: z.string().max(255).nullable().optional(),
   residingAddressLine2: z.string().max(255).nullable().optional(),
-  residingCity: z.string().max(100).nullable().optional(),
-  residingDistrict: z.string().max(100).nullable().optional(),
+  residingCity: optionalLocationNameField('City'),
+  residingDistrict: optionalLocationNameField('District'),
   landlineNumber: optionalPhoneField('Landline number'),
 });
 
