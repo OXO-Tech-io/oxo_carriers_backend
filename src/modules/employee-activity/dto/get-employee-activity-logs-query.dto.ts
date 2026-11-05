@@ -2,7 +2,7 @@ import { Type } from 'class-transformer';
 import { IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { ISO_DATE_MESSAGE, ISO_DATE_REGEX } from '../../../common/constants/validation';
 
-export class GetAgentLogsQueryDto {
+export class GetEmployeeActivityLogsQueryDto {
   @IsOptional()
   @IsString()
   @MaxLength(50)

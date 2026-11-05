@@ -1,14 +1,14 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, ServiceUnavailableException } from '@nestjs/common';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { and, count, desc, eq, gte, isNull, lt, max, sql, type SQL } from 'drizzle-orm';
 import { db } from '../../db';
-import { agentActivityLogs, agentDeviceTokens, agentScreenshots } from '../../db/schema';
+import { employeeActivityLogs, employeeDeviceTokens, employeeScreenshots } from '../../db/schema';
 import { EmployeeModel } from '../../employees/Employee';
-import { AgentLogDto } from './dto/ingest-agent-logs.dto';
-import { GetAgentLogsQueryDto } from './dto/get-agent-logs-query.dto';
-import { ConfirmScreenshotUploadDto, RequestScreenshotUploadDto } from './dto/agent-screenshot-upload.dto';
-import { MAX_SCREENSHOT_BYTES } from './agent-activity.constants';
-import { EmployeeDeviceIdentity, hashDeviceToken } from './guards/agent-device.guard';
+import { EmployeeActivityLogDto } from './dto/ingest-employee-activity-logs.dto';
+import { GetEmployeeActivityLogsQueryDto } from './dto/get-employee-activity-logs-query.dto';
+import { ConfirmScreenshotUploadDto, RequestScreenshotUploadDto } from './dto/employee-screenshot-upload.dto';
+import { MAX_SCREENSHOT_BYTES } from './employee-activity.constants';
+import { EmployeeDeviceIdentity, hashDeviceToken } from './guards/employee-device.guard';
 import {
   deletePrivateObject,
   downloadPrivateObject,
@@ -19,6 +19,7 @@ import {
   uploadPrivateObject,
 } from '../../lib/storage/gcsStorage';
 import { logger } from '../../lib/logger';
+import { env } from '../../config/env';
 
 // The agent emits "Heartbeat" but lowercase everywhere else - normalise so filters
 // and the UI don't have to care.
@@ -34,7 +35,7 @@ export class EmployeeActivityService {
    * cannot submit rows under another's device. Replays (same device + agent id) are
    * ignored, which makes browser reconnects and multiple open tabs harmless.
    */
-  async ingest(employeeId: string, logs: AgentLogDto[]) {
+  async ingest(employeeId: string, logs: EmployeeActivityLogDto[]) {
     const employee = await EmployeeModel.findByEmployeeId(employeeId);
     const assignedDeviceId = employee?.deviceId?.trim();
     if (!assignedDeviceId) {
@@ -48,7 +49,7 @@ export class EmployeeActivityService {
     }
 
     const inserted = await db
-      .insert(agentActivityLogs)
+      .insert(employeeActivityLogs)
       .values(
         accepted.map((log) => ({
           employeeId,
@@ -63,8 +64,8 @@ export class EmployeeActivityService {
           mediaState: log.mediaState ?? null,
         })),
       )
-      .onConflictDoNothing({ target: [agentActivityLogs.deviceId, agentActivityLogs.agentLogId] })
-      .returning({ id: agentActivityLogs.id });
+      .onConflictDoNothing({ target: [employeeActivityLogs.deviceId, employeeActivityLogs.agentLogId] })
+      .returning({ id: employeeActivityLogs.id });
 
     return { received: logs.length, stored: inserted.length, rejected: logs.length - accepted.length };
   }
@@ -77,7 +78,11 @@ export class EmployeeActivityService {
     if (!isSecureBucketConfigured()) throw new ServiceUnavailableException('Screenshot storage is not configured');
     const objectKey = this.screenshotObjectKey(device.deviceId, dto);
     const uploadUrl = await getPrivateObjectUploadUrl(objectKey, dto.mimeType);
-    return { uploadUrl, objectKey, requiredHeaders: { 'Content-Type': dto.mimeType }, expiresInSeconds: 600 };
+    logger.info({ employeeId: device.employeeId, eventId: dto.eventId, objectKey }, 'Screenshot upload URL issued');
+    // `method` + `headers` mirror the CGP presign response so clients send exactly what was signed.
+    // `requiredHeaders` is kept for agents built before that shape.
+    const headers = { 'Content-Type': dto.mimeType };
+    return { uploadUrl, objectKey, method: 'PUT' as const, headers, requiredHeaders: headers, expiresInSeconds: 600 };
   }
 
   /** Agent upload step 3: verifies the object really landed (and is within the cap) before writing the row. */
@@ -90,7 +95,64 @@ export class EmployeeActivityService {
       throw new BadRequestException('Screenshot size is invalid');
     }
     // No cleanup on a DB failure: the agent retries confirm and the key is deterministic.
-    return this.storeScreenshotRow(device.employeeId, device.deviceId, dto, size, objectKey);
+    const result = await this.storeScreenshotRow(device.employeeId, device.deviceId, dto, size, objectKey);
+    logger.info(
+      { employeeId: device.employeeId, eventId: dto.eventId, objectKey, sizeBytes: size, stored: result.stored },
+      'Screenshot upload confirmed',
+    );
+    return result;
+  }
+
+  /**
+   * Screenshot relayed by the employee's own HRIS tab (the agent hands it over the local
+   * socket first and only uploads directly if no tab takes it). The device is the one HR
+   * assigned to the signed-in employee, so the object key matches the direct-upload path
+   * and a repeat from either route is a harmless replay.
+   */
+  async uploadRelayedScreenshot(
+    employeeId: string,
+    fields: { eventId: number; deviceId: string; mimeType: string; fileName: string; capturedAt: string },
+    content: Buffer,
+  ) {
+    if (!isSecureBucketConfigured()) throw new ServiceUnavailableException('Screenshot storage is not configured');
+    if (content.length === 0 || content.length > MAX_SCREENSHOT_BYTES) {
+      throw new BadRequestException('Screenshot size is invalid');
+    }
+    const employee = await EmployeeModel.findByEmployeeId(employeeId);
+    const deviceId = employee?.deviceId?.trim();
+    if (!deviceId) throw new BadRequestException('No device ID is assigned to your account yet');
+
+    // Any tab connected to the local agent relays its frames, so the image must come from
+    // this employee's own device - the same rule the activity-log relay applies.
+    if (fields.deviceId.toLowerCase() !== deviceId.toLowerCase()) {
+      throw new ForbiddenException('This screenshot is from a different device');
+    }
+
+    const objectKey = this.screenshotObjectKey(deviceId, fields);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    let storedKey: string | null = objectKey;
+    try {
+      await uploadPrivateObject(objectKey, content, fields.mimeType);
+    } catch (error) {
+      // Local development often has no GCS credentials: keep the image in the database
+      // instead (getScreenshot already serves rows without an object key). Never in production.
+      if (env.IS_PRODUCTION) throw error;
+      logger.warn({ err: error, eventId: fields.eventId }, 'GCS upload failed; storing screenshot in the database (non-production)');
+      storedKey = null;
+    }
+    const result = await this.storeScreenshotRow(
+      employeeId,
+      deviceId,
+      { ...fields, sha256 },
+      content.length,
+      storedKey,
+      storedKey ? undefined : content,
+    );
+    logger.info(
+      { employeeId, eventId: fields.eventId, objectKey, sizeBytes: content.length, stored: result.stored },
+      'Relayed screenshot stored',
+    );
+    return result;
   }
 
   /** Issues a new device token (shown once) and revokes any previous ones for the employee's device. */
@@ -102,20 +164,20 @@ export class EmployeeActivityService {
     const token = `oxoa_${randomBytes(32).toString('hex')}`;
     await db.transaction(async (tx) => {
       await tx
-        .update(agentDeviceTokens)
+        .update(employeeDeviceTokens)
         .set({ revokedAt: new Date() })
-        .where(and(eq(agentDeviceTokens.employeeId, employeeId), isNull(agentDeviceTokens.revokedAt)));
-      await tx.insert(agentDeviceTokens).values({ employeeId, deviceId, tokenHash: hashDeviceToken(token) });
+        .where(and(eq(employeeDeviceTokens.employeeId, employeeId), isNull(employeeDeviceTokens.revokedAt)));
+      await tx.insert(employeeDeviceTokens).values({ employeeId, deviceId, tokenHash: hashDeviceToken(token) });
     });
     return { token, deviceId };
   }
 
   async revokeDeviceTokens(employeeId: string) {
     const revoked = await db
-      .update(agentDeviceTokens)
+      .update(employeeDeviceTokens)
       .set({ revokedAt: new Date() })
-      .where(and(eq(agentDeviceTokens.employeeId, employeeId), isNull(agentDeviceTokens.revokedAt)))
-      .returning({ id: agentDeviceTokens.id });
+      .where(and(eq(employeeDeviceTokens.employeeId, employeeId), isNull(employeeDeviceTokens.revokedAt)))
+      .returning({ id: employeeDeviceTokens.id });
     return { revoked: revoked.length };
   }
 
@@ -130,7 +192,8 @@ export class EmployeeActivityService {
     assignedDeviceId: string,
     data: Pick<ConfirmScreenshotUploadDto, 'eventId' | 'fileName' | 'capturedAt' | 'mimeType' | 'sha256'>,
     sizeBytes: number,
-    objectKey: string,
+    objectKey: string | null,
+    inlineContent?: Buffer,
   ) {
     return db.transaction(async (tx) => {
       // The agent also reports every screenshot as an ordinary `activity.log` event, and the
@@ -138,7 +201,7 @@ export class EmployeeActivityService {
       // (adopting the file name) rather than treating the conflict as a replay, or the image
       // would be dropped and the row left without a picture.
       const [log] = await tx
-        .insert(agentActivityLogs)
+        .insert(employeeActivityLogs)
         .values({
           employeeId,
           deviceId: assignedDeviceId,
@@ -148,23 +211,24 @@ export class EmployeeActivityService {
           windowTitle: data.fileName.slice(0, 500),
         })
         .onConflictDoUpdate({
-          target: [agentActivityLogs.deviceId, agentActivityLogs.agentLogId],
+          target: [employeeActivityLogs.deviceId, employeeActivityLogs.agentLogId],
           set: { windowTitle: data.fileName.slice(0, 500) },
         })
-        .returning({ id: agentActivityLogs.id });
+        .returning({ id: employeeActivityLogs.id });
 
       // Only a true replay (image already stored for this log) is a no-op.
       const inserted = await tx
-        .insert(agentScreenshots)
+        .insert(employeeScreenshots)
         .values({
           activityLogId: log.id,
           mimeType: data.mimeType,
           sizeBytes,
           sha256: data.sha256 ?? null,
           objectKey,
+          content: inlineContent ?? null,
         })
-        .onConflictDoNothing({ target: agentScreenshots.activityLogId })
-        .returning({ id: agentScreenshots.id });
+        .onConflictDoNothing({ target: employeeScreenshots.activityLogId })
+        .returning({ id: employeeScreenshots.id });
 
       return inserted.length ? { stored: true, activityLogId: log.id } : { stored: false };
     });
@@ -173,12 +237,12 @@ export class EmployeeActivityService {
   async getScreenshot(id: number) {
     const [row] = await db
       .select({
-        mimeType: agentScreenshots.mimeType,
-        content: agentScreenshots.content,
-        objectKey: agentScreenshots.objectKey,
+        mimeType: employeeScreenshots.mimeType,
+        content: employeeScreenshots.content,
+        objectKey: employeeScreenshots.objectKey,
       })
-      .from(agentScreenshots)
-      .where(eq(agentScreenshots.id, id))
+      .from(employeeScreenshots)
+      .where(eq(employeeScreenshots.id, id))
       .limit(1);
     if (!row) throw new NotFoundException('Screenshot not found');
     if (row.objectKey) {
@@ -188,21 +252,21 @@ export class EmployeeActivityService {
     return { mimeType: row.mimeType, content: row.content };
   }
 
-  async list(query: GetAgentLogsQueryDto) {
+  async list(query: GetEmployeeActivityLogsQueryDto) {
     const where = this.buildWhere(query);
     const limit = query.limit ?? 50;
     const offset = query.offset ?? 0;
 
     const [rows, totals] = await Promise.all([
       db
-        .select({ log: agentActivityLogs, screenshotId: agentScreenshots.id, objectKey: agentScreenshots.objectKey })
-        .from(agentActivityLogs)
-        .leftJoin(agentScreenshots, eq(agentScreenshots.activityLogId, agentActivityLogs.id))
+        .select({ log: employeeActivityLogs, screenshotId: employeeScreenshots.id, objectKey: employeeScreenshots.objectKey })
+        .from(employeeActivityLogs)
+        .leftJoin(employeeScreenshots, eq(employeeScreenshots.activityLogId, employeeActivityLogs.id))
         .where(where)
-        .orderBy(desc(agentActivityLogs.startTs), desc(agentActivityLogs.id))
+        .orderBy(desc(employeeActivityLogs.startTs), desc(employeeActivityLogs.id))
         .limit(limit)
         .offset(offset),
-      db.select({ total: count() }).from(agentActivityLogs).where(where),
+      db.select({ total: count() }).from(employeeActivityLogs).where(where),
     ]);
 
     // Signed GCS URLs for screenshots stored in the bucket; null (legacy rows, or signing not
@@ -233,20 +297,20 @@ export class EmployeeActivityService {
   }
 
   /** One row per employee that has reported logs: device, last activity, event totals. */
-  async summarize(query: GetAgentLogsQueryDto) {
+  async summarize(query: GetEmployeeActivityLogsQueryDto) {
     const rows = await db
       .select({
-        employeeId: agentActivityLogs.employeeId,
-        deviceId: agentActivityLogs.deviceId,
-        lastEventAt: max(agentActivityLogs.startTs),
+        employeeId: employeeActivityLogs.employeeId,
+        deviceId: employeeActivityLogs.deviceId,
+        lastEventAt: max(employeeActivityLogs.startTs),
         eventCount: count(),
-        idleCount: sql<number>`count(*) filter (where ${agentActivityLogs.eventType} = 'idle_start')`.mapWith(Number),
-        windowCount: sql<number>`count(*) filter (where ${agentActivityLogs.eventType} = 'window_focus')`.mapWith(Number),
+        idleCount: sql<number>`count(*) filter (where ${employeeActivityLogs.eventType} = 'idle_start')`.mapWith(Number),
+        windowCount: sql<number>`count(*) filter (where ${employeeActivityLogs.eventType} = 'window_focus')`.mapWith(Number),
       })
-      .from(agentActivityLogs)
+      .from(employeeActivityLogs)
       .where(this.buildWhere(query))
-      .groupBy(agentActivityLogs.employeeId, agentActivityLogs.deviceId)
-      .orderBy(desc(max(agentActivityLogs.startTs)));
+      .groupBy(employeeActivityLogs.employeeId, employeeActivityLogs.deviceId)
+      .orderBy(desc(max(employeeActivityLogs.startTs)));
 
     const employees = await EmployeeModel.findByEmployeeIds(rows.map((r) => r.employeeId));
     return rows.map((row) => ({
@@ -256,16 +320,16 @@ export class EmployeeActivityService {
     }));
   }
 
-  private buildWhere(q: GetAgentLogsQueryDto): SQL | undefined {
+  private buildWhere(q: GetEmployeeActivityLogsQueryDto): SQL | undefined {
     const conditions: SQL[] = [];
-    if (q.employeeId) conditions.push(eq(agentActivityLogs.employeeId, q.employeeId));
-    if (q.deviceId) conditions.push(eq(agentActivityLogs.deviceId, q.deviceId));
-    if (q.eventType) conditions.push(eq(agentActivityLogs.eventType, normaliseEventType(q.eventType)));
-    if (q.from) conditions.push(gte(agentActivityLogs.startTs, new Date(`${q.from}T00:00:00`)));
+    if (q.employeeId) conditions.push(eq(employeeActivityLogs.employeeId, q.employeeId));
+    if (q.deviceId) conditions.push(eq(employeeActivityLogs.deviceId, q.deviceId));
+    if (q.eventType) conditions.push(eq(employeeActivityLogs.eventType, normaliseEventType(q.eventType)));
+    if (q.from) conditions.push(gte(employeeActivityLogs.startTs, new Date(`${q.from}T00:00:00`)));
     if (q.to) {
       const toExclusive = new Date(`${q.to}T00:00:00`);
       toExclusive.setDate(toExclusive.getDate() + 1);
-      conditions.push(lt(agentActivityLogs.startTs, toExclusive));
+      conditions.push(lt(employeeActivityLogs.startTs, toExclusive));
     }
     return conditions.length ? and(...conditions) : undefined;
   }

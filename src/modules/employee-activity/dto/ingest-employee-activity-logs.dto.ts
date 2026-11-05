@@ -14,7 +14,7 @@ import {
 
 /** One `data` object from the agent's `activity.log` WebSocket frame. Extra fields
  *  (e.g. mediaTitle) are stripped by the global whitelist ValidationPipe. */
-export class AgentLogDto {
+export class EmployeeActivityLogDto {
   @IsInt()
   @Min(0)
   id!: number;
@@ -56,11 +56,11 @@ export class AgentLogDto {
   mediaState?: string | null;
 }
 
-export class IngestAgentLogsDto {
+export class IngestEmployeeActivityLogsDto {
   @IsArray()
   @ArrayMinSize(1)
   @ArrayMaxSize(200)
   @ValidateNested({ each: true })
-  @Type(() => AgentLogDto)
-  logs!: AgentLogDto[];
+  @Type(() => EmployeeActivityLogDto)
+  logs!: EmployeeActivityLogDto[];
 }

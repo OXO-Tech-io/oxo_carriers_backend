@@ -2,9 +2,9 @@ import { pgTable, serial, varchar, timestamp, integer, bigint } from 'drizzle-or
 import { employee } from '../../employees/employee.schema';
 import { bytea } from '../../employees/employeePii.schema';
 
-// Mirrors drizzle/0031 + 0032 (agent activity logs). The agent's mediaTitle is
+// Mirrors drizzle/0031 + 0032 (employee activity logs). The agent's mediaTitle is
 // intentionally not stored.
-export const agentActivityLogs = pgTable('tbl_agent_activity_logs', {
+export const employeeActivityLogs = pgTable('tbl_employee_activity_logs', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 })
         .notNull()
@@ -21,15 +21,15 @@ export const agentActivityLogs = pgTable('tbl_agent_activity_logs', {
     createdAt: timestamp('created_at').defaultNow(),
 });
 
-export type AgentActivityLog = typeof agentActivityLogs.$inferSelect;
-export type NewAgentActivityLog = typeof agentActivityLogs.$inferInsert;
+export type EmployeeActivityLog = typeof employeeActivityLogs.$inferSelect;
+export type NewEmployeeActivityLog = typeof employeeActivityLogs.$inferInsert;
 
 // Mirrors drizzle/0033 (renamed in 0036). Image bytes for the `screenshot` rows above.
-export const agentScreenshots = pgTable('tbl_employee_screenshots', {
+export const employeeScreenshots = pgTable('tbl_employee_screenshots', {
     id: serial('id').primaryKey(),
     activityLogId: integer('activity_log_id')
         .notNull()
-        .references(() => agentActivityLogs.id, { onDelete: 'cascade' }),
+        .references(() => employeeActivityLogs.id, { onDelete: 'cascade' }),
     mimeType: varchar('mime_type', { length: 50 }).notNull(),
     sizeBytes: integer('size_bytes').notNull(),
     sha256: varchar('sha256', { length: 64 }),
@@ -40,7 +40,7 @@ export const agentScreenshots = pgTable('tbl_employee_screenshots', {
 });
 
 // Mirrors drizzle/0035 (renamed in 0037). Hashed device credentials for the agent's direct API calls.
-export const agentDeviceTokens = pgTable('tbl_employee_device_tokens', {
+export const employeeDeviceTokens = pgTable('tbl_employee_device_tokens', {
     id: serial('id').primaryKey(),
     employeeId: varchar('employee_id', { length: 50 })
         .notNull()

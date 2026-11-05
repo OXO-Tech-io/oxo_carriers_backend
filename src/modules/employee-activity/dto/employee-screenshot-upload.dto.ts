@@ -1,5 +1,5 @@
 import { IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
-import { MAX_SCREENSHOT_BYTES } from '../agent-activity.constants';
+import { MAX_SCREENSHOT_BYTES } from '../employee-activity.constants';
 
 export const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png'] as const;
 

@@ -3,7 +3,7 @@ import { createHash } from 'crypto';
 import { and, eq, isNull } from 'drizzle-orm';
 import type { Request } from 'express';
 import { db } from '../../../db';
-import { agentDeviceTokens } from '../../../db/schema';
+import { employeeDeviceTokens } from '../../../db/schema';
 import { EmployeeModel } from '../../../employees/Employee';
 import { EmployeeStatus } from '../../../types';
 
@@ -12,7 +12,7 @@ export interface EmployeeDeviceIdentity {
   deviceId: string;
 }
 
-export type AgentDeviceRequest = Request & { agentDevice?: EmployeeDeviceIdentity };
+export type EmployeeDeviceRequest = Request & { employeeDevice?: EmployeeDeviceIdentity };
 
 export const hashDeviceToken = (token: string) => createHash('sha256').update(token).digest('hex');
 
@@ -23,16 +23,16 @@ export const hashDeviceToken = (token: string) => createHash('sha256').update(to
  * anything in the request body.
  */
 @Injectable()
-export class AgentDeviceGuard implements CanActivate {
+export class EmployeeDeviceGuard implements CanActivate {
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<AgentDeviceRequest>();
+    const request = context.switchToHttp().getRequest<EmployeeDeviceRequest>();
     const header = request.headers.authorization;
     if (!header?.startsWith('Bearer ')) throw new UnauthorizedException('No device token provided');
 
     const [row] = await db
       .select()
-      .from(agentDeviceTokens)
-      .where(and(eq(agentDeviceTokens.tokenHash, hashDeviceToken(header.substring(7))), isNull(agentDeviceTokens.revokedAt)))
+      .from(employeeDeviceTokens)
+      .where(and(eq(employeeDeviceTokens.tokenHash, hashDeviceToken(header.substring(7))), isNull(employeeDeviceTokens.revokedAt)))
       .limit(1);
     if (!row) throw new UnauthorizedException('Invalid device token');
 
@@ -45,12 +45,12 @@ export class AgentDeviceGuard implements CanActivate {
 
     // Best-effort; failing to stamp last-used must not reject the upload.
     void db
-      .update(agentDeviceTokens)
+      .update(employeeDeviceTokens)
       .set({ lastUsedAt: new Date() })
-      .where(eq(agentDeviceTokens.id, row.id))
+      .where(eq(employeeDeviceTokens.id, row.id))
       .catch(() => undefined);
 
-    request.agentDevice = { employeeId: row.employeeId, deviceId: row.deviceId };
+    request.employeeDevice = { employeeId: row.employeeId, deviceId: row.deviceId };
     return true;
   }
 }
