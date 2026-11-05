@@ -36,6 +36,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { DocumentVaultModule } from './modules/document-vault/document-vault.module';
 import { ArchiveModule } from './modules/archive/archive.module';
 import { FilesModule } from './common/files/files.module';
+import { EmployeeActivityModule } from './modules/employee-activity/employee-activity.module';
 import { BankAccountRulesModule } from './modules/bank-account-rules/bank-account-rules.module';
 
 @Module({
@@ -77,6 +78,7 @@ import { BankAccountRulesModule } from './modules/bank-account-rules/bank-accoun
     DocumentVaultModule,
     ArchiveModule,
     FilesModule,
+    EmployeeActivityModule,
     BankAccountRulesModule,
   ],
 })

@@ -1,6 +1,12 @@
 import { Storage } from '@google-cloud/storage';
 import { env } from '../../config/env';
 
+const SIGNED_URL_VERSION = 'v4' as const;
+const SIGNED_URL_ACTION_READ = 'read' as const;
+const SIGNED_URL_ACTION_WRITE = 'write' as const;
+const DEFAULT_READ_URL_TTL_SECONDS = 15 * 60;
+const DEFAULT_UPLOAD_URL_TTL_SECONDS = 10 * 60;
+
 let storageClient: Storage | null = null;
 
 function getClient(): Storage {
@@ -62,4 +68,49 @@ export async function privateObjectExists(objectKey: string): Promise<boolean> {
   const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
   const [exists] = await bucket.file(objectKey).exists();
   return exists;
+}
+
+/** Short-lived read URL for a private object, so the browser can load it straight from GCS without proxying the bytes through the API. */
+export async function getPrivateObjectSignedUrl(objectKey: string, expiresInSeconds = DEFAULT_READ_URL_TTL_SECONDS): Promise<string> {
+  if (!env.GCS_BUCKET_NAME) {
+    throw new Error('GCS_BUCKET_NAME is not configured');
+  }
+  const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
+  const [url] = await bucket.file(objectKey).getSignedUrl({
+    version: SIGNED_URL_VERSION,
+    action: SIGNED_URL_ACTION_READ,
+    expires: Date.now() + expiresInSeconds * 1000,
+  });
+  return url;
+}
+
+/** Short-lived signed PUT URL so a trusted client (the activity agent) can upload straight to GCS; the caller must send the same Content-Type. */
+export async function getPrivateObjectUploadUrl(
+  objectKey: string,
+  contentType: string,
+  expiresInSeconds = DEFAULT_UPLOAD_URL_TTL_SECONDS,
+): Promise<string> {
+  if (!env.GCS_BUCKET_NAME) {
+    throw new Error('GCS_BUCKET_NAME is not configured');
+  }
+  const bucket = getClient().bucket(env.GCS_BUCKET_NAME);
+  const [url] = await bucket.file(objectKey).getSignedUrl({
+    version: SIGNED_URL_VERSION,
+    action: SIGNED_URL_ACTION_WRITE,
+    expires: Date.now() + expiresInSeconds * 1000,
+    contentType,
+  });
+  return url;
+}
+
+/** Size of a stored object in bytes, or null when it does not exist. */
+export async function getPrivateObjectSize(objectKey: string): Promise<number | null> {
+  if (!env.GCS_BUCKET_NAME) {
+    throw new Error('GCS_BUCKET_NAME is not configured');
+  }
+  const file = getClient().bucket(env.GCS_BUCKET_NAME).file(objectKey);
+  const [exists] = await file.exists();
+  if (!exists) return null;
+  const [meta] = await file.getMetadata();
+  return Number(meta.size);
 }
