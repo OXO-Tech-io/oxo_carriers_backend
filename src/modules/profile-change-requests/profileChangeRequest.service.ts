@@ -523,8 +523,9 @@ export const profileChangeRequestService = {
                   accountHolderName: after.accountHolderName ? encryptPII(after.accountHolderName) : null,
                   accountNumber: after.accountNumber ? encryptPII(after.accountNumber) : null,
                   bankBranch: after.bankBranch ? encryptPII(after.bankBranch) : null,
-                  bankBranchCode: after.bankBranchCode ? encryptPII(after.bankBranchCode) : null,
-                  swiftCode: after.swiftCode ? encryptPII(after.swiftCode) : null,
+                  // Public bank identifiers, not PII: stored in plaintext.
+                  bankBranchCode: after.bankBranchCode || null,
+                  swiftCode: after.swiftCode || null,
                 })
                 .where(eq(users.employeeId, request.employeeId));
             } else {
