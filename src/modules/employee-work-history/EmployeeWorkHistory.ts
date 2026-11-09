@@ -1,11 +1,13 @@
 import { db } from '../../db';
 import { employeeWorkHistory, type EmployeeWorkHistory as DrizzleEmployeeWorkHistory } from '../../db/schema';
 import { eq } from 'drizzle-orm';
+import type { EmploymentType } from '../../common/constants/employmentTypes';
 
 export type EmployeeWorkHistoryInput = {
   organization: string;
   positionHeld: string;
-  employmentType?: 'regular' | 'intern' | 'trainee';
+  employmentType?: EmploymentType;
+  careerPath?: string | null;
   startDate: string;
   endDate?: string | null;
   remarks?: string | null;
