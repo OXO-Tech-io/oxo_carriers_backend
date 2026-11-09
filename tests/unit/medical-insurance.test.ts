@@ -26,6 +26,12 @@ vi.mock("../../src/config/email", () => ({
 vi.mock("../../src/lib/logger", () => ({
   logger: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
 }));
+// Cloud storage is out of scope here and the test files have no on-disk path; without this mock the
+// result depends on whether the developer's .env sets GCS_BUCKET_NAME (it then reads file.path).
+vi.mock("../../src/lib/storage/gcsStorage", () => ({
+  isSecureBucketConfigured: vi.fn().mockReturnValue(false),
+  uploadPrivateObject: vi.fn().mockResolvedValue(undefined),
+}));
 // No hire_date on file by default -> assertServiceEligibility no-ops (see its own tests below for the enforced case).
 vi.mock("../../src/employees/Employee", () => ({
   EmployeeModel: { findByEmployeeId: vi.fn().mockResolvedValue(null) },
