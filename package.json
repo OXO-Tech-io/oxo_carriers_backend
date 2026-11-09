@@ -4,7 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --exec ts-node src/main.ts",
+    "dev": "nodemon --watch src --ext ts,json --exec \"ts-node --transpile-only src/main.ts\"",
     "build": "tsc",
     "start": "node dist/main.js",
     "test": "vitest run",
@@ -35,7 +35,7 @@
     "db:rename-pii-name-columns": "ts-node src/scripts/renamePiiNameColumns.ts",
     "db:add-work-log-deadline": "ts-node src/scripts/addWorkLogDeadline.ts",
     "db:add-attendance-tracking": "ts-node src/scripts/addAttendanceTracking.ts",
-    "db:add-agent-activity-logs": "ts-node src/scripts/addAgentActivityLogs.ts",
+    "db:add-employee-activity-logs": "ts-node src/scripts/addEmployeeActivityLogs.ts",
     "db:add-document-vault": "ts-node src/scripts/addDocumentVaultTables.ts",
     "db:add-permission-and-leave-balance-indexes": "ts-node src/scripts/addPermissionAndLeaveBalanceIndexes.ts",
     "db:add-employee-category-and-leave-coverup": "ts-node src/scripts/addEmployeeCategoryAndLeaveCoverup.ts",
