@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
 import { UserRole } from "../../src/types";
 // NOTE: freshService() below re-imports the module graph via
 // vi.resetModules(), so any AppError thrown by it is a *different* class
@@ -24,6 +24,14 @@ async function freshService() {
 
 describe("keycloakAdminService", () => {
   let fetchMock: ReturnType<typeof vi.fn>;
+
+  // The first import of the service graph is cold (env/zod/etc.) and, in a full parallel run, can
+  // exceed the per-test timeout. A timed-out test keeps running and pushes its mocks onto the NEXT
+  // test's fetchMock, which then fails with confusing errors (e.g. "roles.find is not a function").
+  // Warming the transform cache once keeps every freshService() call in the tests fast.
+  beforeAll(async () => {
+    await import("../../src/modules/users/keycloakAdmin.service");
+  }, 120_000);
 
   beforeEach(() => {
     fetchMock = vi.fn();

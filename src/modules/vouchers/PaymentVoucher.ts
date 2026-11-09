@@ -1,27 +1,57 @@
 import pool from '../../config/database';
-import { PaymentVoucher, VoucherStatus } from '../../types';
+import { PaymentVoucher, VoucherPaymentStatus, VoucherStatus } from '../../types';
 import { EmployeeModel } from '../../employees/Employee';
 
-/** created_by/reviewed_by are numeric tbl_employee.id FKs (actor-tracking
- * columns, not converted to employee_id) - first_name/last_name are
- * encrypted, so they can't be selected directly off the join; resolve them
- * via EmployeeModel.findByIds instead. */
+/** Actor-tracking columns on tbl_payment_vouchers. They are numeric
+ * tbl_employee.id FKs (not converted to employee_id). first_name/last_name are
+ * encrypted, so they can't be selected directly off a join; resolve them via
+ * EmployeeModel.findByIds instead. Each key becomes `<key>_first_name` /
+ * `<key>_last_name` on the returned row. */
+const ACTOR_COLUMNS = [
+  'created_by',
+  'manager_reviewed_by',
+  'admin_reviewed_by',
+  'rejected_by',
+  'bank_upload_by',
+  'paid_by',
+] as const;
+
 async function withActorNames(rows: any[]): Promise<any[]> {
-  const ids = rows.flatMap(r => [r.created_by, r.reviewed_by]).filter((id): id is number => typeof id === 'number');
-  const employees = await EmployeeModel.findByIds(ids);
+  const ids = rows
+    .flatMap(r => ACTOR_COLUMNS.map(col => r[col]))
+    .filter((id): id is number => typeof id === 'number');
+  const employees = await EmployeeModel.findByIds([...new Set(ids)]);
   const byId = new Map(employees.map(e => [e.id, e]));
   return rows.map(row => {
-    const creator = byId.get(row.created_by);
-    const reviewer = byId.get(row.reviewed_by);
-    return {
-      ...row,
-      created_by_first_name: creator?.firstName,
-      created_by_last_name: creator?.lastName,
-      reviewed_by_first_name: reviewer?.firstName,
-      reviewed_by_last_name: reviewer?.lastName,
-    };
+    const names: Record<string, string | undefined> = {};
+    for (const col of ACTOR_COLUMNS) {
+      const actor = byId.get(row[col]);
+      names[`${col}_first_name`] = actor?.firstName;
+      names[`${col}_last_name`] = actor?.lastName;
+    }
+    return { ...row, ...names };
   });
 }
+
+/** Columns a workflow transition may write. A whitelist, because the keys end
+ * up in the SQL text of `transition` below. */
+const TRANSITION_COLUMNS = [
+  'status',
+  'payment_status',
+  'manager_reviewed_by',
+  'manager_reviewed_at',
+  'admin_reviewed_by',
+  'admin_reviewed_at',
+  'rejection_reason',
+  'rejected_by',
+  'rejected_at',
+  'bank_upload_by',
+  'bank_upload_at',
+  'paid_by',
+  'paid_at',
+] as const;
+
+export type VoucherTransitionColumns = Partial<Record<(typeof TRANSITION_COLUMNS)[number], string | number | Date | null>>;
 
 export class PaymentVoucherModel {
   static async generateVoucherNumber(): Promise<string> {
@@ -38,6 +68,8 @@ export class PaymentVoucherModel {
 
   static async create(data: {
     created_by: number;
+    created_by_role: string;
+    initial_status: VoucherStatus;
     vendor_id: number;
     amount: number;
     vat: number;
@@ -46,17 +78,18 @@ export class PaymentVoucherModel {
   }): Promise<PaymentVoucher> {
     const voucherNumber = await this.generateVoucherNumber();
     const result = await pool.query(
-      `INSERT INTO tbl_payment_vouchers (voucher_number, created_by, vendor_id, amount, vat, description, invoice_url, status)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      `INSERT INTO tbl_payment_vouchers (voucher_number, created_by, created_by_role, vendor_id, amount, vat, description, invoice_url, status)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id`,
       [
         voucherNumber,
         data.created_by,
+        data.created_by_role,
         data.vendor_id,
         data.amount,
         data.vat ?? 0,
         data.description ?? null,
         data.invoice_url ?? null,
-        VoucherStatus.PENDING_REVIEW
+        data.initial_status,
       ]
     );
     const newId = (result.rows[0] as any).id;
@@ -67,7 +100,7 @@ export class PaymentVoucherModel {
 
   static async findById(id: number): Promise<any | null> {
     const result = await pool.query(
-      `SELECT pv.id, pv.voucher_number, pv.created_by, pv.vendor_id, pv.amount, pv.vat, pv.description, pv.invoice_url, pv.status, pv.executive_comment, pv.reviewed_by, pv.reviewed_at, pv.resubmitted_at, pv.bank_upload_by, pv.bank_upload_at, pv.paid_by, pv.paid_at, pv.created_at, pv.updated_at,
+      `SELECT pv.*,
         v.company_name AS sp_company_name, v.email AS sp_email
       FROM tbl_payment_vouchers pv
       LEFT JOIN tbl_vendors v ON pv.vendor_id = v.id
@@ -79,7 +112,7 @@ export class PaymentVoucherModel {
     return (await withActorNames(list))[0];
   }
 
-  static async getAll(filters?: { status?: VoucherStatus }): Promise<any[]> {
+  static async getAll(filters?: { status?: VoucherStatus; payment_status?: VoucherPaymentStatus }): Promise<any[]> {
     let query = `
       SELECT pv.*,
         v.company_name AS sp_company_name
@@ -92,63 +125,47 @@ export class PaymentVoucherModel {
       params.push(filters.status);
       query += ` AND pv.status = $${params.length}`;
     }
+    if (filters?.payment_status) {
+      params.push(filters.payment_status);
+      query += ` AND pv.payment_status = $${params.length}`;
+    }
     query += ' ORDER BY pv.created_at DESC';
     const result = await pool.query(query, params);
     return withActorNames(result.rows as any[]);
   }
 
-  static async updateStatus(
+  /**
+   * Compare-and-set a workflow transition: applies `set` only while the row is
+   * still in the `expected` state, so two reviewers acting at once cannot both
+   * succeed. Returns false when the row was not in that state (or is gone).
+   */
+  static async transition(
     id: number,
-    status: VoucherStatus,
-    extra: {
-      reviewed_by?: number;
-      reviewed_at?: Date;
-      executive_comment?: string | null;
-      resubmitted_at?: Date;
-      bank_upload_by?: number;
-      bank_upload_at?: Date;
-      paid_by?: number;
-      paid_at?: Date;
-    } = {}
-  ): Promise<void> {
-    const values: any[] = [status];
-    const updates: string[] = [`status = $${values.length}`];
-    if (extra.reviewed_by !== undefined) {
-      values.push(extra.reviewed_by);
-      updates.push(`reviewed_by = $${values.length}`);
+    expected: { status: VoucherStatus; payment_status?: VoucherPaymentStatus },
+    set: VoucherTransitionColumns,
+  ): Promise<boolean> {
+    const values: any[] = [];
+    const updates: string[] = [];
+    for (const col of TRANSITION_COLUMNS) {
+      if (set[col] !== undefined) {
+        values.push(set[col]);
+        updates.push(`${col} = $${values.length}`);
+      }
     }
-    if (extra.reviewed_at !== undefined) {
-      values.push(extra.reviewed_at);
-      updates.push(`reviewed_at = $${values.length}`);
-    }
-    if (extra.executive_comment !== undefined) {
-      values.push(extra.executive_comment);
-      updates.push(`executive_comment = $${values.length}`);
-    }
-    if (extra.resubmitted_at !== undefined) {
-      values.push(extra.resubmitted_at);
-      updates.push(`resubmitted_at = $${values.length}`);
-    }
-    if (extra.bank_upload_by !== undefined) {
-      values.push(extra.bank_upload_by);
-      updates.push(`bank_upload_by = $${values.length}`);
-    }
-    if (extra.bank_upload_at !== undefined) {
-      values.push(extra.bank_upload_at);
-      updates.push(`bank_upload_at = $${values.length}`);
-    }
-    if (extra.paid_by !== undefined) {
-      values.push(extra.paid_by);
-      updates.push(`paid_by = $${values.length}`);
-    }
-    if (extra.paid_at !== undefined) {
-      values.push(extra.paid_at);
-      updates.push(`paid_at = $${values.length}`);
-    }
+    if (updates.length === 0) throw new Error('transition requires at least one column to set');
+
     values.push(id);
-    await pool.query(
-      `UPDATE tbl_payment_vouchers SET ${updates.join(', ')} WHERE id = $${values.length}`,
+    let where = `id = $${values.length}`;
+    values.push(expected.status);
+    where += ` AND status = $${values.length}`;
+    if (expected.payment_status) {
+      values.push(expected.payment_status);
+      where += ` AND payment_status = $${values.length}`;
+    }
+    const result = await pool.query(
+      `UPDATE tbl_payment_vouchers SET ${updates.join(', ')} WHERE ${where}`,
       values
     );
+    return (result.rowCount ?? 0) > 0;
   }
 }

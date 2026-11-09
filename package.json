@@ -50,6 +50,7 @@
     "db:add-medical-claim-payment-fields": "ts-node src/scripts/addMedicalClaimPaymentFields.ts",
     "db:add-work-log-minutes-and-edit-tracking": "ts-node src/scripts/addWorkLogMinutesAndEditTracking.ts",
     "db:add-role-permissions-table": "ts-node src/scripts/addRolePermissionsTable.ts",
+    "db:add-voucher-approval-workflow": "ts-node src/scripts/addVoucherApprovalWorkflow.ts",
     "db:add-vendors-role-permissions": "ts-node src/scripts/addVendorsRolePermissions.ts",
     "db:add-notice-schedule-fields": "ts-node src/scripts/addNoticeScheduleFields.ts",
     "db:add-document-version-and-mandatory-viewing": "ts-node src/scripts/addDocumentVersionAndMandatoryViewing.ts",

@@ -84,9 +84,7 @@ const SEED_GRANTS: Grant[] = [
   { role: 'finance_manager', key: 'document_vault', accessLevel: 'read' },
   { role: 'finance_manager', key: 'vouchers.view', accessLevel: 'write' },
   { role: 'finance_manager', key: 'vouchers.create', accessLevel: 'write' },
-  { role: 'finance_manager', key: 'vouchers.resubmit', accessLevel: 'write' },
-  { role: 'finance_manager', key: 'vouchers.bank_upload', accessLevel: 'write' },
-  { role: 'finance_manager', key: 'vouchers.mark_paid', accessLevel: 'write' },
+  { role: 'finance_manager', key: 'vouchers.review', accessLevel: 'write' },
 
   // finance_executive
   { role: 'finance_executive', key: 'dashboard', accessLevel: 'read' },
@@ -99,8 +97,10 @@ const SEED_GRANTS: Grant[] = [
   { role: 'finance_executive', key: 'communications', accessLevel: 'read' },
   { role: 'finance_executive', key: 'forms', accessLevel: 'read' },
   { role: 'finance_executive', key: 'document_vault', accessLevel: 'read' },
-  { role: 'finance_executive', key: 'vouchers.view', accessLevel: 'read' },
-  { role: 'finance_executive', key: 'vouchers.review', accessLevel: 'write' },
+  { role: 'finance_executive', key: 'vouchers.view', accessLevel: 'write' },
+  { role: 'finance_executive', key: 'vouchers.create', accessLevel: 'write' },
+  { role: 'finance_executive', key: 'vouchers.bank_upload', accessLevel: 'write' },
+  { role: 'finance_executive', key: 'vouchers.mark_paid', accessLevel: 'write' },
 
   // consultant
   { role: 'consultant', key: 'dashboard', accessLevel: 'read' },
