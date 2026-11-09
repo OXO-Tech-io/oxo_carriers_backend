@@ -5,7 +5,7 @@ import { logger } from '../lib/logger';
 
 // Idempotent runner for the employee-activity migrations, in order - same pattern as
 // addAttendanceTracking.ts (each .sql file is itself idempotent).
-const MIGRATIONS = ['0031_add_agent_activity_logs.sql', '0032_add_agent_activity_window_title.sql', '0033_add_agent_screenshots.sql', '0034_agent_screenshots_gcs.sql', '0035_agent_device_tokens.sql', '0036_rename_agent_screenshots_to_employee_screenshots.sql', '0037_rename_agent_device_tokens_to_employee_device_tokens.sql', '0038_rename_agent_activity_logs_to_employee_activity_logs.sql'];
+const MIGRATIONS = ['0031_add_agent_activity_logs.sql', '0032_add_agent_activity_window_title.sql', '0033_add_agent_screenshots.sql', '0034_agent_screenshots_gcs.sql', '0035_agent_device_tokens.sql', '0036_rename_agent_screenshots_to_employee_screenshots.sql', '0037_rename_agent_device_tokens_to_employee_device_tokens.sql', '0038_rename_agent_activity_logs_to_employee_activity_logs.sql', '0039_fix_employee_activity_logs_name_collision.sql'];
 
 async function addEmployeeActivityLogs() {
   try {
