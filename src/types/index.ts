@@ -30,12 +30,22 @@ export enum SessionAction {
   BREAK_END = "break_end",
 }
 
+// Approval lifecycle. A voucher created by a Finance Executive starts at
+// PENDING_MANAGER_REVIEW; one created by a Finance Manager starts at
+// PENDING_ADMIN_REVIEW. The Administrator's approval moves it to APPROVED and
+// starts the separate payment lifecycle (VoucherPaymentStatus). REJECTED needs
+// a mandatory reason and can come from either review stage.
 export enum VoucherStatus {
-  PENDING_REVIEW = "pending_review",
+  PENDING_MANAGER_REVIEW = "pending_manager_review",
+  PENDING_ADMIN_REVIEW = "pending_admin_review",
   APPROVED = "approved",
   REJECTED = "rejected",
-  INFORMATION_REQUEST = "information_request",
-  BANK_UPLOAD = "bank_upload",
+}
+
+// Payment lifecycle, only set once a voucher is APPROVED.
+export enum VoucherPaymentStatus {
+  UNPAID = "unpaid",
+  UPLOADED_FOR_PAYMENT = "uploaded_for_payment",
   PAID = "paid",
 }
 
@@ -62,10 +72,15 @@ export interface PaymentVoucher {
   description: string | null;
   invoice_url: string | null;
   status: VoucherStatus;
-  executive_comment: string | null;
-  reviewed_by: number | null;
-  reviewed_at: Date | null;
-  resubmitted_at: Date | null;
+  payment_status: VoucherPaymentStatus | null;
+  created_by_role: string | null;
+  manager_reviewed_by: number | null;
+  manager_reviewed_at: Date | null;
+  admin_reviewed_by: number | null;
+  admin_reviewed_at: Date | null;
+  rejection_reason: string | null;
+  rejected_by: number | null;
+  rejected_at: Date | null;
   bank_upload_by: number | null;
   bank_upload_at: Date | null;
   paid_by: number | null;
