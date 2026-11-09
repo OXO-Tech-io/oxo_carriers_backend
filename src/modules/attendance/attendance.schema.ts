@@ -43,3 +43,34 @@ export const employeeWorkSessionsRelations = relations(employeeWorkSessions, ({ 
 
 export type EmployeeWorkSession = typeof employeeWorkSessions.$inferSelect;
 export type NewEmployeeWorkSession = typeof employeeWorkSessions.$inferInsert;
+
+// Mirrors drizzle/0024_add_device_id_and_break_tracking.sql's tbl_employee_break_logs
+// exactly. One row per break; breakEnd null means the break is still open - same
+// convention as tbl_employee_idle_logs from 0013 (unused by this module, see above).
+export const employeeBreakLogs = pgTable('tbl_employee_break_logs', {
+    id: serial('id').primaryKey(),
+    sessionId: integer('session_id')
+        .notNull()
+        .references(() => employeeWorkSessions.id, { onDelete: 'cascade' }),
+    employeeId: varchar('employee_id', { length: 50 })
+        .notNull()
+        .references(() => employee.employeeId, { onDelete: 'cascade', onUpdate: 'cascade' }),
+    breakStart: timestamp('break_start').defaultNow(),
+    breakEnd: timestamp('break_end'),
+    durationSec: integer('duration_sec'),
+    createdAt: timestamp('created_at').defaultNow(),
+});
+
+export const employeeBreakLogsRelations = relations(employeeBreakLogs, ({ one }) => ({
+    session: one(employeeWorkSessions, {
+        fields: [employeeBreakLogs.sessionId],
+        references: [employeeWorkSessions.id],
+    }),
+    employee: one(employee, {
+        fields: [employeeBreakLogs.employeeId],
+        references: [employee.employeeId],
+    }),
+}));
+
+export type EmployeeBreakLog = typeof employeeBreakLogs.$inferSelect;
+export type NewEmployeeBreakLog = typeof employeeBreakLogs.$inferInsert;
