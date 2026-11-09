@@ -1,5 +1,6 @@
 import { IsBoolean, IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
 import { UserRole } from '../../../types';
+import { CAREER_PATHS, CareerPath } from '../../../common/constants/careerPaths';
 
 export class CreateUserDto {
   @IsOptional()
@@ -50,6 +51,10 @@ export class CreateUserDto {
   @IsOptional()
   @IsString()
   position?: string;
+
+  @IsOptional()
+  @IsIn(CAREER_PATHS)
+  career_path?: CareerPath;
 
   @IsOptional()
   @IsIn(['office', 'remote', 'hybrid'])
