@@ -154,7 +154,7 @@ export class ProfileChangeRequestsController {
   }
 
   private async notifyDecided(
-    updated: { id: number; employeeId: string; changes: unknown },
+    updated: { id: number; employeeId: string; changes: unknown; submittedBy?: number | null },
     decision: 'approved' | 'rejected' | 'returned_for_modification',
     reviewerComments: string | undefined,
   ) {
@@ -171,10 +171,17 @@ export class ProfileChangeRequestsController {
     };
     if (decision === 'approved') {
       await sendProfileChangeApprovedEmail(employee.email, params);
-    } else if (decision === 'rejected') {
-      await sendProfileChangeRejectedEmail(employee.email, params);
     } else {
-      await sendProfileChangeReturnedEmail(employee.email, params);
+      // OCD-646/652: returned/rejected outcomes go to whoever submitted the
+      // request (e.g. the HR Manager / HR Executive), not the profile owner.
+      const submitter = updated.submittedBy ? await EmployeeModel.findById(updated.submittedBy) : null;
+      const recipient = submitter ?? employee;
+      const recipientParams = { ...params, employeeName: `${recipient.firstName} ${recipient.lastName}`.trim() };
+      if (decision === 'rejected') {
+        await sendProfileChangeRejectedEmail(recipient.email, recipientParams);
+      } else {
+        await sendProfileChangeReturnedEmail(recipient.email, recipientParams);
+      }
     }
   }
 }

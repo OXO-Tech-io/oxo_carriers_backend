@@ -1,4 +1,4 @@
-import { IsEmail, IsIn, IsOptional, IsString } from 'class-validator';
+import { IsEmail, IsIn, IsOptional, IsString, ValidateIf } from 'class-validator';
 import { UserRole } from '../../../types';
 import { CAREER_PATHS, CareerPath } from '../../../common/constants/careerPaths';
 
@@ -44,6 +44,17 @@ export class UpdateUserDto {
   @IsOptional()
   @IsEmail()
   email?: string;
+
+  // OCD-647: Personal Email Address, maintained after employee creation. Pass '' to clear.
+  @IsOptional()
+  @ValidateIf((_, v) => v !== '')
+  @IsEmail()
+  personal_email?: string;
+
+  // OCD-677: Mr/Ms/Mrs/Dr/Prof, as on Create Employee.
+  @IsOptional()
+  @IsIn(['mr', 'ms', 'mrs', 'dr', 'prof', ''])
+  title?: string;
 
   // Only applied by the service if the caller is HR/super_admin - matches
   // the original controller's canUpdateRole gate.

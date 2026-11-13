@@ -60,7 +60,7 @@ describe('validateBankDetails (OCD-599/600/601/602)', () => {
     accountHolderName: "Nimal O'Brien-Perera",
     accountNumber: '1234567890',
     bankBranch: 'Colombo Fort',
-    bankBranchCode: '7010',
+    bankBranchCode: '701',
     swiftCode: 'BCEYLKLX',
   };
   it('accepts a fully valid set, including an 11-character SWIFT code', () => {
@@ -81,6 +81,9 @@ describe('validateBankDetails (OCD-599/600/601/602)', () => {
     const fields = (code: string) => validateBankDetails({ ...valid, bankBranchCode: code }).map((i) => i.field);
     expect(fields('70')).toEqual(['bankBranchCode']);
     expect(fields('7010-1')).toEqual(['bankBranchCode']);
+    expect(fields('45A')).toEqual(['bankBranchCode']);
+    expect(fields('7010')).toEqual(['bankBranchCode']);
+    expect(fields('007')).toEqual([]);
     expect(fields('12345678901')).toEqual(['bankBranchCode']);
   });
   it('rejects SWIFT codes with a bad length or special characters', () => {

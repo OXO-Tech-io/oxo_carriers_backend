@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { educationAfterSchema } from './employeeEducation.validator';
 import { workHistoryAfterSchema } from './employeeWorkHistory.validator';
 import { validateBankDetails } from '../utils/bankAccountRules';
+import { EMAIL_REGEX, OFFICE_EMAIL_DOMAIN_MESSAGE, isOfficeEmail } from '../utils/emailRules';
 
 const nullableString = z.string().max(1000).nullable();
 
@@ -149,6 +150,19 @@ const userFieldChangeBase = z.object({
     // tbl_employee.primary_school / secondary_school (see employee.schema.ts).
     'primarySchool',
     'secondarySchool',
+    // OCD-647/650/651: Edit Employee basic/company details and the Personal
+    // Email Address now travel through the approval workflow as well.
+    'firstName',
+    'lastName',
+    'email',
+    'personalEmail',
+    'department',
+    'position',
+    'careerPath',
+    'workLocation',
+    'employeeCategory',
+    'hireDate',
+    'deviceId',
   ]),
   operation: z.literal('update'),
   before: z.union([nullableString, bankAccountValueSchema]),
@@ -241,6 +255,19 @@ const welfareFieldChangeBase = z.object({
 
 type RefineCtx = z.RefinementCtx;
 
+// Mandatory at employee creation (OCD-683) - cannot be cleared via a change request.
+const REQUIRED_USER_FIELDS: string[] = [
+  'firstName',
+  'lastName',
+  'email',
+  'department',
+  'position',
+  'careerPath',
+  'workLocation',
+  'employeeCategory',
+  'hireDate',
+];
+
 function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: RefineCtx) {
   if (data.field === 'bank_account') {
     if (!bankAccountValueSchema.safeParse(data.before).success) {
@@ -284,7 +311,31 @@ function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: Re
   // entries this batch owns. Only applied to `after` (the new value being
   // submitted) - `before` is whatever was already stored, which may predate
   // these rules.
-  if (typeof data.after !== 'string' || !data.after) return;
+  if (typeof data.after !== 'string' || !data.after) {
+    if (REQUIRED_USER_FIELDS.includes(data.field)) {
+      ctx.addIssue({ code: 'custom', message: `${data.field} is required`, path: ['after'] });
+    }
+    return;
+  }
+  if (data.field === 'email') {
+    if (!EMAIL_REGEX.test(data.after)) {
+      ctx.addIssue({ code: 'custom', message: 'Enter a valid email address', path: ['after'] });
+    } else if (!isOfficeEmail(data.after)) {
+      ctx.addIssue({ code: 'custom', message: OFFICE_EMAIL_DOMAIN_MESSAGE, path: ['after'] });
+    }
+  }
+  if (data.field === 'personalEmail' && !EMAIL_REGEX.test(data.after)) {
+    ctx.addIssue({ code: 'custom', message: 'Enter a valid personal email address', path: ['after'] });
+  }
+  if (data.field === 'hireDate' && !isoDateString.safeParse(data.after).success) {
+    ctx.addIssue({ code: 'custom', message: 'Hire date must be in YYYY-MM-DD format', path: ['after'] });
+  }
+  if (data.field === 'workLocation' && !['office', 'remote', 'hybrid'].includes(data.after)) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid work location', path: ['after'] });
+  }
+  if (data.field === 'employeeCategory' && !['internal', 'client_side'].includes(data.after)) {
+    ctx.addIssue({ code: 'custom', message: 'Invalid employee type', path: ['after'] });
+  }
   if (data.field === 'gramaNiladariDivision' && !GN_DIVISION_REGEX.test(data.after)) {
     ctx.addIssue({
       code: 'custom',

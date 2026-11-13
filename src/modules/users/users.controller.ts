@@ -61,8 +61,9 @@ export class UsersController {
   @Get('email-availability')
   @UseGuards(PermissionGuard)
   @RequirePermission(PERMISSIONS.USERS, 'write')
-  async checkEmail(@Query('email') email: string) {
-    const result = await this.usersService.checkEmailAvailability(email);
+  async checkEmail(@Query('email') email: string, @Query('excludeUserId') excludeUserId?: string) {
+    const excludeId = excludeUserId ? parseInt(excludeUserId, 10) : undefined;
+    const result = await this.usersService.checkEmailAvailability(email, Number.isNaN(excludeId) ? undefined : excludeId);
     return { success: true, ...result };
   }
 

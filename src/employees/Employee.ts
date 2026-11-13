@@ -7,6 +7,12 @@ import { getRoleDefaultPermissions } from '../modules/permissions/rolePermission
 
 type DbExecutor = Pick<typeof db, 'select' | 'update'>;
 
+const LEGACY_CIPHERTEXT = /^[0-9a-f]{32}:[0-9a-f]+$/i;
+function plainBankCode(value: string | null | undefined): string | null {
+  if (!value) return null;
+  return LEGACY_CIPHERTEXT.test(value) ? (decryptPII(value) ?? value) : value;
+}
+
 function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
   if (!user) return null;
   return {
@@ -21,8 +27,9 @@ function decryptUser(user: DrizzleEmployee | null): DrizzleEmployee | null {
     bankBranch: user.bankBranch ? decryptPII(user.bankBranch) : null,
     // bankBranchCode and swiftCode are public bank identifiers, not PII: stored and returned as
     // plaintext. Rows saved before that change are converted by src/scripts/decryptBankCodes.ts.
-    bankBranchCode: user.bankBranchCode ?? null,
-    swiftCode: user.swiftCode ?? null,
+    // OCD-657: tolerate legacy rows still holding AES ciphertext so they never surface as encoded strings.
+    bankBranchCode: plainBankCode(user.bankBranchCode),
+    swiftCode: plainBankCode(user.swiftCode),
     companyName: user.companyName ? decryptPII(user.companyName) : null,
     contactNumber: user.contactNumber ? decryptPII(user.contactNumber) : null,
     personalEmail: user.personalEmail ? decryptPII(user.personalEmail) : null,
@@ -35,6 +42,29 @@ export class EmployeeModel {
       where: eq(employee.emailHash, hashEmail(email)),
     });
     return decryptUser(user || null);
+  }
+
+  /**
+   * OCD-620/621/648: true when `email` is already used as another employee's
+   * work email or personal email. Personal emails are stored with
+   * non-deterministic encryption (no hash column), so they are compared after
+   * decryption. `excludeUserId` skips the employee being edited.
+   */
+  static async emailInUse(email: string, excludeUserId?: number): Promise<boolean> {
+    const target = email.trim().toLowerCase();
+    if (!target) return false;
+    const work = await db.query.employee.findFirst({ where: eq(employee.emailHash, hashEmail(email)) });
+    if (work && work.id !== excludeUserId) return true;
+    const rows = await db
+      .select({ id: employee.id, personalEmail: employee.personalEmail })
+      .from(employee)
+      .where(isNotNull(employee.personalEmail));
+    return rows.some(
+      (r) =>
+        r.id !== excludeUserId &&
+        !!r.personalEmail &&
+        (decryptPII(r.personalEmail) ?? '').trim().toLowerCase() === target
+    );
   }
 
   static async findById(id: number): Promise<DrizzleEmployee | null> {
@@ -231,7 +261,8 @@ export class EmployeeModel {
       'accountNumber',
       'bankBranch',
       'companyName',
-      'contactNumber'
+      'contactNumber',
+      'personalEmail'
     ];
     Object.entries(updates).forEach(([key, value]) => {
       if (value !== undefined && key !== 'id' && key !== 'createdAt') {
