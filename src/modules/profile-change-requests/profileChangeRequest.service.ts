@@ -75,7 +75,33 @@ const PII_FIELD_LABELS: Record<string, string> = {
 // Non-PII personal/statutory attributes that moved to tbl_employee - travel
 // as user_field changes now, so they need their own label lookup (used
 // alongside the bank_account label already handled inline below).
+const BASIC_EMPLOYEE_FIELDS = [
+  'firstName',
+  'lastName',
+  'email',
+  'personalEmail',
+  'department',
+  'position',
+  'careerPath',
+  'workLocation',
+  'employeeCategory',
+  'hireDate',
+  'deviceId',
+];
+
 const USER_FIELD_LABELS: Record<string, string> = {
+  firstName: 'First Name',
+  lastName: 'Last Name',
+  email: 'Account Email',
+  personalEmail: 'Personal Email Address',
+  department: 'Department',
+  position: 'Position',
+  careerPath: 'Related Career Path',
+  workLocation: 'Work Location',
+  employeeCategory: 'Employee Type',
+  hireDate: 'Hire Date',
+  deviceId: 'Device ID',
+  title: 'Title',
   dateOfBirth: 'Date of Birth',
   sex: 'Sex',
   maritalStatus: 'Marital Status',
@@ -311,6 +337,10 @@ export const profileChangeRequestService = {
       if (previous.status !== 'returned_for_modification') {
         throw new BadRequestError('Only a returned-for-modification request can be resubmitted');
       }
+      // OCD-658: only the original requester may modify and resubmit a returned request.
+      if (previous.submittedBy && previous.submittedBy !== userId) {
+        throw new ForbiddenError('Only the original requester can resubmit this request');
+      }
       previousRequestId = previous.id;
     }
 
@@ -528,6 +558,17 @@ export const profileChangeRequestService = {
                   swiftCode: after.swiftCode || null,
                 })
                 .where(eq(users.employeeId, request.employeeId));
+            } else if (BASIC_EMPLOYEE_FIELDS.includes(item.field)) {
+              // OCD-650/651: basic/company details. EmployeeModel.update handles
+              // encryption (name/email/personal email) and the email hash.
+              const after = item.after as string | null;
+              if (item.field === 'email' || item.field === 'personalEmail') {
+                if (after && (await EmployeeModel.emailInUse(after, employeeRow.id))) {
+                  throw new BadRequestError('Email address already exists. Please use a different email address.');
+                }
+              }
+              const value = item.field === 'hireDate' ? (after ? new Date(after) : null) : after || null;
+              await EmployeeModel.update(employeeRow.id, { [item.field]: value } as any, tx);
             } else {
               const after = item.after as string | null;
               const value = item.field === 'contactNumber' ? (after ? encryptPII(after) : null) : after;
@@ -740,8 +781,17 @@ export const profileChangeRequestService = {
         if (!employeeRow.employeeId) {
           throw new BadRequestError('Employee has no employeeId; cannot send notification');
         }
+        // OCD-646/652: returned/rejected requests go back to whoever submitted
+        // them (e.g. the HR Manager / HR Executive acting on behalf of the
+        // employee), not the profile owner. Self-service requests resolve to
+        // the owner since they are the submitter.
+        let recipientEmployeeId = employeeRow.employeeId;
+        if (request.submittedBy) {
+          const submitterRow = await tx.query.employee.findFirst({ where: eq(users.id, request.submittedBy) });
+          if (submitterRow?.employeeId) recipientEmployeeId = submitterRow.employeeId;
+        }
         await tx.insert(notifications).values({
-          employeeId: employeeRow.employeeId,
+          employeeId: recipientEmployeeId,
           type: decision === 'rejected' ? 'profile_change_rejected' : 'profile_change_returned',
           title:
             decision === 'rejected'

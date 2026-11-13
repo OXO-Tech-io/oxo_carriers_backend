@@ -103,7 +103,7 @@ export function validateAccountNumberForBank(
 // \p{M} keeps Sinhala/Tamil combining vowel signs valid; digits, emoji and
 // other symbols fail.
 export const BANK_NAME_REGEX = /^[\p{L}\p{M}\s'.-]+$/u;
-export const BANK_BRANCH_CODE_REGEX = /^[A-Za-z0-9]{3,10}$/;
+export const BANK_BRANCH_CODE_REGEX = /^\d{3}$/;
 // 4-letter bank code, 2-letter country code, 2-character location code and an
 // optional 3-character branch code (8 or 11 characters).
 export const SWIFT_CODE_REGEX = /^[A-Z]{6}[A-Z0-9]{2}([A-Z0-9]{3})?$/;
@@ -141,7 +141,7 @@ export function validateBankDetails(details: BankDetailsInput): BankDetailsIssue
   const accountResult = validateAccountNumberForBank(details.accountNumber, details.bankName);
   if (accountResult !== true) issues.push({ field: 'accountNumber', message: accountResult });
   if (text(details.bankBranchCode) && !BANK_BRANCH_CODE_REGEX.test(text(details.bankBranchCode))) {
-    issues.push({ field: 'bankBranchCode', message: 'Branch code must be 3-10 alphanumeric characters' });
+    issues.push({ field: 'bankBranchCode', message: 'Branch code must be a 3-digit number (e.g. 007, 065, 123)' });
   }
   if (text(details.swiftCode) && !SWIFT_CODE_REGEX.test(text(details.swiftCode).toUpperCase())) {
     issues.push({

@@ -591,3 +591,54 @@ describe("profileChangeRequestIdParamSchema", () => {
     expect(profileChangeRequestIdParamSchema.safeParse({}).success).toBe(false);
   });
 });
+
+// ──────────────────────────────────────────────────────────────────────────────
+// OCD-647/650/651/678: basic/company details travel as user_field changes
+// ──────────────────────────────────────────────────────────────────────────────
+describe("profileChangeItemSchema - basic employee fields", () => {
+  const item = (field: string, before: string | null, after: string | null) => ({
+    entityType: "user_field",
+    field,
+    operation: "update",
+    before,
+    after,
+  });
+
+  it("accepts a corporate account email change", () => {
+    expect(profileChangeItemSchema.safeParse(item("email", "a@oxoholdings.group", "b@oxoholdings.group")).success).toBe(true);
+  });
+
+  it("rejects a non-corporate account email", () => {
+    expect(profileChangeItemSchema.safeParse(item("email", "a@oxoholdings.group", "b@gmail.com")).success).toBe(false);
+  });
+
+  it("accepts personal email and rejects an invalid one", () => {
+    expect(profileChangeItemSchema.safeParse(item("personalEmail", null, "me@gmail.com")).success).toBe(true);
+    expect(profileChangeItemSchema.safeParse(item("personalEmail", null, "not-an-email")).success).toBe(false);
+  });
+
+  it("rejects clearing a mandatory field", () => {
+    expect(profileChangeItemSchema.safeParse(item("firstName", "Ann", null)).success).toBe(false);
+    expect(profileChangeItemSchema.safeParse(item("department", "IT", null)).success).toBe(false);
+  });
+
+  it("validates work location, employee type and hire date", () => {
+    expect(profileChangeItemSchema.safeParse(item("workLocation", "office", "hybrid")).success).toBe(true);
+    expect(profileChangeItemSchema.safeParse(item("workLocation", "office", "moon")).success).toBe(false);
+    expect(profileChangeItemSchema.safeParse(item("employeeCategory", "internal", "client_side")).success).toBe(true);
+    expect(profileChangeItemSchema.safeParse(item("hireDate", "2020-01-01", "2021-02-03")).success).toBe(true);
+    expect(profileChangeItemSchema.safeParse(item("hireDate", "2020-01-01", "03/02/2021")).success).toBe(false);
+  });
+
+  it("requires a 3-digit numeric branch code on bank account changes", () => {
+    const bank = (code: string) => ({
+      entityType: "user_field",
+      field: "bank_account",
+      operation: "update",
+      before: { bankName: null, accountHolderName: null, accountNumber: null, bankBranch: null },
+      after: { bankName: null, accountHolderName: null, accountNumber: null, bankBranch: null, bankBranchCode: code },
+    });
+    expect(profileChangeItemSchema.safeParse(bank("065")).success).toBe(true);
+    expect(profileChangeItemSchema.safeParse(bank("45A")).success).toBe(false);
+  });
+});

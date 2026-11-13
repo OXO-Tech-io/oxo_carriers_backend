@@ -20,6 +20,32 @@ import {
 } from '../permissions/rolePermissions.model';
 import { ArchiveService } from '../archive/archive.service';
 import { validateBankDetails } from '../../utils/bankAccountRules';
+import { EMAIL_REGEX, OFFICE_EMAIL_DOMAIN_MESSAGE, isOfficeEmail } from '../../utils/emailRules';
+
+const DUPLICATE_EMAIL_MESSAGE = 'Email address already exists. Please use a different email address.';
+const SAME_EMAIL_MESSAGE = 'Work Email and Personal Email Address must be different.';
+
+// OCD-650: edits to these basic/company fields by HR Manager / HR Executive must go through the
+// profile change request workflow instead of being applied directly.
+const APPROVAL_GATED_FIELDS = [
+  'first_name',
+  'last_name',
+  'email',
+  'personal_email',
+  'title',
+  'department',
+  'position',
+  'career_path',
+  'work_location',
+  'employee_category',
+  'hire_date',
+  'device_id',
+] as const;
+
+// node-pg builds DATE columns at the server's local midnight, so read them back with local parts
+// (toISOString() would shift the day in non-UTC zones).
+const toLocalIsoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 
 const SELF_ONLY_ROLES = [UserRole.EMPLOYEE, UserRole.CONSULTANT, UserRole.SERVICE_PROVIDER];
 const VALID_ROLES: string[] = Object.values(UserRole);
@@ -67,10 +93,10 @@ export class UsersService {
    * submission (UsersService.create's own findByEmail check above stays in
    * place as a safety net, e.g. against a race with another HR user).
    */
-  async checkEmailAvailability(email: string): Promise<{ exists: boolean }> {
-    if (!email) return { exists: false };
-    const existing = await EmployeeModel.findByEmail(email);
-    return { exists: !!existing };
+  async checkEmailAvailability(email: string, excludeUserId?: number): Promise<{ exists: boolean }> {
+    if (!email?.trim()) return { exists: false };
+    // OCD-620: checked against every employee's work AND personal email.
+    return { exists: await EmployeeModel.emailInUse(email, excludeUserId) };
   }
 
   // OCD-444: same on-blur pattern as checkEmailAvailability above, so the
@@ -148,6 +174,18 @@ export class UsersService {
     const existingUser = await EmployeeModel.findByEmail(dto.email);
     if (existingUser) {
       throw new ConflictException('Email already registered');
+    }
+    // OCD-620/621: work and personal email must differ and be unused across all employee records.
+    if (dto.personal_email?.trim()) {
+      if (dto.personal_email.trim().toLowerCase() === dto.email.trim().toLowerCase()) {
+        throw new BadRequestException(SAME_EMAIL_MESSAGE);
+      }
+      if (await EmployeeModel.emailInUse(dto.personal_email)) {
+        throw new ConflictException(DUPLICATE_EMAIL_MESSAGE);
+      }
+    }
+    if (await EmployeeModel.emailInUse(dto.email)) {
+      throw new ConflictException(DUPLICATE_EMAIL_MESSAGE);
     }
 
     const employeeId = dto.employee_id ? dto.employee_id.trim() : await EmployeeModel.generateEmployeeId();
@@ -286,7 +324,84 @@ export class UsersService {
       throw new ForbiddenException('Forbidden');
     }
 
+    const requesterIsApprovalGated = requester.role === UserRole.HR_MANAGER || requester.role === UserRole.HR_EXECUTIVE;
+    const dtoFields = dto as unknown as Record<string, unknown>;
+    const needsCurrent =
+      dto.email !== undefined ||
+      dto.personal_email !== undefined ||
+      (requesterIsApprovalGated && APPROVAL_GATED_FIELDS.some((f) => dtoFields[f] !== undefined));
+    const loaded = needsCurrent ? await EmployeeModel.findById(userId) : null;
+    if (needsCurrent && !loaded) throw new NotFoundException('User not found');
+    const current = (loaded ?? {}) as NonNullable<typeof loaded>;
+
+    // OCD-648/678: validate account email up front so the client gets a meaningful message, not a 500.
+    if (dto.email !== undefined && dto.email !== current.email) {
+      if (!EMAIL_REGEX.test(dto.email)) throw new BadRequestException('Enter a valid email address');
+      if (!isOfficeEmail(dto.email)) throw new BadRequestException(OFFICE_EMAIL_DOMAIN_MESSAGE);
+      if (await EmployeeModel.emailInUse(dto.email, userId)) throw new ConflictException(DUPLICATE_EMAIL_MESSAGE);
+    }
+    if (dto.personal_email) {
+      if (!EMAIL_REGEX.test(dto.personal_email)) throw new BadRequestException('Enter a valid personal email address');
+      if (await EmployeeModel.emailInUse(dto.personal_email, userId)) throw new ConflictException(DUPLICATE_EMAIL_MESSAGE);
+    }
+    const effectiveWorkEmail = (dto.email ?? current.email) || '';
+    const effectivePersonalEmail = dto.personal_email !== undefined ? dto.personal_email : current.personalEmail;
+    if (effectivePersonalEmail && effectivePersonalEmail.trim().toLowerCase() === effectiveWorkEmail.trim().toLowerCase()) {
+      throw new BadRequestException(SAME_EMAIL_MESSAGE);
+    }
+
+    // OCD-683: mandatory-at-creation fields cannot be cleared.
+    const requiredBlank: Array<[string, unknown]> = [
+      ['First Name', dto.first_name],
+      ['Last Name', dto.last_name],
+      ['Account Email', dto.email],
+      ['Department', dto.department],
+      ['Position', dto.position],
+      ['Related Career Path', dto.career_path],
+      ['Work Location', dto.work_location],
+      ['Employee Type', dto.employee_category],
+      ['Hire Date', dto.hire_date],
+    ];
+    for (const [label, value] of requiredBlank) {
+      if (value !== undefined && (value === null || String(value).trim() === '')) {
+        throw new BadRequestException(`${label} is required`);
+      }
+    }
+
+    // OCD-650: HR Manager / HR Executive changes to basic/company details are applied only after approval.
+    if (requesterIsApprovalGated) {
+      const currentValue: Record<string, unknown> = {
+        first_name: current.firstName,
+        last_name: current.lastName,
+        email: current.email,
+        personal_email: current.personalEmail,
+        title: (current as any).title,
+        department: current.department,
+        position: current.position,
+        career_path: current.careerPath,
+        work_location: current.workLocation,
+        employee_category: current.employeeCategory,
+        hire_date: current.hireDate ? toLocalIsoDay(new Date(current.hireDate as any)) : null,
+        device_id: current.deviceId,
+      };
+      const dtoRecord = dto as unknown as Record<string, unknown>;
+      const normalize = (v: unknown) => (v === null || v === undefined ? '' : String(v));
+      const changed = APPROVAL_GATED_FIELDS.filter((f) => {
+        const next = dtoRecord[f];
+        if (next === undefined) return false;
+        const nextText = f === 'hire_date' ? normalize(next).slice(0, 10) : normalize(next);
+        return nextText !== normalize(currentValue[f]);
+      });
+      if (changed.length > 0) {
+        throw new ForbiddenException(
+          'Changes to employee basic/company details must be submitted as a profile change request for approval.',
+        );
+      }
+    }
+
     const updates: any = {};
+    if (dto.title !== undefined) updates.title = dto.title || null;
+    if (dto.personal_email !== undefined) updates.personalEmail = dto.personal_email || null;
     if (dto.first_name) updates.firstName = dto.first_name;
     if (dto.last_name) updates.lastName = dto.last_name;
     if (dto.department !== undefined) updates.department = dto.department;

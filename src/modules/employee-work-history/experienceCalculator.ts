@@ -5,8 +5,11 @@
 //  - Every duration is computed over the UNION of the entries' date ranges, so
 //    overlapping roles (e.g. a part-time job during an internship) are counted
 //    once, and gaps between roles (career breaks) are never counted.
-//  - A range is half-open [start, end): 2018-01-01 -> 2020-01-01 is exactly
-//    2 years. A null end date means "still working" and runs up to `today`.
+//  - Anniversaries are INCLUSIVE: the start date is day 1 of service and the
+//    end date (or today, for a null end date = "still working") is a day worked
+//    too. 2018-01-01 -> 2019-12-31 is exactly 2 years; 15 May 2025 -> 14 May 2026
+//    is exactly 1 year. Internally a range is half-open [start, end) with
+//    end = last day worked + 1.
 //  - Durations are reported as calendar years/months/days (not a decimal that
 //    drifts with leap years); `totalDays` is the exact day count of the union.
 
@@ -63,7 +66,8 @@ export function entryToRange(entry: ExperienceEntry, todayDay: number): DayRange
   if (!startYmd) return null;
   const endYmd = entry.endDate ? toYmd(entry.endDate) : null;
   const start = ymdToDay(startYmd);
-  const end = endYmd ? ymdToDay(endYmd) : todayDay;
+  // Inclusive of the last day worked (the end date, or today when still employed).
+  const end = (endYmd ? ymdToDay(endYmd) : todayDay) + 1;
   return end > start ? { start, end } : null;
 }
 

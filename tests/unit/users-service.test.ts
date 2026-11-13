@@ -19,6 +19,7 @@ vi.mock("../../src/employees/Employee", () => ({
     delete: vi.fn(),
     generateEmployeeId: vi.fn(),
     linkKeycloakSub: vi.fn(),
+    emailInUse: vi.fn(),
   },
 }));
 vi.mock("../../src/employees/EmployeePii", () => ({
@@ -327,7 +328,7 @@ describe("UsersService", () => {
 
     it("throws NotFoundException when the target user doesn't exist", async () => {
       em.update.mockResolvedValue(null);
-      await expect(service.update(1, { first_name: "X" } as any, hr)).rejects.toThrow(NotFoundException);
+      await expect(service.update(1, { first_name: "X" } as any, superAdmin)).rejects.toThrow(NotFoundException);
     });
 
     it("only allows HR/super_admin to change role via update", async () => {
@@ -349,11 +350,53 @@ describe("UsersService", () => {
       expect(em.update).toHaveBeenCalledWith(5, { role: UserRole.SUPER_ADMIN });
     });
 
-    it("applies allowed updates for HR", async () => {
+    it("applies allowed updates for HR (role only - basic details need approval)", async () => {
       em.update.mockResolvedValue({ id: 1, firstName: "New" });
-      const result = await service.update(1, { first_name: "New", role: UserRole.HR_EXECUTIVE } as any, hr);
-      expect(em.update).toHaveBeenCalledWith(1, { firstName: "New", role: UserRole.HR_EXECUTIVE });
+      const result = await service.update(1, { role: UserRole.HR_EXECUTIVE } as any, hr);
+      expect(em.update).toHaveBeenCalledWith(1, { role: UserRole.HR_EXECUTIVE });
       expect(result).toEqual({ id: 1, firstName: "New" });
+    });
+
+    it("applies basic-detail updates directly for a super admin", async () => {
+      em.update.mockResolvedValue({ id: 1, firstName: "New" });
+      await service.update(1, { first_name: "New" } as any, superAdmin);
+      expect(em.update).toHaveBeenCalledWith(1, { firstName: "New" });
+    });
+
+    // OCD-650: HR Manager / HR Executive edits go through the approval workflow.
+    it("refuses a direct basic-detail change by HR (must be submitted for approval)", async () => {
+      em.findById.mockResolvedValue({ id: 1, firstName: "Old", lastName: "L", email: "a@oxoholdings.group" });
+      await expect(service.update(1, { first_name: "New" } as any, hr)).rejects.toThrow(ForbiddenException);
+      expect(em.update).not.toHaveBeenCalled();
+    });
+
+    // OCD-678/648/683
+    it("rejects a non-corporate account email", async () => {
+      em.findById.mockResolvedValue({ id: 1, email: "a@oxoholdings.group" });
+      await expect(service.update(1, { email: "x@gmail.com" } as any, superAdmin)).rejects.toThrow(
+        "Account Email must use the @oxoholdings.group domain.",
+      );
+    });
+
+    it("rejects an account email that is already in use with a validation message", async () => {
+      em.findById.mockResolvedValue({ id: 1, email: "a@oxoholdings.group" });
+      em.emailInUse.mockResolvedValue(true);
+      await expect(service.update(1, { email: "b@oxoholdings.group" } as any, superAdmin)).rejects.toThrow(
+        ConflictException,
+      );
+    });
+
+    it("rejects clearing a mandatory field", async () => {
+      await expect(service.update(1, { first_name: "" } as any, superAdmin)).rejects.toThrow(BadRequestException);
+      await expect(service.update(1, { department: " " } as any, superAdmin)).rejects.toThrow("Department is required");
+    });
+
+    it("rejects a personal email identical to the work email", async () => {
+      em.findById.mockResolvedValue({ id: 1, email: "a@oxoholdings.group", personalEmail: null });
+      em.emailInUse.mockResolvedValue(false);
+      await expect(service.update(1, { personal_email: "a@oxoholdings.group" } as any, superAdmin)).rejects.toThrow(
+        "Work Email and Personal Email Address must be different.",
+      );
     });
 
     describe("role-change permission resync (full replace)", () => {
