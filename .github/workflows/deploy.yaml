@@ -134,6 +134,10 @@ jobs:
           PII_ENCRYPTION_KEY: ${{ secrets.PII_ENCRYPTION_KEY }}
           SALARY_ENCRYPTION_KEY: ${{ secrets.SALARY_ENCRYPTION_KEY }}
           COMMUNICATIONS_DOCUMENT_FIELDS: ${{ secrets.COMMUNICATIONS_DOCUMENT_FIELDS }}
+          # Repository *variables* (not secrets). Empty => Cloud Run gets no bucket and every
+          # screenshot/document upload is refused with "storage is not configured".
+          GCS_BUCKET_NAME: ${{ vars.GCS_BUCKET_NAME }}
+          GCS_PROJECT_ID: ${{ vars.GCS_PROJECT_ID }}
         run: |
           set -euo pipefail
 
@@ -157,6 +161,8 @@ jobs:
             PII_ENCRYPTION_KEY
             SALARY_ENCRYPTION_KEY
             COMMUNICATIONS_DOCUMENT_FIELDS
+            GCS_BUCKET_NAME
+            GCS_PROJECT_ID
           )
 
           missing=0

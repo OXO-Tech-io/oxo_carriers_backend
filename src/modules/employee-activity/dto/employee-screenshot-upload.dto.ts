@@ -1,4 +1,4 @@
-import { IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import { MAX_SCREENSHOT_BYTES } from '../employee-activity.constants';
 
 export const SCREENSHOT_MIME_TYPES = ['image/jpeg', 'image/png'] as const;
@@ -38,4 +38,21 @@ export class ConfirmScreenshotUploadDto {
   @IsString()
   @Matches(/^[a-f0-9]{64}$/i)
   sha256?: string;
+}
+
+/** The employee's own tab reports whether its WebSocket to the local agent is up. */
+export class AgentPresenceDto {
+  @IsString()
+  @MaxLength(255)
+  deviceId!: string;
+
+  @IsBoolean()
+  connected!: boolean;
+}
+
+/** The employee's own tab asks for a token for the device it is talking to. */
+export class IssueOwnDeviceTokenDto {
+  @IsString()
+  @MaxLength(255)
+  deviceId!: string;
 }

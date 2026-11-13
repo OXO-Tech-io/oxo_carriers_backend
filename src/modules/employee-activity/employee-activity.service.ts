@@ -16,6 +16,7 @@ import {
   getPrivateObjectSize,
   getPrivateObjectUploadUrl,
   isSecureBucketConfigured,
+  storageErrorHint,
   uploadPrivateObject,
 } from '../../lib/storage/gcsStorage';
 import { logger } from '../../lib/logger';
@@ -26,6 +27,9 @@ import { env } from '../../config/env';
 const normaliseEventType = (type: string) => type.trim().toLowerCase();
 
 export { MAX_SCREENSHOT_BYTES };
+
+// The tab pings every 15s while its socket to the agent is open; 3 missed pings = not connected.
+const PRESENCE_TTL_MS = 45_000;
 
 @Injectable()
 export class EmployeeActivityService {
@@ -77,7 +81,17 @@ export class EmployeeActivityService {
   async requestScreenshotUpload(device: EmployeeDeviceIdentity, dto: RequestScreenshotUploadDto) {
     if (!isSecureBucketConfigured()) throw new ServiceUnavailableException('Screenshot storage is not configured');
     const objectKey = this.screenshotObjectKey(device.deviceId, dto);
-    const uploadUrl = await getPrivateObjectUploadUrl(objectKey, dto.mimeType);
+    let uploadUrl: string;
+    try {
+      uploadUrl = await getPrivateObjectUploadUrl(objectKey, dto.mimeType);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(
+        { err, employeeId: device.employeeId, objectKey, hint: storageErrorHint(message) },
+        'Could not sign screenshot upload URL - run GET /employee-activities/storage-health',
+      );
+      throw new ServiceUnavailableException('Could not create a screenshot upload URL');
+    }
     logger.info({ employeeId: device.employeeId, eventId: dto.eventId, objectKey }, 'Screenshot upload URL issued');
     // `method` + `headers` mirror the CGP presign response so clients send exactly what was signed.
     // `requiredHeaders` is kept for agents built before that shape.
@@ -170,6 +184,50 @@ export class EmployeeActivityService {
       await tx.insert(employeeDeviceTokens).values({ employeeId, deviceId, tokenHash: hashDeviceToken(token) });
     });
     return { token, deviceId };
+  }
+
+  /** The employee may only mint a token for the device HR assigned to them (same rule as the log/screenshot relay). */
+  async issueOwnDeviceToken(employeeId: string, deviceId: string) {
+    const employee = await EmployeeModel.findByEmployeeId(employeeId);
+    const assigned = employee?.deviceId?.trim();
+    if (!assigned) throw new BadRequestException('No device ID is assigned to your account yet');
+    if (assigned.toLowerCase() !== deviceId.trim().toLowerCase()) {
+      throw new ForbiddenException('This device is not assigned to you');
+    }
+    return this.issueDeviceToken(employeeId);
+  }
+
+  /**
+   * Presence of the employee's agent socket, reported by their own HRIS tab. Kept in memory:
+   * it is a liveness signal that heals itself within PRESENCE_TTL_MS, so it is not worth a table.
+   * (With several API instances each only knows its own tabs; move to the DB/Redis then.)
+   */
+  private readonly presence = new Map<string, { deviceId: string; seenAt: number }>();
+
+  async recordPresence(employeeId: string, deviceId: string, connected: boolean) {
+    const employee = await EmployeeModel.findByEmployeeId(employeeId);
+    const assigned = employee?.deviceId?.trim();
+    if (!assigned) throw new ForbiddenException('No device ID is assigned to your account');
+    if (assigned.toLowerCase() !== deviceId.trim().toLowerCase()) {
+      throw new ForbiddenException('This device is not assigned to you');
+    }
+    if (connected) this.presence.set(employeeId, { deviceId: assigned, seenAt: Date.now() });
+    else this.presence.delete(employeeId);
+    return { connected };
+  }
+
+  /** Every employee with a live agent socket right now (seen within PRESENCE_TTL_MS). */
+  listPresence() {
+    const now = Date.now();
+    const rows: { employeeId: string; deviceId: string; lastSeenAt: string }[] = [];
+    for (const [employeeId, p] of this.presence) {
+      if (now - p.seenAt > PRESENCE_TTL_MS) {
+        this.presence.delete(employeeId);
+        continue;
+      }
+      rows.push({ employeeId, deviceId: p.deviceId, lastSeenAt: new Date(p.seenAt).toISOString() });
+    }
+    return rows;
   }
 
   async revokeDeviceTokens(employeeId: string) {
@@ -277,7 +335,10 @@ export class EmployeeActivityService {
         try {
           return await getPrivateObjectSignedUrl(objectKey);
         } catch (err) {
-          logger.warn({ err }, 'Could not sign screenshot URL');
+          logger.warn(
+            { err, objectKey, hint: storageErrorHint(err instanceof Error ? err.message : String(err)) },
+            'Could not sign screenshot URL; the UI will fall back to the authenticated image endpoint',
+          );
           return null;
         }
       }),

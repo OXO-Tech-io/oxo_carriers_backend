@@ -11,6 +11,7 @@ import { SalaryModule } from './modules/salary/salary.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { EmployeeEducationModule } from './modules/employee-education/employee-education.module';
 import { EmployeeWorkHistoryModule } from './modules/employee-work-history/employee-work-history.module';
+import { EmployeeLinkedinModule } from './modules/employee-linkedin/employee-linkedin.module';
 import { EmployeeNomineesModule } from './modules/employee-nominees/employee-nominees.module';
 import { EmployeeDependentsModule } from './modules/employee-dependents/employee-dependents.module';
 import { EmployeeEmergencyContactsModule } from './modules/employee-emergency-contacts/employee-emergency-contacts.module';
@@ -53,6 +54,7 @@ import { BankAccountRulesModule } from './modules/bank-account-rules/bank-accoun
     ReportsModule,
     EmployeeEducationModule,
     EmployeeWorkHistoryModule,
+    EmployeeLinkedinModule,
     EmployeeNomineesModule,
     EmployeeDependentsModule,
     EmployeeEmergencyContactsModule,

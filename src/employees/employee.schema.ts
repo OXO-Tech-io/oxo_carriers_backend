@@ -110,6 +110,16 @@ export const employee = pgTable('tbl_employee', {
     electorate: varchar('electorate', { length: 150 }),
     postalCode: varchar('postal_code', { length: 20 }),
     linkedinProfile: varchar('linkedin_profile', { length: 255 }),
+    // LinkedIn connection + sync state (see employee-linkedin module). No
+    // LinkedIn credentials/tokens live here: the importer reads profiles with
+    // its own service session, so a connection is the employee's consent.
+    linkedinConnectedAt: timestamp('linkedin_connected_at'),
+    linkedinSyncRequestedAt: timestamp('linkedin_sync_requested_at'),
+    linkedinLatestCompany: varchar('linkedin_latest_company', { length: 255 }),
+    linkedinLatestTitle: varchar('linkedin_latest_title', { length: 255 }),
+    linkedinLatestStartDate: date('linkedin_latest_start_date'),
+    linkedinSyncedAt: timestamp('linkedin_synced_at'),
+    linkedinSyncError: varchar('linkedin_sync_error', { length: 255 }),
     // OCD-454: relative /uploads/... path to the employee's uploaded profile
     // picture (served statically - see main.ts's useStaticAssets). Not PII-
     // encrypted like email/firstName/lastName - it's a storage path, not

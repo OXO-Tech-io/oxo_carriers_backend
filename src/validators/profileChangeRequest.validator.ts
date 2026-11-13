@@ -15,6 +15,14 @@ export const bankAccountValueSchema = z.object({
 });
 export type BankAccountValue = z.infer<typeof bankAccountValueSchema>;
 
+// The `before` snapshot is whatever is stored, which may predate these limits (the DB columns
+// allow 500 chars, and legacy rows can still hold encrypted bank/swift codes). Only `after` is
+// held to the strict 30-char limit above.
+const bankAccountBeforeSchema = bankAccountValueSchema.extend({
+  bankBranchCode: z.string().max(500).nullable().optional(),
+  swiftCode: z.string().max(500).nullable().optional(),
+});
+
 // OCD-419: mirrors LOCATION_NAME_PATTERN/ADDRESS_LINE_PATTERN in
 // lib/validation/textValidation.ts (frontend) - city/district are
 // letters-only "name" fields, address lines are more permissive since house/
@@ -151,7 +159,7 @@ const userFieldChangeBase = z.object({
     'secondarySchool',
   ]),
   operation: z.literal('update'),
-  before: z.union([nullableString, bankAccountValueSchema]),
+  before: z.union([nullableString, bankAccountBeforeSchema]),
   after: z.union([nullableString, bankAccountValueSchema]),
 });
 
@@ -243,7 +251,7 @@ type RefineCtx = z.RefinementCtx;
 
 function checkUserFieldChange(data: z.infer<typeof userFieldChangeBase>, ctx: RefineCtx) {
   if (data.field === 'bank_account') {
-    if (!bankAccountValueSchema.safeParse(data.before).success) {
+    if (!bankAccountBeforeSchema.safeParse(data.before).success) {
       ctx.addIssue({ code: 'custom', message: 'before must be a bank account object', path: ['before'] });
     }
     const afterParsed = bankAccountValueSchema.safeParse(data.after);

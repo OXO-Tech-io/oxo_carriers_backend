@@ -11,8 +11,9 @@ import { JwtPayload } from '../../types';
 import { EmployeeActivityService } from './employee-activity.service';
 import { GetEmployeeActivityLogsQueryDto } from './dto/get-employee-activity-logs-query.dto';
 import { IngestEmployeeActivityLogsDto } from './dto/ingest-employee-activity-logs.dto';
-import { ConfirmScreenshotUploadDto, RequestScreenshotUploadDto } from './dto/employee-screenshot-upload.dto';
+import { AgentPresenceDto, ConfirmScreenshotUploadDto, IssueOwnDeviceTokenDto, RequestScreenshotUploadDto } from './dto/employee-screenshot-upload.dto';
 import { logger } from '../../lib/logger';
+import { checkStorageHealth } from '../../lib/storage/gcsStorage';
 import { MAX_SCREENSHOT_BYTES } from './employee-activity.constants';
 import { SCREENSHOT_MIME_TYPES } from './dto/employee-screenshot-upload.dto';
 import { EmployeeDeviceGuard, type EmployeeDeviceRequest } from './guards/employee-device.guard';
@@ -98,6 +99,17 @@ export class EmployeeActivityController {
     };
   }
 
+  /**
+   * GCP connectivity check for screenshots: bucket, write/read/delete, and URL signing, each
+   * reported separately with a fix hint. Needs write on `attendance` (it writes a tiny probe object).
+   */
+  @Get('storage-health')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.ATTENDANCE, 'write')
+  async storageHealth() {
+    return { success: true, data: await checkStorageHealth() };
+  }
+
   /** Raw image bytes. Fetched with the bearer token (not an <img src>), so it stays behind auth. */
   @Get('screenshots/:id')
   @UseGuards(PermissionGuard)
@@ -128,6 +140,39 @@ export class EmployeeActivityController {
   @Post('devices/:deviceId/screenshots')
   async screenshotConfirm(@Body() dto: ConfirmScreenshotUploadDto, @Req() req: EmployeeDeviceRequest) {
     return { success: true, data: await this.employeeActivityService.confirmScreenshotUpload(req.employeeDevice!, dto) };
+  }
+
+  /**
+   * Self-service: the signed-in employee's tab hands the token to the local agent over its socket.
+   * Only works for the device HR assigned to this employee. Declared before the admin
+   * `devices/:employeeId/tokens` route so "me" is not read as an employee ID.
+   */
+  @Post('devices/me/tokens')
+  async issueOwnToken(@Body() dto: IssueOwnDeviceTokenDto, @CurrentEmployee() employee: JwtPayload) {
+    if (!employee.employeeId) throw new BadRequestException('Your account has no employee ID assigned yet');
+    return {
+      success: true,
+      message: 'Device token issued',
+      data: await this.employeeActivityService.issueOwnDeviceToken(employee.employeeId, dto.deviceId),
+    };
+  }
+
+  /** The signed-in employee's tab reports its agent socket as up (ping) or down. */
+  @Post('devices/me/presence')
+  async reportPresence(@Body() dto: AgentPresenceDto, @CurrentEmployee() employee: JwtPayload) {
+    if (!employee.employeeId) throw new BadRequestException('Your account has no employee ID assigned yet');
+    return {
+      success: true,
+      data: await this.employeeActivityService.recordPresence(employee.employeeId, dto.deviceId, dto.connected),
+    };
+  }
+
+  /** Admin view: which employees' agents are connected right now. Anyone absent is not connected. */
+  @Get('presence')
+  @UseGuards(PermissionGuard)
+  @RequirePermission(PERMISSIONS.ATTENDANCE, 'read')
+  async presence() {
+    return { success: true, data: this.employeeActivityService.listPresence() };
   }
 
   // --- Admin: device token lifecycle (write on attendance) ---
